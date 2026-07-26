@@ -180,7 +180,7 @@ func (t *winTrash) list() ([]Item, error) {
 			if err != nil {
 				continue // metadata without its data file
 			}
-			meta, err := parseBinMetadata(mustRead(filepath.Join(dir, name)))
+			meta, err := parseBinMetadata(readOrNil(filepath.Join(dir, name)))
 			if err != nil {
 				continue
 			}
@@ -212,7 +212,7 @@ func (t *winTrash) restore(id, dest string) (string, error) {
 		return "", err
 	}
 	if dest == "" {
-		meta, err := parseBinMetadata(mustRead(metaPath))
+		meta, err := parseBinMetadata(readOrNil(metaPath))
 		if err != nil {
 			return "", err
 		}
@@ -314,9 +314,10 @@ func (t *winTrash) binDirs() []string {
 	return dirs
 }
 
-// mustRead returns the content of a file, or nil when it cannot be read; the
-// callers treat unreadable metadata as a malformed entry and skip it.
-func mustRead(path string) []byte {
+// readOrNil returns the content of a file, or nil when it cannot be read. The
+// callers treat unreadable metadata as a malformed entry and skip it, which is
+// the right outcome for a half-written or inaccessible bin entry.
+func readOrNil(path string) []byte {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil

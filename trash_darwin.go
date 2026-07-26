@@ -20,7 +20,6 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
-	"strings"
 	"syscall"
 	"time"
 )
@@ -356,12 +355,11 @@ func (t *macTrash) updateIndex(fn func(*trashIndex) error) error {
 // it their original locations.
 func (t *macTrash) prune(idx *trashIndex) {
 	for file := range idx.Entries {
-		dir := filepath.Dir(file)
-		if !strings.HasPrefix(file, dir+string(filepath.Separator)) {
+		if !filepath.IsAbs(file) {
 			delete(idx.Entries, file)
 			continue
 		}
-		if _, err := os.Stat(dir); err != nil {
+		if _, err := os.Stat(filepath.Dir(file)); err != nil {
 			continue // trash directory unreachable: keep the entry
 		}
 		if _, err := os.Lstat(file); errors.Is(err, fs.ErrNotExist) {
