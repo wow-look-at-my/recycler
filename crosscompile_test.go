@@ -45,7 +45,12 @@ func TestBuildsForEveryPlatform(t *testing.T) {
 			t.Parallel()
 			require.True(t, supported[target], "%s is not a target this Go toolchain knows about; update crossCompileTargets", target)
 
-			cmd := exec.Command(goBin, "build", "-o", filepath.Join(outDir, goos+"_"+goarch), "./...")
+			// Building several packages at once needs an output directory
+			// that already exists.
+			dir := filepath.Join(outDir, goos+"_"+goarch)
+			require.NoError(t, os.MkdirAll(dir, 0o755))
+
+			cmd := exec.Command(goBin, "build", "-o", dir, "./...")
 			cmd.Env = append(os.Environ(), "GOOS="+goos, "GOARCH="+goarch, "CGO_ENABLED=0")
 			out, err := cmd.CombinedOutput()
 			require.NoError(t, err, "building for %s failed:\n%s", target, out)
