@@ -76,6 +76,23 @@ func TestPutBackReplacesAStaleRecord(t *testing.T) {
 	}, readPutBacks(dir), "a name reused in the trash kept the previous item's origin")
 }
 
+func TestNothingRecycledTakesTheDSStoreName(t *testing.T) {
+	dir := t.TempDir()
+	// A file really can be called .DS_Store, and recycling one must not put it
+	// where the put back records live - writing them would destroy it.
+	name := trashName(dsStoreName, dir)
+	assert.NotEqual(t, dsStoreName, name)
+
+	require.NoError(t, os.WriteFile(filepath.Join(dir, name), []byte("the user's file"), 0o600))
+	require.NoError(t, setPutBack(dir, name, putBackOf("/", "/Users/ada/.DS_Store")))
+
+	kept, err := os.ReadFile(filepath.Join(dir, name))
+	require.NoError(t, err)
+	assert.Equal(t, "the user's file", string(kept), "the recycled file was overwritten by the put back records")
+	assert.Equal(t, putBack{Dir: "Users/ada", Name: dsStoreName}, readPutBacks(dir)[name],
+		"the item's real name was not recorded")
+}
+
 func TestPutBackOfPathsIsRelativeToTheVolume(t *testing.T) {
 	for name, tc := range map[string]struct {
 		root, original string

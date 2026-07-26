@@ -63,6 +63,18 @@ func (p putBack) path(root string) string {
 	return filepath.Join(root, p.Dir, p.Name)
 }
 
+// trashName picks the name an item takes inside a trash directory. The
+// directory's own .DS_Store holds the put back records, so nothing recycled
+// takes that name however free it looks - the record keeps the item's real name
+// regardless of what it is called in the trash.
+func trashName(want, dir string) string {
+	name := uniqueName(want, dir)
+	if name == dsStoreName {
+		name = uniqueName("recycled"+dsStoreName, dir)
+	}
+	return name
+}
+
 // readPutBacks returns the put back records of a trash directory, keyed by the
 // name of the item inside it. A missing, unreadable or unintelligible .DS_Store
 // yields no records rather than an error: an item whose origin is unknown is

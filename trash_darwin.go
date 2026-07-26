@@ -64,7 +64,7 @@ func (t *macTrash) recycleOne(path string) error {
 	if err != nil {
 		return err
 	}
-	dest := filepath.Join(dir, uniqueName(filepath.Base(abs), dir))
+	dest := filepath.Join(dir, trashName(filepath.Base(abs), dir))
 	if err := move(abs, dest); err != nil {
 		return err
 	}
