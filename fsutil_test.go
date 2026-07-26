@@ -80,6 +80,24 @@ func TestSortItemsNewestFirst(t *testing.T) {
 	assert.Equal(t, []string{"new", "a", "b", "old"}, ids(items))
 }
 
+func TestIsCrossDevice(t *testing.T) {
+	assert.True(t, isCrossDevice(&os.LinkError{Op: "rename", Err: errCrossDevice}))
+	assert.False(t, isCrossDevice(&os.LinkError{Op: "rename", Err: os.ErrPermission}))
+	assert.False(t, isCrossDevice(os.ErrNotExist))
+	assert.False(t, isCrossDevice(nil))
+}
+
+func TestPrepareDest(t *testing.T) {
+	dir := t.TempDir()
+
+	dest := filepath.Join(dir, "a", "b", "file.txt")
+	require.NoError(t, prepareDest(dest))
+	assert.DirExists(t, filepath.Dir(dest), "the parent directories should have been created")
+
+	require.NoError(t, os.WriteFile(dest, nil, 0o600))
+	assert.ErrorIs(t, prepareDest(dest), ErrExists)
+}
+
 func ids(items []Item) []string {
 	out := make([]string, len(items))
 	for i, item := range items {

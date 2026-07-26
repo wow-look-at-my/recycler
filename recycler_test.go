@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -218,6 +219,16 @@ func TestListOnAnEmptyBin(t *testing.T) {
 	items, err := List()
 	require.NoError(t, err)
 	assert.Empty(t, items)
+}
+
+func TestItemString(t *testing.T) {
+	when := time.Date(2026, 7, 26, 11, 24, 9, 0, time.UTC)
+	described := Item{Name: "notes.txt", OriginalPath: "/home/user/notes.txt", DeletedAt: when}
+	assert.Equal(t, "/home/user/notes.txt [2026-07-26T11:24:09Z]", described.String())
+
+	unknown := Item{Name: "notes.txt", DeletedAt: when}
+	assert.Contains(t, unknown.String(), "notes.txt")
+	assert.Contains(t, unknown.String(), "unknown")
 }
 
 func TestAvailable(t *testing.T) {

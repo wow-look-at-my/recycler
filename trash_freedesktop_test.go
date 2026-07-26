@@ -78,6 +78,70 @@ func TestReadsForeignTrashEntries(t *testing.T) {
 	assert.NoFileExists(t, infoPath, "the .trashinfo file was left behind after restoring")
 }
 
+func TestCreateInfoFileClaimsFreeNames(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, ensureTrashDir(dir))
+
+	first, f, err := createInfoFile(dir, "report.txt")
+	require.NoError(t, err)
+	require.NoError(t, f.Close())
+	assert.Equal(t, "report.txt", first)
+
+	// The name is taken now, even though no data file exists yet.
+	second, f, err := createInfoFile(dir, "report.txt")
+	require.NoError(t, err)
+	require.NoError(t, f.Close())
+	assert.Equal(t, "report_1.txt", second)
+
+	// A data file with no metadata also makes a name unavailable.
+	writeFile(t, filepath.Join(dir, trashFilesDir, "report_2.txt"), "orphan")
+	third, f, err := createInfoFile(dir, "report.txt")
+	require.NoError(t, err)
+	require.NoError(t, f.Close())
+	assert.Equal(t, "report_3.txt", third)
+
+	odd, f, err := createInfoFile(dir, "..")
+	require.NoError(t, err)
+	require.NoError(t, f.Close())
+	assert.Equal(t, "recycled", odd, "a name that is not a file name should be replaced")
+}
+
+func TestReadInfoFile(t *testing.T) {
+	dir := t.TempDir()
+
+	full := writeFile(t, filepath.Join(dir, "full"+trashInfoExt),
+		"[Trash Info]\nPath=/home/user/a%20file.txt\nDeletionDate=2026-07-26T11:24:09\n")
+	info, err := readInfoFile(full)
+	require.NoError(t, err)
+	assert.Equal(t, "/home/user/a file.txt", info.origPath)
+	assert.True(t, info.deletedAt.Equal(time.Date(2026, 7, 26, 11, 24, 9, 0, time.Local)))
+
+	// A date with a zone, as some implementations write, is understood too.
+	zoned := writeFile(t, filepath.Join(dir, "zoned"+trashInfoExt),
+		"[Trash Info]\nPath=/tmp/x\nDeletionDate=2026-07-26T11:24:09Z\n")
+	info, err = readInfoFile(zoned)
+	require.NoError(t, err)
+	assert.True(t, info.deletedAt.Equal(time.Date(2026, 7, 26, 11, 24, 9, 0, time.UTC)))
+
+	// Junk lines are ignored, and an unparseable date leaves the zero time
+	// behind for the caller to replace.
+	odd := writeFile(t, filepath.Join(dir, "odd"+trashInfoExt),
+		"[Trash Info]\nnonsense\nPath=%zz\nDeletionDate=not a date\n")
+	info, err = readInfoFile(odd)
+	require.NoError(t, err)
+	assert.Equal(t, "%zz", info.origPath, "an undecodable path is kept as it was written")
+	assert.True(t, info.deletedAt.IsZero())
+
+	_, err = readInfoFile(filepath.Join(dir, "missing"+trashInfoExt))
+	assert.Error(t, err)
+}
+
+func TestEscapePath(t *testing.T) {
+	assert.Equal(t, "/home/user/a%20file.txt", escapePath("/home/user/a file.txt"))
+	assert.Equal(t, "/home/user/plain.txt", escapePath("/home/user/plain.txt"))
+	assert.Equal(t, "relative/path%20here", escapePath("relative/path here"))
+}
+
 func TestUnescapeMountPoint(t *testing.T) {
 	cases := map[string]string{
 		`/mnt/plain`:            `/mnt/plain`,

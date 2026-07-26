@@ -346,14 +346,6 @@ func ensureTrashDir(dir string) error {
 	return nil
 }
 
-func isStickyDir(path string) bool {
-	fi, err := os.Lstat(path)
-	if err != nil {
-		return false
-	}
-	return fi.IsDir() && fi.Mode()&os.ModeSymlink == 0 && fi.Mode()&os.ModeSticky != 0
-}
-
 // createInfoFile atomically claims a free name in the trash directory by
 // creating its .trashinfo file, and returns the name along with the open file.
 func createInfoFile(dir, want string) (string, *os.File, error) {

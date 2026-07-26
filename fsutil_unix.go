@@ -22,6 +22,17 @@ func deviceOf(path string) (uint64, error) {
 	return uint64(st.Dev), nil
 }
 
+// isStickyDir reports whether path is a real directory - not a symlink to one -
+// with the sticky bit set, which is what makes a shared trash directory safe
+// for several users.
+func isStickyDir(path string) bool {
+	fi, err := os.Lstat(path)
+	if err != nil {
+		return false
+	}
+	return fi.IsDir() && fi.Mode()&os.ModeSymlink == 0 && fi.Mode()&os.ModeSticky != 0
+}
+
 // topDirOf walks up from dir for as long as the device number stays the same,
 // yielding the mount point of the filesystem dir lives on.
 func topDirOf(dir string, dev uint64) string {
