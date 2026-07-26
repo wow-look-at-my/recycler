@@ -13,7 +13,7 @@ uniform API on Linux (and the BSDs), macOS and Windows.
 | `errno_{unix,windows,other}.go` | `errCrossDevice`, the errno a rename fails with across filesystems. |
 | `trash_freedesktop.go`, `mounts_freedesktop.go` | Linux/BSD backend and its mount table scanning. |
 | `trash_darwin.go` | macOS backend, including the index of original locations. |
-| `trash_windows.go`, `shfileop_win{64,32}.go` | Windows backend and the two `SHFILEOPSTRUCTW` layouts. |
+| `trash_windows.go`, `shfileop_windows*.go` | Windows backend, the `SHFILEOPSTRUCTW` declaration, and the guard that fails a 32-bit Windows build. |
 | `recyclebin_meta.go` | Codec for the Windows `$I` metadata files. Deliberately **not** build-constrained, so it is testable on any platform. |
 | `trash_unsupported.go` | Every other GOOS: all operations fail with `ErrUnsupported`. |
 | `cmd/recycler/` | Cobra CLI, one command per file, each registering itself in `init()`. |
@@ -88,11 +88,12 @@ directly. Each item is a `$R<id><ext>` data file with a `$I<id><ext>` metadata
 file; `recyclebin_meta.go` decodes both metadata versions (1 on Vista..8.1 with
 a fixed 260-character path, 2 on Windows 10+ with a length-prefixed one).
 
-`SHFILEOPSTRUCTW` is **byte-packed on 32-bit Windows only** (`shellapi.h` wraps
-it in `pshpack1.h` under `#ifndef _WIN64`). Hence two declarations:
-`shfileop_win64.go` uses natural Go layout for amd64/arm64, and
-`shfileop_win32.go` keeps everything after `fFlags` as a raw byte tail so the
-386/arm offsets match. If you touch either, keep both in sync.
+Only **64-bit Windows** is supported. `SHFILEOPSTRUCTW` is byte-packed on 32-bit
+Windows (`shellapi.h` wraps it in `pshpack1.h` under `#ifndef _WIN64`), so the
+natural Go layout in `shfileop_windows.go` is right for amd64/arm64 and wrong
+for 386/arm. `shfileop_windows_unsupported.go` therefore fails a 32-bit build on
+purpose, rather than letting the shell read a delete request from the wrong
+offsets.
 
 ## Building and testing
 
@@ -102,8 +103,18 @@ vets, formats, runs the tests with a coverage floor of 80%, and builds.
 file:
 
 ```
-go-toolchain matrix --targets linux/amd64,darwin/arm64,windows/amd64,windows/386
+go-toolchain matrix --targets linux/amd64,darwin/arm64,windows/amd64,windows/arm64
 ```
+
+**Do not build this project as a cosmo fat APE.** gosmopolitan compiles with
+`GOOS=cosmo`, which matches none of the backends' build constraints, so the APE
+falls through to `trash_unsupported.go` and every operation fails with
+`ErrUnsupported` - verified by building one and running it. Worse, the default
+`--cosmo-slots` mapping copies that APE onto `recycler_windows_amd64.exe`, so a
+cosmo build would ship exactly the platform it cannot serve. Recycling is not
+portable-libc work: it is three unrelated mechanisms, one of which is only
+reachable through the Windows shell API, so the per-GOOS matrix is the honest
+build.
 
 The test suite runs against a real recycle bin redirected into a temporary
 directory (`isolateTrash`), so it exercises the actual FreeDesktop
@@ -112,7 +123,6 @@ cannot run on Linux is covered where possible by platform-neutral unit tests -
 that is why the `$I` codec has no build constraint.
 
 CI (`.github/workflows/ci.yml`) runs the same toolchain and builds every
-supported target, windows/386 included, so a per-platform file that stops
-compiling fails the build. No job may be named `all-builds`: that status is
+supported target, so a per-platform file that stops compiling fails the build. No job may be named `all-builds`: that status is
 posted by the org's required-builds-manager app, and the go-toolchain action
 fails any workflow that shadows it.

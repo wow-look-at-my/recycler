@@ -42,7 +42,7 @@ recycler.Empty()                         // all of it, gone for good
 - **macOS** uses `~/.Trash`. Finder's "Put Back" data is private, so this
   package records original locations itself; items trashed by Finder are listed
   but need an explicit destination to restore.
-- **Windows** recycles through the shell, exactly like deleting in Explorer,
-  and reads `$Recycle.Bin` directly to list, restore and purge.
+- **Windows** (64-bit) recycles through the shell, exactly like deleting in
+  Explorer, and reads `$Recycle.Bin` directly to list, restore and purge.
 
 Details, invariants and the on-disk formats are in [CLAUDE.md](CLAUDE.md).
