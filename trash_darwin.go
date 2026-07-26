@@ -171,10 +171,29 @@ func (t *macTrash) empty() error {
 		if err != nil {
 			continue
 		}
-		// The .DS_Store goes with everything else, taking the put back records
-		// of items that no longer exist with it.
+		var removed []string
+		emptied := true
 		for _, entry := range entries {
+			if entry.Name() == dsStoreName {
+				continue
+			}
 			if err := os.RemoveAll(filepath.Join(dir, entry.Name())); err != nil {
+				errs = append(errs, err)
+				emptied = false
+				continue
+			}
+			removed = append(removed, entry.Name())
+		}
+		if emptied {
+			// Nothing is left to put back, so the records go with it.
+			if err := os.Remove(filepath.Join(dir, dsStoreName)); err != nil && !errors.Is(err, fs.ErrNotExist) {
+				errs = append(errs, err)
+			}
+			continue
+		}
+		// Something would not go: whatever is still there keeps its location.
+		if len(removed) > 0 {
+			if err := clearPutBack(dir, removed...); err != nil {
 				errs = append(errs, err)
 			}
 		}
