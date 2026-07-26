@@ -10,6 +10,7 @@ permissions:
   actions: read # the all-builds guard scans this run's jobs
   checks: read # the all-builds guard scans the head commit's check runs
   deployments: write # buildhost autorelease registers a deployment
+  artifact-metadata: write # autorelease records what buildhost stored
 
 jobs:
   build:
