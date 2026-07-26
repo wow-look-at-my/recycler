@@ -51,12 +51,13 @@ type Item struct {
 	Name string `json:"name"`
 
 	// OriginalPath is the absolute path the item was recycled from. It is
-	// empty when the platform does not record it (see the package README for
-	// when that happens on macOS).
+	// empty when nothing recorded where the item came from: on macOS, where
+	// the location lives in Finder's own put back records, that means an item
+	// trashed by a tool that writes none.
 	OriginalPath string `json:"original_path,omitempty"`
 
 	// DeletedAt is when the item was moved to the recycle bin. When the
-	// platform does not record a deletion time, the modification time of the
+	// platform records no deletion time - macOS does not - a timestamp of the
 	// recycled copy is used instead.
 	DeletedAt time.Time `json:"deleted_at"`
 

@@ -12,7 +12,9 @@ uniform API on Linux (and the BSDs), macOS and Windows.
 | `fsutil_unix.go` | `deviceOf`, `topDirOf`, `isStickyDir` - shared by the FreeDesktop and macOS backends. |
 | `errno_{unix,windows,other}.go` | `errCrossDevice`, the errno a rename fails with across filesystems. |
 | `trash_freedesktop.go`, `mounts_freedesktop.go` | Linux/BSD backend and its mount table scanning. |
-| `trash_darwin.go` | macOS backend, including the index of original locations. |
+| `trash_darwin.go` | macOS backend. |
+| `putback.go` | Finder's `ptbL`/`ptbN` put back records: reading them out of a trash directory's `.DS_Store` and editing them back in under a lock. Built on every Unix so the test suite covers it on Linux. |
+| `dsstore.go`, `dsstore_write.go` | Codec for the `.DS_Store` files those records live in: the B-tree parser, and the writer with its buddy allocator. Deliberately **not** build-constrained, so it is testable on any platform. |
 | `trash_windows.go`, `shfileop_windows*.go` | Windows backend, the `SHFILEOPSTRUCTW` declaration, and the guard that fails a 32-bit Windows build. |
 | `recyclebin_meta.go` | Codec for the Windows `$I` metadata files. Deliberately **not** build-constrained, so it is testable on any platform. |
 | `trash_unsupported.go` | Every other GOOS: all operations fail with `ErrUnsupported`. |
@@ -62,17 +64,40 @@ covers that.
 
 ### macOS
 
-Files go to `~/.Trash`, or `<volume>/.Trashes/$uid` for other volumes. Finder
-stores its "Put Back" location in private metadata that is neither documented
-nor writable, so this package keeps its own index at
-`~/Library/Application Support/recycler/index.json`, mapping the path in the
-trash to the original location and deletion time. The index is updated under an
-exclusive `flock` and pruned of entries whose files are gone - but only when
-their trash directory is reachable, so an unmounted volume does not cost its
-items their original locations.
+Files go to `~/.Trash`, or `<volume>/.Trashes/$uid` for other volumes.
 
-Items trashed by Finder or another tool are listed with an empty `OriginalPath`
-and can only be restored with an explicit destination (`RestoreTo`).
+**Original locations come from Finder's own "Put Back" records; this package
+keeps no index of its own.** macOS has no API for restoring - `trashItem` and
+`NSWorkspace.recycle` only put things in - and the only record of where a
+trashed item came from is a pair of records in that trash directory's
+`.DS_Store`, keyed by the item's name inside the trash:
+
+| Record | Type | Holds |
+|---|---|---|
+| `ptbL` | `ustr` | the original parent directory, relative to the volume root (`Users/ada/Documents`) |
+| `ptbN` | `ustr` | the original name, which differs from the name in the trash when something was already called that |
+
+`putback.go` reads and writes exactly those, so an item recycled here can be put
+back from Finder, and an item Finder trashed restores here. The whole `.DS_Store`
+is rewritten under an exclusive `flock`, preserving every record the file
+already had - the icon positions and window settings next to the put back
+records belong to Finder, and are carried through untouched. A `.DS_Store` that
+cannot be parsed is replaced rather than allowed to block recycling: display
+settings are worth less than a recorded location. Nothing can lock Finder out of
+the same file, and Apple's own APIs lose put back records to that race too.
+
+An item whose records are missing - trashed by a tool that writes none, or a
+`.DS_Store` deleted by one of the many programs that delete them - is listed with
+an empty `OriginalPath` and needs an explicit destination (`RestoreTo`).
+
+Two smaller consequences of having no index:
+
+- `DeletedAt` is the item's inode change time, which the rename into the trash
+  updates. macOS records no deletion time anywhere.
+- Finder writes locations through the data volume's own mount point
+  (`/System/Volumes/Data/Users/ada/notes.txt`). `dataVolumePath` presents those
+  as the firmlinked `/Users/ada/notes.txt` they resolve to, but only when that
+  path's directory exists, so an unusual layout keeps what was recorded.
 
 ### Windows
 
@@ -120,7 +145,17 @@ The test suite runs against a real recycle bin redirected into a temporary
 directory (`isolateTrash`), so it exercises the actual FreeDesktop
 implementation rather than a mock. Windows and macOS specific behaviour that
 cannot run on Linux is covered where possible by platform-neutral unit tests -
-that is why the `$I` codec has no build constraint.
+that is why the `$I` codec has no build constraint, and why `putback.go` is
+built on every Unix rather than only on darwin.
+
+The `.DS_Store` fixtures in `testdata/` were written by an independent
+implementation of the format (the `ds_store` Python package behind `dmgbuild`),
+which is what keeps the codec honest: `finder_trash.DS_Store` is a single-node
+file, `finder_trash_many.DS_Store` a tree with internal nodes, and
+`edited_elsewhere.DS_Store` a file this package wrote that was then edited by
+that other implementation - the case that comes up every time Finder touches a
+trash directory this package has written to. Regenerate them with that package
+if the fixtures ever need to change; do not hand-edit them.
 
 CI (`.github/workflows/ci.yml`) runs the same toolchain and builds every
 supported target, so a per-platform file that stops compiling fails the build. No job may be named `all-builds`: that status is

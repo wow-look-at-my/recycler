@@ -5,31 +5,29 @@ package recycler
 // macOS Trash implementation.
 //
 // Finder moves deleted files into ~/.Trash (or .Trashes/$uid on other volumes)
-// and remembers where each one came from in its own private metadata, which is
-// not a documented or writable format. This implementation therefore keeps its
-// own index of original locations alongside the trash. Items recycled by Finder
-// or by other tools still show up in List, but without an original location, so
-// restoring them needs an explicit destination.
+// and records where each one came from in that trash directory's own .DS_Store,
+// as the "ptbL" and "ptbN" records behind its Put Back command. Apple documents
+// neither the file nor an API for reading it, but it is the only place the
+// original location exists, so this package reads and writes those same records
+// (see putback.go and dsstore.go) instead of keeping an index of its own.
+// Items recycled here can therefore be put back from Finder, and items Finder
+// trashed can be restored here.
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 )
 
-const indexVersion = 1
-
 type macTrash struct {
-	home  string // ~/.Trash
-	index string // path of this package's index of original locations
-	uid   int
+	home string // ~/.Trash
+	uid  int
 }
 
 func platformBackend() (backend, error) {
@@ -37,23 +35,7 @@ func platformBackend() (backend, error) {
 	if err != nil {
 		return nil, fmt.Errorf("recycler: locating home directory: %w", err)
 	}
-	return &macTrash{
-		home:  filepath.Join(home, ".Trash"),
-		index: filepath.Join(home, "Library", "Application Support", "recycler", "index.json"),
-		uid:   os.Getuid(),
-	}, nil
-}
-
-// trashIndex records where recycled files came from, keyed by the absolute path
-// of the file inside the trash.
-type trashIndex struct {
-	Version int                   `json:"version"`
-	Entries map[string]indexEntry `json:"entries"`
-}
-
-type indexEntry struct {
-	OriginalPath string    `json:"original_path"`
-	DeletedAt    time.Time `json:"deleted_at"`
+	return &macTrash{home: filepath.Join(home, ".Trash"), uid: os.Getuid()}, nil
 }
 
 func (t *macTrash) recycle(paths []string) error {
@@ -86,25 +68,23 @@ func (t *macTrash) recycleOne(path string) error {
 	if err := move(abs, dest); err != nil {
 		return err
 	}
-	return t.updateIndex(func(idx *trashIndex) error {
-		idx.Entries[dest] = indexEntry{OriginalPath: abs, DeletedAt: time.Now()}
-		return nil
-	})
+	if err := setPutBack(dir, filepath.Base(dest), putBackOf(t.volumeRoot(dir), abs)); err != nil {
+		return fmt.Errorf("moved to the trash, but its original location could not be recorded: %w", err)
+	}
+	return nil
 }
 
 func (t *macTrash) list() ([]Item, error) {
-	idx, err := t.loadIndex()
-	if err != nil {
-		return nil, err
-	}
 	var items []Item
 	for _, dir := range t.trashDirs() {
 		entries, err := os.ReadDir(dir)
 		if err != nil {
 			continue
 		}
+		origins := readPutBacks(dir)
+		root := t.volumeRoot(dir)
 		for _, entry := range entries {
-			if entry.Name() == ".DS_Store" {
+			if entry.Name() == dsStoreName {
 				continue
 			}
 			file := filepath.Join(dir, entry.Name())
@@ -115,16 +95,13 @@ func (t *macTrash) list() ([]Item, error) {
 			item := Item{
 				ID:        file,
 				Name:      entry.Name(),
-				DeletedAt: info.ModTime(),
+				DeletedAt: deletedAt(info),
 				Size:      treeSize(file),
 				IsDir:     info.IsDir(),
 			}
-			if recorded, ok := idx.Entries[file]; ok {
-				item.OriginalPath = recorded.OriginalPath
-				item.Name = filepath.Base(recorded.OriginalPath)
-				if !recorded.DeletedAt.IsZero() {
-					item.DeletedAt = recorded.DeletedAt
-				}
+			if origin, ok := origins[entry.Name()]; ok {
+				item.OriginalPath = dataVolumePath(origin.path(root))
+				item.Name = origin.Name
 			}
 			items = append(items, item)
 		}
@@ -138,16 +115,13 @@ func (t *macTrash) restore(id, dest string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	dir, name := filepath.Dir(file), filepath.Base(file)
 	if dest == "" {
-		idx, err := t.loadIndex()
-		if err != nil {
-			return "", err
+		origin, ok := readPutBacks(dir)[name]
+		if !ok {
+			return "", fmt.Errorf("%w: %s (nothing recorded where it came from; restore it with an explicit destination)", ErrUnknownOrigin, id)
 		}
-		recorded, ok := idx.Entries[file]
-		if !ok || recorded.OriginalPath == "" {
-			return "", fmt.Errorf("%w: %s (recycled outside this tool; restore it with an explicit destination)", ErrUnknownOrigin, id)
-		}
-		dest = recorded.OriginalPath
+		dest = dataVolumePath(origin.path(t.volumeRoot(dir)))
 	}
 	dest, err = filepath.Abs(dest)
 	if err != nil {
@@ -159,15 +133,12 @@ func (t *macTrash) restore(id, dest string) (string, error) {
 	if err := move(file, dest); err != nil {
 		return "", err
 	}
-	return dest, t.updateIndex(func(idx *trashIndex) error {
-		delete(idx.Entries, file)
-		return nil
-	})
+	return dest, clearPutBack(dir, name)
 }
 
 func (t *macTrash) purge(ids []string) error {
 	var errs []error
-	removed := make([]string, 0, len(ids))
+	removed := map[string][]string{}
 	for _, id := range ids {
 		file, err := t.resolveID(id)
 		if err != nil {
@@ -178,15 +149,15 @@ func (t *macTrash) purge(ids []string) error {
 			errs = append(errs, err)
 			continue
 		}
-		removed = append(removed, file)
+		dir := filepath.Dir(file)
+		removed[dir] = append(removed[dir], filepath.Base(file))
 	}
-	if len(removed) > 0 {
-		if err := t.updateIndex(func(idx *trashIndex) error {
-			for _, file := range removed {
-				delete(idx.Entries, file)
-			}
-			return nil
-		}); err != nil {
+	for _, dir := range t.trashDirs() {
+		names, ok := removed[dir]
+		if !ok {
+			continue
+		}
+		if err := clearPutBack(dir, names...); err != nil {
 			errs = append(errs, err)
 		}
 	}
@@ -200,17 +171,13 @@ func (t *macTrash) empty() error {
 		if err != nil {
 			continue
 		}
+		// The .DS_Store goes with everything else, taking the put back records
+		// of items that no longer exist with it.
 		for _, entry := range entries {
 			if err := os.RemoveAll(filepath.Join(dir, entry.Name())); err != nil {
 				errs = append(errs, err)
 			}
 		}
-	}
-	if err := t.updateIndex(func(idx *trashIndex) error {
-		idx.Entries = map[string]indexEntry{}
-		return nil
-	}); err != nil {
-		errs = append(errs, err)
 	}
 	return errors.Join(errs...)
 }
@@ -227,7 +194,7 @@ func (t *macTrash) resolveID(id string) (string, error) {
 			break
 		}
 	}
-	if !known {
+	if !known || filepath.Base(clean) == dsStoreName {
 		return "", fmt.Errorf("%w: %s", ErrNotFound, id)
 	}
 	if _, err := os.Lstat(clean); err != nil {
@@ -285,85 +252,39 @@ func (t *macTrash) trashDirs() []string {
 	return dirs
 }
 
-func (t *macTrash) loadIndex() (*trashIndex, error) {
-	idx := &trashIndex{Version: indexVersion, Entries: map[string]indexEntry{}}
-	data, err := os.ReadFile(t.index)
-	if errors.Is(err, fs.ErrNotExist) {
-		return idx, nil
+// volumeRoot returns the mount point that a trash directory's put back
+// locations are relative to: the volume holding a .Trashes directory, and the
+// root for the home trash.
+func (t *macTrash) volumeRoot(dir string) string {
+	if dir == t.home {
+		return "/"
 	}
-	if err != nil {
-		return nil, err
-	}
-	if len(data) == 0 {
-		return idx, nil
-	}
-	if err := json.Unmarshal(data, idx); err != nil {
-		// A damaged index costs restore information, not data: carry on with
-		// an empty one rather than making the whole recycle bin unusable.
-		return &trashIndex{Version: indexVersion, Entries: map[string]indexEntry{}}, nil
-	}
-	if idx.Entries == nil {
-		idx.Entries = map[string]indexEntry{}
-	}
-	return idx, nil
+	return filepath.Dir(filepath.Dir(dir))
 }
 
-// updateIndex applies fn to the index under an exclusive lock, then writes it
-// back, dropping entries whose files are gone from a trash directory that is
-// currently reachable.
-func (t *macTrash) updateIndex(fn func(*trashIndex) error) error {
-	if err := os.MkdirAll(filepath.Dir(t.index), 0o700); err != nil {
-		return err
+// dataVolumePath rewrites a location Finder recorded through the data volume's
+// own mount point - /System/Volumes/Data/Users/me/notes.txt - as the
+// /Users/me/notes.txt that firmlinks make the very same file. It only does so
+// when that shorter path's directory really is there, so an unusual layout
+// keeps the location exactly as recorded.
+func dataVolumePath(path string) string {
+	rest, ok := strings.CutPrefix(path, "/System/Volumes/Data/")
+	if !ok {
+		return path
 	}
-	f, err := os.OpenFile(t.index, os.O_RDWR|os.O_CREATE, 0o600)
-	if err != nil {
-		return err
+	short := "/" + rest
+	if _, err := os.Stat(filepath.Dir(short)); err != nil {
+		return path
 	}
-	defer f.Close()
-	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX); err != nil {
-		return err
-	}
-	defer syscall.Flock(int(f.Fd()), syscall.LOCK_UN)
-
-	idx := &trashIndex{Version: indexVersion, Entries: map[string]indexEntry{}}
-	if data, err := io.ReadAll(f); err == nil && len(data) > 0 {
-		if err := json.Unmarshal(data, idx); err != nil || idx.Entries == nil {
-			idx = &trashIndex{Version: indexVersion, Entries: map[string]indexEntry{}}
-		}
-	}
-	if err := fn(idx); err != nil {
-		return err
-	}
-	t.prune(idx)
-
-	idx.Version = indexVersion
-	data, err := json.MarshalIndent(idx, "", "  ")
-	if err != nil {
-		return err
-	}
-	if err := f.Truncate(0); err != nil {
-		return err
-	}
-	if _, err := f.WriteAt(append(data, '\n'), 0); err != nil {
-		return err
-	}
-	return f.Sync()
+	return short
 }
 
-// prune drops index entries for files that no longer exist, but only when their
-// trash directory is reachable - an unmounted volume must not cost the items on
-// it their original locations.
-func (t *macTrash) prune(idx *trashIndex) {
-	for file := range idx.Entries {
-		if !filepath.IsAbs(file) {
-			delete(idx.Entries, file)
-			continue
-		}
-		if _, err := os.Stat(filepath.Dir(file)); err != nil {
-			continue // trash directory unreachable: keep the entry
-		}
-		if _, err := os.Lstat(file); errors.Is(err, fs.ErrNotExist) {
-			delete(idx.Entries, file)
-		}
+// deletedAt reports when an item was moved to the trash. macOS records no
+// deletion time anywhere, but moving a file to the trash is a rename, which
+// updates its inode change time.
+func deletedAt(info fs.FileInfo) time.Time {
+	if st, ok := info.Sys().(*syscall.Stat_t); ok {
+		return time.Unix(st.Ctimespec.Unix())
 	}
+	return info.ModTime()
 }
