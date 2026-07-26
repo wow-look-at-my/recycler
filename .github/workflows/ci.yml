@@ -1,0 +1,25 @@
+name: CI
+
+on:
+  push:
+
+permissions:
+  contents: write # dependency-graph submission
+  id-token: write # secret-server and buildhost autorelease (OIDC)
+  security-events: write # CodeQL SARIF upload
+  actions: read # the all-builds guard scans this run's jobs
+  checks: read # the all-builds guard scans the head commit's check runs
+  deployments: write # buildhost autorelease registers a deployment
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: wow-look-at-my/go-toolchain@v1
+        with:
+          # Every platform this package supports has to keep compiling, and
+          # the recycle bin code is entirely per-platform, so the build matrix
+          # is the check that covers it. windows/386 is here for the 32-bit
+          # SHFILEOPSTRUCTW layout, which no other target compiles.
+          targets: linux/amd64,linux/arm64,darwin/amd64,darwin/arm64,windows/amd64,windows/arm64,windows/386
