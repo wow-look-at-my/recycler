@@ -39,9 +39,9 @@ recycler.Empty()                         // all of it, gone for good
 
 - **Linux** and the BSDs follow the FreeDesktop trash specification, including
   per-filesystem trash directories, so other trash tools interoperate.
-- **macOS** uses `~/.Trash`. Finder's "Put Back" data is private, so this
-  package records original locations itself; items trashed by Finder are listed
-  but need an explicit destination to restore.
+- **macOS** uses `~/.Trash`, reading and writing Finder's own "Put Back" records
+  rather than an index of its own, so what this restores and what Finder puts
+  back are the same thing.
 - **Windows** (64-bit) recycles through the shell, exactly like deleting in
   Explorer, and reads `$Recycle.Bin` directly to list, restore and purge.
 
