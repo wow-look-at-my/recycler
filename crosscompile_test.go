@@ -7,11 +7,13 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 // crossCompileTargets is every platform this package claims to support. The
 // per-platform code cannot be exercised from a single machine, so at the very
-// least CI must prove it all still compiles.
+// least CI must prove that it all still compiles.
 var crossCompileTargets = []string{
 	"linux/amd64",
 	"linux/arm64",
@@ -39,17 +41,14 @@ func TestBuildsForEveryPlatform(t *testing.T) {
 
 	for _, target := range crossCompileTargets {
 		goos, goarch, _ := strings.Cut(target, "/")
-		if !supported[target] {
-			t.Errorf("%s is not a target this Go toolchain knows about; update crossCompileTargets", target)
-			continue
-		}
 		t.Run(strings.ReplaceAll(target, "/", "_"), func(t *testing.T) {
 			t.Parallel()
+			require.True(t, supported[target], "%s is not a target this Go toolchain knows about; update crossCompileTargets", target)
+
 			cmd := exec.Command(goBin, "build", "-o", filepath.Join(outDir, goos+"_"+goarch), "./...")
 			cmd.Env = append(os.Environ(), "GOOS="+goos, "GOARCH="+goarch, "CGO_ENABLED=0")
-			if out, err := cmd.CombinedOutput(); err != nil {
-				t.Fatalf("building for %s failed: %v\n%s", target, err, out)
-			}
+			out, err := cmd.CombinedOutput()
+			require.NoError(t, err, "building for %s failed:\n%s", target, out)
 		})
 	}
 }
@@ -67,9 +66,7 @@ func goCommand(t *testing.T) string {
 		}
 	}
 	path, err := exec.LookPath("go")
-	if err != nil {
-		t.Fatalf("cannot find the go command to cross compile with: %v", err)
-	}
+	require.NoError(t, err, "cannot find the go command to cross compile with")
 	return path
 }
 
@@ -77,9 +74,8 @@ func goCommand(t *testing.T) string {
 func distList(t *testing.T, goBin string) map[string]bool {
 	t.Helper()
 	out, err := exec.Command(goBin, "tool", "dist", "list").Output()
-	if err != nil {
-		t.Fatalf("go tool dist list: %v", err)
-	}
+	require.NoError(t, err, "go tool dist list")
+
 	supported := map[string]bool{}
 	for _, line := range strings.Fields(string(out)) {
 		supported[line] = true

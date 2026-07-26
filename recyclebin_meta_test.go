@@ -2,6 +2,8 @@ package recycler
 
 import (
 	"encoding/binary"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"testing"
 	"time"
 	"unicode/utf16"
@@ -14,18 +16,14 @@ func TestBinMetadataRoundTrip(t *testing.T) {
 		OriginalPath: `C:\Users\pazer\Documents\report .txt`,
 	}
 	got, err := parseBinMetadata(encodeBinMetadata(want))
-	if err != nil {
-		t.Fatalf("parseBinMetadata: %v", err)
-	}
-	if got.Size != want.Size {
-		t.Errorf("Size = %d, want %d", got.Size, want.Size)
-	}
-	if !got.DeletedAt.Equal(want.DeletedAt) {
-		t.Errorf("DeletedAt = %s, want %s", got.DeletedAt, want.DeletedAt)
-	}
-	if got.OriginalPath != want.OriginalPath {
-		t.Errorf("OriginalPath = %q, want %q", got.OriginalPath, want.OriginalPath)
-	}
+	require.Nil(t, err)
+
+	assert.Equal(t, want.Size, got.Size)
+
+	assert.True(t, got.DeletedAt.Equal(want.DeletedAt))
+
+	assert.Equal(t, want.OriginalPath, got.OriginalPath)
+
 }
 
 // TestBinMetadataVersion1 decodes a hand-built version 1 record, the layout
@@ -42,18 +40,14 @@ func TestBinMetadataVersion1(t *testing.T) {
 	}
 
 	got, err := parseBinMetadata(data)
-	if err != nil {
-		t.Fatalf("parseBinMetadata: %v", err)
-	}
-	if got.OriginalPath != path {
-		t.Errorf("OriginalPath = %q, want %q", got.OriginalPath, path)
-	}
-	if got.Size != 4096 {
-		t.Errorf("Size = %d, want 4096", got.Size)
-	}
-	if !got.DeletedAt.Equal(deletedAt) {
-		t.Errorf("DeletedAt = %s, want %s", got.DeletedAt, deletedAt)
-	}
+	require.Nil(t, err)
+
+	assert.Equal(t, path, got.OriginalPath)
+
+	assert.Equal(t, int64(4096), got.Size)
+
+	assert.True(t, got.DeletedAt.Equal(deletedAt))
+
 }
 
 func TestBinMetadataRejectsGarbage(t *testing.T) {
@@ -72,23 +66,23 @@ func TestBinMetadataRejectsGarbage(t *testing.T) {
 			return b
 		}(),
 	}
-	for name, data := range cases {
-		if _, err := parseBinMetadata(data); err == nil {
-			t.Errorf("%s: expected an error, got none", name)
-		}
+	for _, data := range cases {
+		_, err := parseBinMetadata(data)
+		assert.NotNil(t, err)
+
 	}
 }
 
 func TestFileTimeConversion(t *testing.T) {
 	// 1601-01-01T00:00:00Z is FILETIME 0 plus one second per 10,000,000 ticks.
-	if got := fileTimeToTime(fileTimeEpochOffset); !got.Equal(time.Unix(0, 0).UTC()) {
-		t.Errorf("the FILETIME epoch offset maps to %s, want the Unix epoch", got)
-	}
+	got := fileTimeToTime(fileTimeEpochOffset)
+	assert.True(t, got.Equal(time.Unix(0, 0).UTC()))
+
 	when := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
-	if got := fileTimeToTime(timeToFileTime(when)); !got.Equal(when) {
-		t.Errorf("round trip gave %s, want %s", got, when)
-	}
-	if got := fileTimeToTime(0); !got.IsZero() {
-		t.Errorf("a zero FILETIME gave %s, want the zero time", got)
-	}
+	got := fileTimeToTime(timeToFileTime(when))
+	assert.True(t, got.Equal(when))
+
+	got := fileTimeToTime(0)
+	assert.True(t, got.IsZero())
+
 }
