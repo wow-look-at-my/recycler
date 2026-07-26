@@ -53,7 +53,7 @@ func TestIsStickyDir(t *testing.T) {
 
 	sticky := filepath.Join(dir, "sticky")
 	require.NoError(t, os.Mkdir(sticky, 0o755))
-	require.NoError(t, os.Chmod(sticky, 0o1777))
+	require.NoError(t, os.Chmod(sticky, 0o777|os.ModeSticky))
 	assert.True(t, isStickyDir(sticky))
 
 	file := filepath.Join(dir, "file")
