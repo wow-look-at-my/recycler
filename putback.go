@@ -21,11 +21,11 @@ package recycler
 // by the test suite, which runs on Linux.
 
 import (
+	"golang.org/x/sys/unix"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
-	"golang.org/x/sys/unix"
 )
 
 const (
