@@ -4,6 +4,7 @@ package recycler
 
 import (
 	"bufio"
+	"github.com/wow-look-at-my/go-containers/set"
 	"os"
 	"path/filepath"
 	"strings"
@@ -21,13 +22,13 @@ var pseudoFilesystems = map[string]bool{
 // mountPoints returns directories that may be the top directory of a
 // filesystem with its own trash directory.
 func mountPoints() []string {
-	seen := map[string]bool{}
+	seen := set.New[string]()
 	var points []string
 	add := func(p string) {
-		if p == "" || seen[p] {
+		if p == "" || seen.Contains(p) {
 			return
 		}
-		seen[p] = true
+		seen.Add(p)
 		points = append(points, p)
 	}
 

@@ -14,6 +14,7 @@ import (
 	"bufio"
 	"errors"
 	"fmt"
+	"github.com/wow-look-at-my/go-containers/set"
 	"io/fs"
 	"net/url"
 	"os"
@@ -263,17 +264,17 @@ func (t *fdoTrash) trashDirFor(path string) (dir, top string, err error) {
 // right now: the home trash plus one per mounted filesystem.
 func (t *fdoTrash) trashDirs() []string {
 	dirs := []string{t.home}
-	seen := map[string]bool{t.home: true}
+	seen := set.Of[string](t.home)
 	for _, top := range mountPoints() {
 		for _, candidate := range []string{
 			filepath.Join(top, ".Trash", strconv.Itoa(t.uid)),
 			filepath.Join(top, ".Trash-"+strconv.Itoa(t.uid)),
 		} {
-			if seen[candidate] {
+			if seen.Contains(candidate) {
 				continue
 			}
 			if fi, err := os.Stat(candidate); err == nil && fi.IsDir() {
-				seen[candidate] = true
+				seen.Add(candidate)
 				dirs = append(dirs, candidate)
 			}
 		}

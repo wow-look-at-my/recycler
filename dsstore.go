@@ -35,6 +35,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"github.com/wow-look-at-my/go-containers/set"
 	"sort"
 	"strings"
 	"unicode/utf16"
@@ -237,13 +238,13 @@ func parseDSStore(data []byte) ([]dsRecord, error) {
 	}
 
 	var records []dsRecord
-	visited := map[uint32]bool{}
+	visited := set.New[uint32]()
 	var walk func(number uint32) error
 	walk = func(number uint32) error {
-		if visited[number] {
+		if visited.Contains(number) {
 			return fmt.Errorf("%w: block %d appears twice in the tree", errBadDSStore, number)
 		}
-		visited[number] = true
+		visited.Add(number)
 
 		node, err := block(number)
 		if err != nil {
