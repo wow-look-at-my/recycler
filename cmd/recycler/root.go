@@ -11,7 +11,10 @@ var rootCmd = &cobra.Command{
 	Use:   "recycler",
 	Short: "Work with the recycle bin on Linux, macOS and Windows",
 	Long: `recycler moves files to the recycle bin instead of destroying them, and
-lists, restores or permanently deletes what is already in there.
+lists or restores what is already in there.
+
+Nothing here deletes anything permanently: an item leaves the bin only by being
+restored. Emptying the bin is left to the desktop environment.
 
 The same commands work on every platform: the FreeDesktop trash can on Linux,
 the Trash on macOS and the Recycle Bin on Windows.`,

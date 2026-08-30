@@ -15,13 +15,14 @@ go install github.com/wow-look-at-my/recycler/cmd/recycler@latest
 recycler trash notes.txt project/   # move to the recycle bin
 recycler list                       # what is in there, newest first
 recycler restore notes.txt          # put it back where it came from
-recycler purge notes.txt            # delete one item for good
-recycler empty                      # delete everything for good
 ```
 
-`restore` and `purge` take the ID from `recycler list`, or a name or original
-path when it matches exactly one item. `list --json` prints the same data for
-scripts.
+That is the whole command. There is no way to delete anything permanently:
+an item leaves the bin by being restored, and emptying the bin is left to the
+desktop environment.
+
+`restore` takes the ID from `recycler list`, or a name or original path when it
+matches exactly one item. `list --json` prints the same data for scripts.
 
 ## Library
 
@@ -31,9 +32,10 @@ import "github.com/wow-look-at-my/recycler"
 recycler.Recycle("notes.txt")            // move to the recycle bin
 items, _ := recycler.List()              // newest first
 path, _ := recycler.Restore(items[0].ID) // back to where it came from
-recycler.Purge(items[0].ID)              // gone for good
-recycler.Empty()                         // all of it, gone for good
 ```
+
+The API is those three operations and nothing else. Recycling is reversible,
+and the package offers no operation that makes it permanent.
 
 ## Platform notes
 
@@ -43,6 +45,6 @@ recycler.Empty()                         // all of it, gone for good
   rather than an index of its own, so what this restores and what Finder puts
   back are the same thing.
 - **Windows** (64-bit) recycles through the shell, exactly like deleting in
-  Explorer, and reads `$Recycle.Bin` directly to list, restore and purge.
+  Explorer, and reads `$Recycle.Bin` directly to list and restore.
 
 Details, invariants and the on-disk formats are in [CLAUDE.md](CLAUDE.md).

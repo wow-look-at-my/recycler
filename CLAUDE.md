@@ -7,7 +7,7 @@ uniform API on Linux (and the BSDs), macOS and Windows.
 
 | Path | What lives there |
 |---|---|
-| `recycler.go` | Public API: `Item`, the errors, `Recycle`/`List`/`Get`/`Restore`/`RestoreTo`/`Purge`/`Empty`, and the unexported `backend` interface every platform implements. |
+| `recycler.go` | Public API: `Item`, the errors, `Recycle`/`List`/`Get`/`Restore`/`RestoreTo`, and the unexported `backend` interface every platform implements. |
 | `fsutil.go` | Platform-neutral filesystem helpers: `move` (rename with a copy fallback), `copyTree`, `treeSize`, `uniqueName`, `sortItems`, `prepareDest`. |
 | `fsutil_unix.go` | `deviceOf`, `topDirOf`, `isStickyDir` - shared by the FreeDesktop and macOS backends. |
 | `errno_{unix,windows,other}.go` | `errCrossDevice`, the errno a rename fails with across filesystems. |
@@ -26,10 +26,17 @@ call rather than cached, so tests can redirect the recycle bin with `HOME` and
 
 ## Invariants
 
+- **Nothing here deletes permanently.** The `backend` interface is `recycle`,
+  `list` and `restore`, and an item leaves the bin only by being restored.
+  Emptying the bin belongs to the desktop environment. Do not add a purge or
+  empty operation, a `--force` that removes an entry, or a backend method that
+  unlinks anything in the bin.
+  `TestBackendHasNoDestructiveOperation` and `TestNoDestructiveCommands`
+  lock that down at both layers.
 - **An `Item.ID` is a path inside a recycle bin directory, and is validated
   before use.** Every backend's `resolveID` checks that the ID names an existing
-  entry inside one of *this user's* trash directories before restoring or
-  deleting anything. A malformed or hostile ID must never reach a file outside
+  entry inside one of *this user's* trash directories before restoring
+  anything. A malformed or hostile ID must never reach a file outside
   the bin; `TestUnknownIDsAreRejected` locks that down.
 - **Recycling is a rename, never a copy.** Each backend picks a trash directory
   on the same filesystem as the file, which is what per-filesystem trash
@@ -101,14 +108,13 @@ Two smaller consequences of having no index:
 
 ### Windows
 
-Recycling and emptying go through the shell - `SHFileOperationW` with
-`FOF_ALLOWUNDO`, and `SHEmptyRecycleBinW` - so they behave exactly like deleting
-from Explorer. That includes the shell's own failure mode: if the volume has no
-usable recycle bin, the file is deleted permanently. This is documented on
-`Recycle`; do not paper over it by inventing a pre-check that cannot be made
-reliable.
+Recycling goes through the shell - `SHFileOperationW` with `FOF_ALLOWUNDO` - so
+it behaves exactly like deleting from Explorer. That includes the shell's own
+failure mode: if the volume has no usable recycle bin, the file is deleted
+permanently. This is documented on `Recycle`; do not paper over it by inventing
+a pre-check that cannot be made reliable.
 
-Listing, restoring and purging read `<drive>:\$Recycle.Bin\<user SID>\`
+Listing and restoring read `<drive>:\$Recycle.Bin\<user SID>\`
 directly. Each item is a `$R<id><ext>` data file with a `$I<id><ext>` metadata
 file; `recyclebin_meta.go` decodes both metadata versions (1 on Vista..8.1 with
 a fixed 260-character path, 2 on Windows 10+ with a length-prefixed one).

@@ -4,9 +4,8 @@ package recycler
 
 // Windows Recycle Bin implementation.
 //
-// Recycling and emptying go through the shell (SHFileOperation with
-// FOF_ALLOWUNDO, and SHEmptyRecycleBin), so they behave exactly like deleting
-// from Explorer. Listing, restoring and purging individual items read the
+// Recycling goes through the shell (SHFileOperation with FOF_ALLOWUNDO), so it
+// behaves exactly like deleting from Explorer. Listing and restoring read the
 // bin's own on-disk layout directly: every recycled item is a "$R" data file
 // with a matching "$I" metadata file in <drive>:\$Recycle.Bin\<user SID>\.
 
@@ -36,19 +35,14 @@ const (
 	// apartment, which is not a problem for a file operation.
 	rpcChangedMode = 0x80010106
 
-	sherbNoConfirmation = 0x00000001
-	sherbNoProgressUI   = 0x00000002
-	sherbNoSound        = 0x00000004
-
 	recycleBinDirName = "$Recycle.Bin"
 	dataPrefix        = "$R"
 	metaPrefix        = "$I"
 )
 
 var (
-	shell32               = windows.NewLazySystemDLL("shell32.dll")
-	procSHFileOperationW  = shell32.NewProc("SHFileOperationW")
-	procSHEmptyRecycleBin = shell32.NewProc("SHEmptyRecycleBinW")
+	shell32              = windows.NewLazySystemDLL("shell32.dll")
+	procSHFileOperationW = shell32.NewProc("SHFileOperationW")
 )
 
 type winTrash struct {
@@ -235,37 +229,6 @@ func (t *winTrash) restore(id, dest string) (string, error) {
 		return dest, err
 	}
 	return dest, nil
-}
-
-func (t *winTrash) purge(ids []string) error {
-	var errs []error
-	for _, id := range ids {
-		data, metaPath, err := t.resolveID(id)
-		if err != nil {
-			errs = append(errs, err)
-			continue
-		}
-		if err := os.RemoveAll(data); err != nil {
-			errs = append(errs, err)
-			continue
-		}
-		if err := os.Remove(metaPath); err != nil && !errors.Is(err, fs.ErrNotExist) {
-			errs = append(errs, err)
-		}
-	}
-	return errors.Join(errs...)
-}
-
-func (t *winTrash) empty() error {
-	flags := uintptr(sherbNoConfirmation | sherbNoProgressUI | sherbNoSound)
-	ret, _, _ := procSHEmptyRecycleBin.Call(0, 0, flags)
-	switch uint32(ret) {
-	case 0, 1: // S_OK, S_FALSE
-		return nil
-	case 0x8000FFFF: // E_UNEXPECTED, reported when the bin is already empty
-		return nil
-	}
-	return fmt.Errorf("recycler: emptying the recycle bin failed: 0x%X", uint32(ret))
 }
 
 // resolveID validates an item ID and returns the paths of its data and metadata
