@@ -4,6 +4,7 @@ package recycler
 
 import (
 	"bufio"
+	"github.com/wow-look-at-my/go-containers/set"
 	"os"
 	"path/filepath"
 	"strings"
@@ -11,23 +12,23 @@ import (
 
 // pseudoFilesystems never hold user data, so their mount points are not worth
 // scanning for trash directories.
-var pseudoFilesystems = map[string]bool{
-	"autofs": true, "bpf": true, "cgroup": true, "cgroup2": true, "configfs": true,
-	"debugfs": true, "devpts": true, "devtmpfs": true, "efivarfs": true, "fuse.gvfsd-fuse": true,
-	"fusectl": true, "hugetlbfs": true, "mqueue": true, "proc": true, "pstore": true,
-	"securityfs": true, "sysfs": true, "tracefs": true,
-}
+var pseudoFilesystems = set.Of(
+	"autofs", "bpf", "cgroup", "cgroup2", "configfs",
+	"debugfs", "devpts", "devtmpfs", "efivarfs", "fuse.gvfsd-fuse",
+	"fusectl", "hugetlbfs", "mqueue", "proc", "pstore",
+	"securityfs", "sysfs", "tracefs",
+)
 
 // mountPoints returns directories that may be the top directory of a
 // filesystem with its own trash directory.
 func mountPoints() []string {
-	seen := map[string]bool{}
+	seen := set.New[string]()
 	var points []string
 	add := func(p string) {
-		if p == "" || seen[p] {
+		if p == "" || seen.Contains(p) {
 			return
 		}
-		seen[p] = true
+		seen.Add(p)
 		points = append(points, p)
 	}
 
@@ -63,7 +64,7 @@ func systemMountPoints() []string {
 	scanner := bufio.NewScanner(f)
 	for scanner.Scan() {
 		fields := strings.Fields(scanner.Text())
-		if len(fields) < 3 || pseudoFilesystems[fields[2]] {
+		if len(fields) < 3 || pseudoFilesystems.Contains(fields[2]) {
 			continue
 		}
 		points = append(points, unescapeMountPoint(fields[1]))

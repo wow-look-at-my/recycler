@@ -3,7 +3,9 @@ package recycler
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"runtime"
+	"sort"
 	"testing"
 	"time"
 
@@ -152,22 +154,18 @@ func TestRestoreRefusesToOverwrite(t *testing.T) {
 	assert.Len(t, mustList(t), 1, "the item should still be in the recycle bin after a refused restore")
 }
 
-func TestPurgeAndEmpty(t *testing.T) {
-	work := isolateTrash(t)
-	first := writeFile(t, filepath.Join(work, "a.txt"), "a")
-	second := writeFile(t, filepath.Join(work, "b.txt"), "b")
-	third := writeFile(t, filepath.Join(work, "c.txt"), "c")
-	require.NoError(t, Recycle(first, second, third))
-
-	items := mustList(t)
-	require.Len(t, items, 3)
-
-	require.NoError(t, Purge(items[0].ID))
-	assert.NoFileExists(t, items[0].ID, "the purged file is still on disk")
-	assert.Len(t, mustList(t), 2)
-
-	require.NoError(t, Empty())
-	assert.Empty(t, mustList(t), "the recycle bin is not empty")
+// TestBackendHasNoDestructiveOperation holds the package to its central
+// promise: recycling is reversible. A backend can move a file into the bin,
+// list what is there and move it back out, and it is given no operation that
+// destroys anything. Adding one is what this test exists to catch.
+func TestBackendHasNoDestructiveOperation(t *testing.T) {
+	iface := reflect.TypeOf((*backend)(nil)).Elem()
+	got := make([]string, 0, iface.NumMethod())
+	for i := range iface.NumMethod() {
+		got = append(got, iface.Method(i).Name)
+	}
+	sort.Strings(got)
+	assert.Equal(t, []string{"list", "recycle", "restore"}, got)
 }
 
 func TestUnknownIDsAreRejected(t *testing.T) {
@@ -183,8 +181,6 @@ func TestUnknownIDsAreRejected(t *testing.T) {
 
 		_, restoreErr := RestoreTo(id, filepath.Join(work, "out"))
 		assert.ErrorIs(t, restoreErr, ErrNotFound, "RestoreTo(%q)", id)
-
-		assert.ErrorIs(t, Purge(id), ErrNotFound, "Purge(%q)", id)
 	}
 
 	// Nothing outside the recycle bin may be touched by a bad ID.
@@ -211,7 +207,6 @@ func TestRecycleReportsMissingPaths(t *testing.T) {
 func TestRecycleNothing(t *testing.T) {
 	isolateTrash(t)
 	assert.NoError(t, Recycle())
-	assert.NoError(t, Purge())
 }
 
 func TestListOnAnEmptyBin(t *testing.T) {

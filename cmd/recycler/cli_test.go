@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 
@@ -180,65 +181,39 @@ func TestUnknownReferenceIsRejected(t *testing.T) {
 	require.ErrorIs(t, err, recycler.ErrNotFound)
 }
 
-func TestPurge(t *testing.T) {
+// TestNoDestructiveCommands locks down what this CLI must never grow back: a
+// way to destroy a recycled file. An item leaves the bin by being restored, and
+// by nothing else.
+func TestNoDestructiveCommands(t *testing.T) {
+	for _, name := range []string{"purge", "empty", "remove", "destroy", "shred", "wipe"} {
+		for _, cmd := range rootCmd.Commands() {
+			assert.NotEqual(t, name, cmd.Name(), "the CLI grew a %q command", name)
+			assert.NotContains(t, cmd.Aliases, name, "%q is an alias of %q", name, cmd.Name())
+		}
+	}
+
+	// The names a user reaches for to delete something must keep meaning
+	// "recycle it", so typing one of them can never destroy the file.
+	for _, cmd := range rootCmd.Commands() {
+		for _, alias := range []string{"rm", "delete"} {
+			if slices.Contains(cmd.Aliases, alias) {
+				assert.Equal(t, "trash", cmd.Name(), "%q no longer recycles", alias)
+			}
+		}
+	}
+
 	work := isolateTrash(t)
-	path := writeFile(t, filepath.Join(work, "gone.txt"), "gone")
+	path := writeFile(t, filepath.Join(work, "safe.txt"), "safe")
 	_, err := run(t, "", "trash", path)
 	require.NoError(t, err)
 
-	out, err := run(t, "", "purge", "--yes", "gone.txt")
-	require.NoError(t, err)
-	assert.Contains(t, out, "purged 1 item")
+	_, err = run(t, "y\n", "purge", "--yes", "safe.txt")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unknown command")
 
 	items, err := recycler.List()
 	require.NoError(t, err)
-	assert.Empty(t, items)
-}
-
-func TestPurgeAsksFirst(t *testing.T) {
-	work := isolateTrash(t)
-	path := writeFile(t, filepath.Join(work, "maybe.txt"), "maybe")
-	_, err := run(t, "", "trash", path)
-	require.NoError(t, err)
-
-	out, err := run(t, "n\n", "purge", "maybe.txt")
-	require.NoError(t, err)
-	assert.Contains(t, out, "cancelled")
-
-	items, err := recycler.List()
-	require.NoError(t, err)
-	assert.Len(t, items, 1, "answering no must leave the item alone")
-
-	out, err = run(t, "y\n", "purge", "maybe.txt")
-	require.NoError(t, err)
-	assert.Contains(t, out, "purged 1 item")
-}
-
-func TestEmpty(t *testing.T) {
-	work := isolateTrash(t)
-	first := writeFile(t, filepath.Join(work, "a.txt"), "a")
-	second := writeFile(t, filepath.Join(work, "b.txt"), "b")
-	_, err := run(t, "", "trash", first, second)
-	require.NoError(t, err)
-
-	out, err := run(t, "n\n", "empty")
-	require.NoError(t, err)
-	assert.Contains(t, out, "cancelled")
-
-	out, err = run(t, "", "empty", "--yes")
-	require.NoError(t, err)
-	assert.Contains(t, out, "now empty")
-
-	items, err := recycler.List()
-	require.NoError(t, err)
-	assert.Empty(t, items)
-}
-
-func TestEmptyOnAnEmptyBin(t *testing.T) {
-	isolateTrash(t)
-	out, err := run(t, "", "empty")
-	require.NoError(t, err)
-	assert.Contains(t, out, "already empty")
+	assert.Len(t, items, 1, "the item must still be in the recycle bin")
 }
 
 func TestHumanSize(t *testing.T) {

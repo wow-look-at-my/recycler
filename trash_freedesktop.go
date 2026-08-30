@@ -14,6 +14,7 @@ import (
 	"bufio"
 	"errors"
 	"fmt"
+	"github.com/wow-look-at-my/go-containers/set"
 	"io/fs"
 	"net/url"
 	"os"
@@ -197,46 +198,6 @@ func (t *fdoTrash) restore(id, dest string) (string, error) {
 	return dest, nil
 }
 
-func (t *fdoTrash) purge(ids []string) error {
-	var errs []error
-	for _, id := range ids {
-		file, infoPath, err := t.resolveID(id)
-		if err != nil {
-			errs = append(errs, err)
-			continue
-		}
-		if err := os.RemoveAll(file); err != nil {
-			errs = append(errs, err)
-			continue
-		}
-		if err := os.Remove(infoPath); err != nil && !errors.Is(err, fs.ErrNotExist) {
-			errs = append(errs, err)
-		}
-	}
-	return errors.Join(errs...)
-}
-
-func (t *fdoTrash) empty() error {
-	var errs []error
-	for _, dir := range t.trashDirs() {
-		for _, sub := range []string{trashFilesDir, trashInfoDir} {
-			entries, err := os.ReadDir(filepath.Join(dir, sub))
-			if err != nil {
-				continue
-			}
-			for _, entry := range entries {
-				if err := os.RemoveAll(filepath.Join(dir, sub, entry.Name())); err != nil {
-					errs = append(errs, err)
-				}
-			}
-		}
-		// The cached directory sizes are only valid for entries that still
-		// exist, so drop the cache along with them.
-		os.Remove(filepath.Join(dir, "directorysizes"))
-	}
-	return errors.Join(errs...)
-}
-
 // resolveID validates an item ID and returns the path of the recycled file and
 // of its .trashinfo file. IDs that do not name a file inside a trash directory
 // belonging to this user are rejected, so a malformed ID can never delete or
@@ -303,17 +264,17 @@ func (t *fdoTrash) trashDirFor(path string) (dir, top string, err error) {
 // right now: the home trash plus one per mounted filesystem.
 func (t *fdoTrash) trashDirs() []string {
 	dirs := []string{t.home}
-	seen := map[string]bool{t.home: true}
+	seen := set.Of[string](t.home)
 	for _, top := range mountPoints() {
 		for _, candidate := range []string{
 			filepath.Join(top, ".Trash", strconv.Itoa(t.uid)),
 			filepath.Join(top, ".Trash-"+strconv.Itoa(t.uid)),
 		} {
-			if seen[candidate] {
+			if seen.Contains(candidate) {
 				continue
 			}
 			if fi, err := os.Stat(candidate); err == nil && fi.IsDir() {
-				seen[candidate] = true
+				seen.Add(candidate)
 				dirs = append(dirs, candidate)
 			}
 		}

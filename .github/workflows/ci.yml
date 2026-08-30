@@ -19,8 +19,43 @@ jobs:
       - uses: actions/checkout@v4
       - uses: wow-look-at-my/go-toolchain@v1
         with:
-          # Every platform this package supports has to keep compiling, and the
-          # recycle bin code is entirely per-platform, so the build matrix is
-          # the check that covers it. A cosmo fat APE cannot stand in for these:
-          # it builds as GOOS=cosmo, which selects none of the backends.
-          targets: linux/amd64,linux/arm64,darwin/amd64,darwin/arm64,windows/amd64,windows/arm64
+          # The only output left is a cosmo APE, where every operation fails with ErrUnsupported.
+          autorelease: false
+
+  cross-compile:
+    # The job above compiles the host's files alone, so every other backend needs this one.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: wow-look-at-my/actions@typescript#latest
+        with:
+          script: |
+            const targets = [
+              'linux/amd64', 'linux/arm64',
+              'darwin/amd64', 'darwin/arm64',
+              'windows/amd64', 'windows/arm64',
+              'freebsd/amd64', 'netbsd/amd64', 'openbsd/amd64',
+              'dragonfly/amd64', 'solaris/amd64',
+              'js/wasm',
+            ];
+            const base: Record<string, string> = {};
+            for (const [key, value] of Object.entries(process.env)) {
+              if (value !== undefined) base[key] = value;
+            }
+            const failed: string[] = [];
+            for (const target of targets) {
+              const [GOOS = '', GOARCH = ''] = target.split('/');
+              core.startGroup(target);
+              const code = await exec.exec('go', ['build', './...'], {
+                env: { ...base, GOOS, GOARCH, CGO_ENABLED: '0' },
+                ignoreReturnCode: true,
+              });
+              core.endGroup();
+              if (code !== 0) failed.push(target);
+            }
+            if (failed.length > 0) {
+              core.setFailed(`did not compile: ${failed.join(', ')}`);
+            }

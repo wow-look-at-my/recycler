@@ -2,11 +2,15 @@
 // bin (Windows), Trash (macOS) or trash can (Linux and other FreeDesktop
 // systems).
 //
-// Every platform is reached through the same five operations: [Recycle],
-// [List], [Restore], [Purge] and [Empty]. Items are addressed by an opaque
-// [Item.ID] obtained from [List]; IDs are stable for as long as the item stays
-// in the bin, but are not meaningful across platforms and must not be
-// constructed by hand.
+// Every platform is reached through the same three operations: [Recycle],
+// [List] and [Restore]. Items are addressed by an opaque [Item.ID] obtained
+// from [List]; IDs are stable for as long as the item stays in the bin, but are
+// not meaningful across platforms and must not be constructed by hand.
+//
+// This package deliberately offers no way to delete anything permanently.
+// Recycling is reversible and everything here keeps it that way: an item is
+// removed from the bin only by restoring it. Emptying the bin is the desktop
+// environment's job. Do not add a purge or empty operation back.
 //
 // Platform behaviour differs in ways the API cannot hide; those differences are
 // documented on each function and summarised in the package README.
@@ -83,8 +87,6 @@ type backend interface {
 	recycle(paths []string) error
 	list() ([]Item, error)
 	restore(id, dest string) (string, error)
-	purge(ids []string) error
-	empty() error
 }
 
 // Available reports whether this platform has a recycle bin implementation.
@@ -156,26 +158,4 @@ func RestoreTo(id, dest string) (string, error) {
 		return "", err
 	}
 	return b.restore(id, dest)
-}
-
-// Purge permanently deletes the given items from the recycle bin. Errors for
-// individual items are collected and returned together.
-func Purge(ids ...string) error {
-	if len(ids) == 0 {
-		return nil
-	}
-	b, err := platformBackend()
-	if err != nil {
-		return err
-	}
-	return b.purge(ids)
-}
-
-// Empty permanently deletes everything in the current user's recycle bin.
-func Empty() error {
-	b, err := platformBackend()
-	if err != nil {
-		return err
-	}
-	return b.empty()
 }

@@ -16,8 +16,8 @@ var listCmd = &cobra.Command{
 	Short:   "List what is in the recycle bin",
 	Long: `List the current user's recycle bin, newest first.
 
-The ID column is what restore and purge take as their argument, though a name
-or original path is accepted too when it matches exactly one item.`,
+The ID column is what restore takes as its argument, though a name or original
+path is accepted too when it matches exactly one item.`,
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		items, err := recycler.List()

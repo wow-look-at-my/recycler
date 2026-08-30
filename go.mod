@@ -1,11 +1,12 @@
 module github.com/wow-look-at-my/recycler
 
-go 1.25.0
+go 1.26
 
 require (
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/pflag v1.0.9
 	github.com/stretchr/testify v1.11.1
+	github.com/wow-look-at-my/go-containers v0.0.0-20260826161058-40a3d1ef3d41 // go-toolchain:auto-branch
 	golang.org/x/sys v0.47.0
 )
 
