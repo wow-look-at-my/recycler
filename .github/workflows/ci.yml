@@ -19,16 +19,11 @@ jobs:
       - uses: actions/checkout@v4
       - uses: wow-look-at-my/go-toolchain@v1
         with:
-          # A cosmo fat APE is the only native output go-toolchain emits, and it
-          # builds as GOOS=cosmo, which selects none of this package's backends:
-          # every operation in one fails with ErrUnsupported. Publishing it would
-          # ship a binary that cannot do the thing it is for.
+          # The only output left is a cosmo APE, where every operation fails with ErrUnsupported.
           autorelease: false
 
   cross-compile:
-    # The recycle bin code is entirely per-platform, and the job above compiles
-    # the host's files alone, so nothing else catches a backend that stops
-    # building. Every GOOS in this package's build constraints is listed here.
+    # The job above compiles the host's files alone, so every other backend needs this one.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
