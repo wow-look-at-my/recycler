@@ -25,7 +25,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"syscall"
+	"golang.org/x/sys/unix"
 )
 
 const (
@@ -168,10 +168,10 @@ func updateDSStore(dir string, fn func([]dsRecord) []dsRecord) error {
 		return err
 	}
 	defer f.Close()
-	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX); err != nil {
+	if err := unix.Flock(int(f.Fd()), unix.LOCK_EX); err != nil {
 		return err
 	}
-	defer syscall.Flock(int(f.Fd()), syscall.LOCK_UN) //nolint:errcheck // the file is about to be closed
+	defer unix.Flock(int(f.Fd()), unix.LOCK_UN) //nolint:errcheck // the file is about to be closed
 
 	data, err := io.ReadAll(f)
 	if err != nil {

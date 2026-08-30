@@ -130,22 +130,21 @@ offsets.
 
 Run `go-toolchain` in the repository root - never bare `go` commands. It tidies,
 vets, formats, runs the tests with a coverage floor of 80%, and builds.
-`go-toolchain matrix` cross-compiles; use it after touching any per-platform
-file:
 
-```
-go-toolchain matrix --targets linux/amd64,darwin/arm64,windows/amd64,windows/arm64
-```
+**It only compiles the host's files.** A type error in `trash_windows.go` or
+`trash_darwin.go` passes a full local `go-toolchain` run with "Build
+successful". The `cross-compile` job in `.github/workflows/ci.yml` is what
+catches those, by building every GOOS in this package's constraints. Run the
+same loop after touching a per-platform file rather than waiting for CI.
 
 **Do not build this project as a cosmo fat APE.** gosmopolitan compiles with
 `GOOS=cosmo`, which matches none of the backends' build constraints, so the APE
 falls through to `trash_unsupported.go` and every operation fails with
-`ErrUnsupported` - verified by building one and running it. Worse, the default
-`--cosmo-slots` mapping copies that APE onto `recycler_windows_amd64.exe`, so a
-cosmo build would ship exactly the platform it cannot serve. Recycling is not
-portable-libc work: it is three unrelated mechanisms, one of which is only
-reachable through the Windows shell API, so the per-GOOS matrix is the honest
-build.
+`ErrUnsupported` - verified by building one and running it. That APE is the only
+native output `go-toolchain matrix` still emits, which is why CI passes
+`autorelease: false`: this package has nothing it can honestly publish through
+that path. Recycling is not portable-libc work: it is three unrelated
+mechanisms, one of which is only reachable through the Windows shell API.
 
 The test suite runs against a real recycle bin redirected into a temporary
 directory (`isolateTrash`), so it exercises the actual FreeDesktop
