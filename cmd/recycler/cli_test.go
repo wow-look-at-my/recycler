@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 
@@ -184,10 +185,20 @@ func TestUnknownReferenceIsRejected(t *testing.T) {
 // way to destroy a recycled file. An item leaves the bin by being restored, and
 // by nothing else.
 func TestNoDestructiveCommands(t *testing.T) {
-	for _, name := range []string{"purge", "empty", "delete", "rm", "remove", "destroy", "shred"} {
+	for _, name := range []string{"purge", "empty", "remove", "destroy", "shred", "wipe"} {
 		for _, cmd := range rootCmd.Commands() {
 			assert.NotEqual(t, name, cmd.Name(), "the CLI grew a %q command", name)
 			assert.NotContains(t, cmd.Aliases, name, "%q is an alias of %q", name, cmd.Name())
+		}
+	}
+
+	// The names a user reaches for to delete something must keep meaning
+	// "recycle it", so typing one of them can never destroy the file.
+	for _, cmd := range rootCmd.Commands() {
+		for _, alias := range []string{"rm", "delete"} {
+			if slices.Contains(cmd.Aliases, alias) {
+				assert.Equal(t, "trash", cmd.Name(), "%q no longer recycles", alias)
+			}
 		}
 	}
 
