@@ -2,6 +2,7 @@ name: CI
 
 on:
   push:
+    branches: ['**']
 
 permissions:
   contents: write # dependency-graph submission
@@ -17,7 +18,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: wow-look-at-my/go-toolchain@v1
+      - uses: wow-look-at-my/go-toolchain@master
         with:
           # The only output left is a cosmo APE, where every operation fails with ErrUnsupported.
           autorelease: false
@@ -33,7 +34,8 @@ jobs:
       - uses: wow-look-at-my/actions@typescript#latest
         with:
           script: |
-            const targets = [
+            // The library carries a backend for every one of these, so it has to compile for all of them.
+            const library = [
               'linux/amd64', 'linux/arm64',
               'darwin/amd64', 'darwin/arm64',
               'windows/amd64', 'windows/arm64',
@@ -41,21 +43,28 @@ jobs:
               'dragonfly/amd64', 'solaris/amd64',
               'js/wasm',
             ];
+            // The command draws a full screen, which needs a terminal. js/wasm and solaris have no Bubble Tea
+            // support, so requiring the CLI there would be requiring something nobody can run.
+            const command = library.filter((t) => !['js/wasm', 'solaris/amd64'].includes(t));
+
             const base: Record<string, string> = {};
             for (const [key, value] of Object.entries(process.env)) {
               if (value !== undefined) base[key] = value;
             }
             const failed: string[] = [];
-            for (const target of targets) {
+            const build = async (target: string, pkg: string) => {
               const [GOOS = '', GOARCH = ''] = target.split('/');
-              core.startGroup(target);
-              const code = await exec.exec('go', ['build', './...'], {
+              core.startGroup(`${target} ${pkg}`);
+              const code = await exec.exec('go', ['build', pkg], {
                 env: { ...base, GOOS, GOARCH, CGO_ENABLED: '0' },
                 ignoreReturnCode: true,
               });
               core.endGroup();
-              if (code !== 0) failed.push(target);
-            }
+              if (code !== 0) failed.push(`${target} ${pkg}`);
+            };
+
+            for (const target of library) await build(target, '.');
+            for (const target of command) await build(target, './...');
             if (failed.length > 0) {
               core.setFailed(`did not compile: ${failed.join(', ')}`);
             }

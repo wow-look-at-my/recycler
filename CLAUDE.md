@@ -188,6 +188,9 @@ trash directory this package has written to. Regenerate them with that package
 if the fixtures ever need to change; do not hand-edit them.
 
 CI (`.github/workflows/ci.yml`) runs the same toolchain and builds every
-supported target, so a per-platform file that stops compiling fails the build. No job may be named `all-builds`: that status is
+supported target, so a per-platform file that stops compiling fails the build.
+The `cross-compile` job builds the library for every GOOS in this package's
+constraints, and `./...` for the subset the CLI can run on: the browser needs a
+terminal, and Bubble Tea supports neither js/wasm nor solaris. No job may be named `all-builds`: that status is
 posted by the org's required-builds-manager app, and the go-toolchain action
 fails any workflow that shadows it.
