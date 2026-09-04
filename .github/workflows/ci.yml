@@ -31,8 +31,7 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
-      # The library has to compile for every GOOS it carries a backend for. The command draws a full screen, which
-      # needs a terminal, and Bubble Tea supports neither js/wasm nor solaris, so it is checked on the rest.
+      # Bubble Tea has no js/wasm or solaris support, so the command is checked on every other target.
       - name: Build every target
         uses: wow-look-at-my/actions@typescript#latest
         with:
