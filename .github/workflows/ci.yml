@@ -31,7 +31,10 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
-      - uses: wow-look-at-my/actions@typescript#latest
+      # The library has to compile for every GOOS it carries a backend for. The command draws a full screen, which
+      # needs a terminal, and Bubble Tea supports neither js/wasm nor solaris, so it is checked on the rest.
+      - name: Build every target
+        uses: wow-look-at-my/actions@typescript#latest
         with:
           script: |
             // The library carries a backend for every one of these, so it has to compile for all of them.
@@ -43,8 +46,6 @@ jobs:
               'dragonfly/amd64', 'solaris/amd64',
               'js/wasm',
             ];
-            // The command draws a full screen, which needs a terminal. js/wasm and solaris have no Bubble Tea
-            // support, so requiring the CLI there would be requiring something nobody can run.
             const command = library.filter((t) => !['js/wasm', 'solaris/amd64'].includes(t));
 
             const base: Record<string, string> = {};
