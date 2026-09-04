@@ -1,0 +1,17 @@
+<?xml version="1.1" encoding="UTF-8"?>
+<Theme xmlns="urn:tml:v1" name="recycler">
+	<Token name="accent" light="#3d59a1" dark="#7aa2f7"/>
+	<Token name="ok" light="#1a7f37" dark="#9ece6a"/>
+	<Token name="warn" light="#9a6700" dark="#e0af68"/>
+	<Token name="danger" light="#c4314b" dark="#f7768e"/>
+	<Token name="line" light="#9ca0b0" dark="#3b4261"/>
+	<Token name="dim" light="#6c6f85" dark="#565f89"/>
+
+	<Style name="title" bold="true" fg="{theme.accent}"/>
+	<Style name="muted" faint="true" fg="{theme.dim}"/>
+	<Style name="page" padding="0 1"/>
+	<Style name="ok" fg="{theme.ok}"/>
+	<Style name="warn" fg="{theme.warn}"/>
+	<Style name="danger" fg="{theme.danger}"/>
+	<Style name="field" bold="true" fg="{theme.dim}"/>
+</Theme>

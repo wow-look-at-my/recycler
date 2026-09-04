@@ -17,7 +17,7 @@ import (
 )
 
 // isolateTrash points the recycle bin at a temporary directory so the tests
-// never touch the developer's real one, and returns a scratch directory to
+// never touch the developer's own, and returns a scratch directory to
 // recycle files from.
 func isolateTrash(t *testing.T) string {
 	t.Helper()
@@ -193,7 +193,7 @@ func TestNoDestructiveCommands(t *testing.T) {
 	}
 
 	// The names a user reaches for to delete something must keep meaning
-	// "recycle it", so typing one of them can never destroy the file.
+	// "recycle it", so typing any of them can never destroy the file.
 	for _, cmd := range rootCmd.Commands() {
 		for _, alias := range []string{"rm", "delete"} {
 			if slices.Contains(cmd.Aliases, alias) {
