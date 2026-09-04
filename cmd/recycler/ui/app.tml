@@ -1,0 +1,87 @@
+<?xml version="1.1" encoding="UTF-8"?>
+<Component xmlns="urn:tml:v1" name="Recycler">
+	<Import src="./theme.tml"/>
+
+	<Property name="count" type="string" default="0 items"/>
+	<Property name="size" type="string" default=""/>
+	<Property name="status" type="string" default=""/>
+	<Property name="statusStyle" type="string" default="muted"/>
+	<Property name="frame" type="int" default="0"/>
+
+	<Property name="filter" type="string" default=""/>
+	<Property name="cursor" type="int" default="0"/>
+	<Property name="filtering" type="bool" default="false"/>
+
+	<!-- Rows are the table's own delimited cells. The host filters and formats
+	     them, because it is the host that knows what a size or a date is. -->
+	<Property name="rows" type="string[]" default=""/>
+	<Property name="selected" type="int" default="0"/>
+	<Property name="offset" type="int" default="0"/>
+	<Property name="empty" type="bool" default="false"/>
+	<Property name="emptyText" type="string" default="the recycle bin is empty"/>
+
+	<Property name="origin" type="string" default=""/>
+
+	<Property name="asking" type="bool" default="false"/>
+	<Property name="ask" type="string" default=""/>
+	<Property name="askTo" type="string" default=""/>
+
+	<Template>
+		<Canvas>
+			<Stack gap="1" style="page">
+				<Stack orientation="horizontal" gap="2" valign="middle">
+					<Text style="title">recycle bin</Text>
+					<Badge label="{count}"/>
+					<Text style="muted">{size}</Text>
+					<Spacer width="*"/>
+				</Stack>
+
+				<Rule color="{theme.line}"/>
+
+				<Stack orientation="horizontal" gap="1" valign="middle" if="{filtering}">
+					<Text style="muted">filter</Text>
+					<Textbox id="filter" value="{filter}" cursor="{cursor}" width="*"
+						placeholder="name or original path"/>
+				</Stack>
+
+				<Border title="Items" color="{theme.line}" width="*" height="*">
+					<Text style="muted" if="{empty}">{emptyText}</Text>
+					<Scrollbox id="items" offset="{offset}" if="{not empty}">
+						<!-- The unit separator splits the cells because they hold file
+						     paths, and every printable delimiter is legal in a name.
+						     wrap="false" keeps a row to a line, which is what lets a
+						     click's y and the scroll offset name a row. -->
+						<Table id="rows" columns="NAME,DELETED,SIZE,FROM" rows="{rows}"
+							separator="&#31;" selected="{selected}" border="false"
+							wrap="false" width="*"/>
+					</Scrollbox>
+				</Border>
+
+				<!-- What the marked row cannot say itself: its FROM column is cut to
+				     fit, and this is the path spelled out in full. -->
+				<Text style="muted" width="*" overflow="ellipsis" if="{not empty}">{origin}</Text>
+
+				<!-- A message gets the width to itself: a restore reports the path it
+				     wrote, and that is longer than any corner of the header. -->
+				<Text style="{statusStyle}" width="*" if="{status}">{status}</Text>
+
+				<Stack orientation="horizontal" gap="2">
+					<Text style="muted">enter restores &#183; / filters &#183; r reloads &#183; q quits</Text>
+					<Spacer width="*"/>
+					<Text style="muted">nothing here is ever deleted</Text>
+				</Stack>
+			</Stack>
+
+			<Popup title="Restore" color="{theme.warn}" if="{asking}">
+				<Stack gap="1">
+					<Text>{ask}</Text>
+					<Text style="muted">{askTo}</Text>
+					<Stack orientation="horizontal" gap="2">
+						<Button id="confirm" action="restore" label="Restore" variant="primary"/>
+						<Button id="cancel" action="cancel" label="Cancel"/>
+					</Stack>
+				</Stack>
+			</Popup>
+		</Canvas>
+	</Template>
+</Component>

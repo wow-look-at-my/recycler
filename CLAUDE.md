@@ -19,6 +19,7 @@ uniform API on Linux (and the BSDs), macOS and Windows.
 | `recyclebin_meta.go` | Codec for the Windows `$I` metadata files. Deliberately **not** build-constrained, so it is testable on any platform. |
 | `trash_unsupported.go` | Every other GOOS: all operations fail with `ErrUnsupported`. |
 | `cmd/recycler/` | Cobra CLI, one command per file, each registering itself in `init()`. |
+| `cmd/recycler/tui.go`, `cmd/recycler/ui/` | The full-screen browser: its Bubble Tea model, and the TML document and theme it renders. |
 
 `platformBackend()` is defined once per platform and is called on **every** API
 call rather than cached, so tests can redirect the recycle bin with `HOME` and
@@ -47,6 +48,33 @@ call rather than cached, so tests can redirect the recycle bin with `HOME` and
 - **Listing is best-effort per location.** An unreadable trash directory (a
   volume mounted by another user, say) is skipped, not fatal - one bad location
   must not hide the rest of the bin.
+
+## The browser
+
+`recycler` with no arguments on a terminal opens the bin on a full screen, and
+`recycler tui` opens it anywhere. Routing lives in `execute` in `main.go` rather
+than on the root command, which leaves cobra's handling of an unknown command
+intact; redirected, the bare invocation prints the help a script asked for.
+
+The view is [TML](https://github.com/wow-look-at-my/tml): `ui/app.tml` declares
+it, the model in `tui.go` holds every piece of state, and TML draws what the
+properties say. Three things there are load-bearing:
+
+- **The table's rows are `\x1f`-delimited cells.** Every printable delimiter is
+  legal in a file name, so a path holding one would arrive as an extra column.
+- **`wrap="false"` keeps a row to a line**, which is what lets a click's `y` and
+  the scroll offset name a row. A wrapped cell puts every row below it out of
+  step with its index.
+- **The name leads and the directory trails**, because a cut falls on the end of
+  the row: the line below spells the path out in full, and the name is the part
+  that has to survive a narrow terminal.
+
+The selected item costs the row it is listed on, not a panel: the table draws a
+bar across that row, and what sits under the listing is its full original path.
+
+Restoring is the only thing the browser can do to an item, and it asks first.
+`TestTheInterfaceOffersNoWayToDeleteAnything` holds every key against a full bin
+and fails if any of them removes anything.
 
 ## Platform notes
 
@@ -163,6 +191,9 @@ trash directory this package has written to. Regenerate them with that package
 if the fixtures ever need to change; do not hand-edit them.
 
 CI (`.github/workflows/ci.yml`) runs the same toolchain and builds every
-supported target, so a per-platform file that stops compiling fails the build. No job may be named `all-builds`: that status is
+supported target, so a per-platform file that stops compiling fails the build.
+The `cross-compile` job builds the library for every GOOS in this package's
+constraints, and `./...` for the subset the CLI can run on: the browser needs a
+terminal, and Bubble Tea supports neither js/wasm nor solaris. No job may be named `all-builds`: that status is
 posted by the org's required-builds-manager app, and the go-toolchain action
 fails any workflow that shadows it.

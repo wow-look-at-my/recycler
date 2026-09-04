@@ -10,7 +10,7 @@ import (
 
 // resolve turns a user-supplied reference into a recycle bin item. A reference
 // is an ID as printed by "recycler list", an original path, or a file name -
-// the last two only when they match exactly one item.
+// a path and a name resolve only when they match a single item.
 func resolve(items []recycler.Item, ref string) (recycler.Item, error) {
 	for _, item := range items {
 		if item.ID == ref {
@@ -58,7 +58,7 @@ func resolveAll(refs []string) ([]recycler.Item, error) {
 	return resolved, nil
 }
 
-// pathsEqual compares two paths the way the local filesystem would.
+// pathsEqual compares paths the way the local filesystem would.
 func pathsEqual(a, b string) bool {
 	if a == "" || b == "" {
 		return false
