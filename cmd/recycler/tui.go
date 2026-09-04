@@ -368,12 +368,7 @@ func (m *model) props() tml.Props {
 		"empty":     sema.BoolValue(len(m.shown) == 0),
 		"emptyText": sema.StringValue(m.emptyText()),
 
-		"name":     sema.StringValue(item.Name),
-		"origin":   sema.StringValue(origin),
-		"deleted":  sema.StringValue(item.DeletedAt.Local().Format("2006-01-02 15:04:05")),
-		"itemSize": sema.StringValue(humanSize(item.Size)),
-		"id":       sema.StringValue(item.ID),
-		"kind":     sema.StringValue(kindLabel(item)),
+		"origin": sema.StringValue(origin),
 
 		"asking": sema.BoolValue(m.asking),
 		"ask":    sema.StringValue("Restore " + item.Name + "?"),
@@ -383,8 +378,8 @@ func (m *model) props() tml.Props {
 }
 
 // rows are the listing as the table's delimited cells. The name leads and the directory trails, because a cut falls on
-// the end of the row: the directory is the part the panel below spells out in full, and the name is the part that has
-// to survive a narrow terminal.
+// the end of the row: the directory is the part the line below spells out in full, and the name is the part that has to
+// survive a narrow terminal.
 func (m *model) rows() []string {
 	rows := make([]string, 0, len(m.shown))
 	for _, item := range m.shown {
@@ -435,13 +430,6 @@ func totalLabel(items []recycler.Item) string {
 		return fmt.Sprintf("%s + %d of unknown size", humanSize(total), unknown)
 	}
 	return humanSize(total)
-}
-
-func kindLabel(item recycler.Item) string {
-	if item.IsDir {
-		return "directory"
-	}
-	return "file"
 }
 
 func clamp(n, low, high int) int {

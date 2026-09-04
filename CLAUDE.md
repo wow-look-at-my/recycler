@@ -66,8 +66,11 @@ properties say. Three things there are load-bearing:
   the scroll offset name a row. A wrapped cell puts every row below it out of
   step with its index.
 - **The name leads and the directory trails**, because a cut falls on the end of
-  the row: the panel below spells the path out in full, and the name is the part
+  the row: the line below spells the path out in full, and the name is the part
   that has to survive a narrow terminal.
+
+The selected item costs the row it is listed on, not a panel: the table draws a
+bar across that row, and what sits under the listing is its full original path.
 
 Restoring is the only thing the browser can do to an item, and it asks first.
 `TestTheInterfaceOffersNoWayToDeleteAnything` holds every key against a full bin

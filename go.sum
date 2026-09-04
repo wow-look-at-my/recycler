@@ -42,8 +42,8 @@ github.com/stretchr/testify v1.12.1 h1:EuwCh5fleGS7H32xRwO3wRGT7DxrDhLAT6FF8MpWD
 github.com/stretchr/testify v1.12.1/go.mod h1:MDEgiDPPsNp5cuIrHPPCyornHKgEVbtFUmoNlxoYthg=
 github.com/wow-look-at-my/go-containers v0.0.0-20260826161058-40a3d1ef3d41 h1:mi/frNfEWPA/O57Qxsxyz6QEmOlQM8I0loFcRrmU9do=
 github.com/wow-look-at-my/go-containers v0.0.0-20260826161058-40a3d1ef3d41/go.mod h1:7j8wbDwrqh+uJnlENqD5iwsgYkF4y3kIgremn/ctvVE=
-github.com/wow-look-at-my/tml v0.0.0-20260904190506-792d87b79f5b h1:V4utkKxqX0SFxy04htdRsf/QFUr82mtfRmUNQNz3f9s=
-github.com/wow-look-at-my/tml v0.0.0-20260904190506-792d87b79f5b/go.mod h1:Dbhr2rd2sm1+Q0DE9U+7vU79pdtOO/jGbc+7A/DjTts=
+github.com/wow-look-at-my/tml v0.0.0-20260904204142-74f8673fb5c2 h1:gm/vz2ehtHRGa3V5ypYJmg4vX2Xf+SsBVWr7d5I/dJE=
+github.com/wow-look-at-my/tml v0.0.0-20260904204142-74f8673fb5c2/go.mod h1:Dbhr2rd2sm1+Q0DE9U+7vU79pdtOO/jGbc+7A/DjTts=
 github.com/wow-look-at-my/xml-validator/reader v0.0.0-20260823201203-7268eddb2e3f h1:Agjl7o3+QTwaB0x1SOXKvWBa0B92ezVmomq8uSu7Vo0=
 github.com/wow-look-at-my/xml-validator/reader v0.0.0-20260823201203-7268eddb2e3f/go.mod h1:fo8rGd1J/vHnMhYJC8G83y0p0qLPTodt0PQWgPs4Lt8=
 github.com/wow-look-at-my/xml-validator/validator v0.0.0-20260823201203-7268eddb2e3f h1:RlDOfsJjYqgALLw78r911v/O977Z8J5sDjlWG38tjws=

@@ -20,12 +20,7 @@
 	<Property name="empty" type="bool" default="false"/>
 	<Property name="emptyText" type="string" default="the recycle bin is empty"/>
 
-	<Property name="name" type="string" default=""/>
 	<Property name="origin" type="string" default=""/>
-	<Property name="deleted" type="string" default=""/>
-	<Property name="itemSize" type="string" default=""/>
-	<Property name="id" type="string" default=""/>
-	<Property name="kind" type="string" default=""/>
 
 	<Property name="asking" type="bool" default="false"/>
 	<Property name="ask" type="string" default=""/>
@@ -62,21 +57,9 @@
 					</Scrollbox>
 				</Border>
 
-				<Border title="Selected" color="{theme.line}" width="*" if="{not empty}">
-					<Grid columns="10,1*" rows="auto,auto,auto,auto" gap="0">
-						<Text style="field" Grid.row="0" Grid.column="0">name</Text>
-						<Text Grid.row="0" Grid.column="1">{name}</Text>
-
-						<Text style="field" Grid.row="1" Grid.column="0">from</Text>
-						<Text Grid.row="1" Grid.column="1">{origin}</Text>
-
-						<Text style="field" Grid.row="2" Grid.column="0">deleted</Text>
-						<Text Grid.row="2" Grid.column="1">{deleted} &#183; {itemSize} &#183; {kind}</Text>
-
-						<Text style="field" Grid.row="3" Grid.column="0">id</Text>
-						<Text style="muted" Grid.row="3" Grid.column="1">{id}</Text>
-					</Grid>
-				</Border>
+				<!-- What the marked row cannot say itself: its FROM column is cut to
+				     fit, and this is the path spelled out in full. -->
+				<Text style="muted" width="*" overflow="ellipsis" if="{not empty}">{origin}</Text>
 
 				<!-- A message gets the width to itself: a restore reports the path it
 				     wrote, and that is longer than any corner of the header. -->

@@ -63,18 +63,22 @@ func TestAnEmptyBinSaysSoRatherThanDrawingAnEmptyTable(t *testing.T) {
 	assert.Contains(t, screen(t, m), "the recycle bin is empty")
 }
 
-// The detail panel describes the row the cursor is on, so moving the cursor is what changes it.
-func TestMovingTheCursorChangesTheDetail(t *testing.T) {
-	m, _ := binWith(t, "first.txt", "second.txt")
+// An item costs the row it is listed on and nothing more: the cursor is a bar the table draws across that row, and
+// what sits under the listing is the same item's original path in full, which its FROM column is too narrow to hold.
+func TestMovingTheCursorMovesTheBarAndThePath(t *testing.T) {
+	m, work := binWith(t, "first.txt", "second.txt")
 	require.Len(t, m.shown, 2)
 
 	top, _ := m.current()
+	resting := m.frameOf(100, 30)
+
 	press(t, m, "down")
 	next, _ := m.current()
 
-	assert.NotEqual(t, top.ID, next.ID, "down moved to the other item")
-	assert.Contains(t, screen(t, m), next.Name)
+	require.NotEqual(t, top.ID, next.ID, "down moved to the other item")
 	assert.Equal(t, 1, m.selected)
+	assert.NotEqual(t, resting, m.frameOf(100, 30), "the bar moved with it")
+	assert.Contains(t, screen(t, m), filepath.Join(work, next.Name), "and the path under the listing followed")
 }
 
 // The cursor stops at the ends rather than wrapping, so holding a key cannot walk it off the listing.
