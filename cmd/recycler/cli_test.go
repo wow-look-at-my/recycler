@@ -3,12 +3,14 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"runtime"
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/spf13/pflag"
 	"github.com/stretchr/testify/assert"
@@ -29,6 +31,8 @@ func isolateTrash(t *testing.T) string {
 	require.NoError(t, os.MkdirAll(home, 0o700))
 	t.Setenv("HOME", home)
 	t.Setenv("XDG_DATA_HOME", filepath.Join(home, ".local", "share"))
+	// Every recycle here would otherwise try to start a daemon.
+	t.Setenv(noDaemonEnv, "1")
 
 	work := filepath.Join(root, "work")
 	require.NoError(t, os.MkdirAll(work, 0o700))
@@ -179,6 +183,43 @@ func TestUnknownReferenceIsRejected(t *testing.T) {
 	isolateTrash(t)
 	_, err := run(t, "", "restore", "nothing-like-this")
 	require.ErrorIs(t, err, recycler.ErrNotFound)
+}
+
+// The daemon command has to run against a bin under no pressure and give
+// nothing back: room is the normal case, and a sweep that evicted anyway would
+// be destroying files nobody needed it to.
+func TestTheDaemonCommandSweepsOnceAndKeepsWhatItCan(t *testing.T) {
+	work := isolateTrash(t)
+	_, err := run(t, "", "trash", writeFile(t, filepath.Join(work, "kept.txt"), "kept"))
+	require.NoError(t, err)
+
+	_, err = run(t, "", "daemon", "--once")
+	require.NoError(t, err)
+
+	items, err := recycler.List()
+	require.NoError(t, err)
+	assert.Len(t, items, 1, "a sweep with room to spare took something anyway")
+}
+
+// What a sweep destroyed has to be said out loud, and a failure to destroy
+// something has to be said differently from success.
+func TestEvictionsAreReported(t *testing.T) {
+	var out bytes.Buffer
+	when := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
+	reportEvictions(&out, []recycler.Eviction{
+		{Item: recycler.Item{Name: "gone.txt", Size: 4096, DeletedAt: when}},
+		{Item: recycler.Item{Name: "stuck.txt"}, Error: errors.New("permission denied")},
+	}, nil)
+
+	got := out.String()
+	assert.Contains(t, got, "evicted gone.txt (4096 bytes")
+	assert.Contains(t, got, "could not evict stuck.txt: permission denied")
+}
+
+func TestASweepFailureIsReported(t *testing.T) {
+	var out bytes.Buffer
+	reportEvictions(&out, nil, errors.New("no such filesystem"))
+	assert.Contains(t, out.String(), "sweep failed: no such filesystem")
 }
 
 // TestNoDestructiveCommands locks down what this CLI must never grow back: a

@@ -18,6 +18,9 @@ uniform API on Linux (and the BSDs), macOS and Windows.
 | `trash_windows.go`, `shfileop_windows*.go` | Windows backend, the `SHFILEOPSTRUCTW` declaration, and the guard that fails a 32-bit Windows build. |
 | `recyclebin_meta.go` | Codec for the Windows `$I` metadata files. Deliberately **not** build-constrained, so it is testable on any platform. |
 | `trash_unsupported.go` | Every other GOOS: all operations fail with `ErrUnsupported`. |
+| `daemon.go` | The disk-pressure daemon: `FreeTarget`, `Sweep` and the poll loop. The only thing here that destroys anything. |
+| `daemon_spawn.go`, `daemonlock_*.go`, `detach_*.go` | Starting one daemon per user: the lock that makes it one, and the per-platform detach. |
+| `diskfree_{unix,windows,unsupported}.go` | `diskFree`, what the daemon polls - `statfs` and `GetDiskFreeSpaceEx`, the same numbers `df` reports. |
 | `cmd/recycler/` | Cobra CLI, one command per file, each registering itself in `init()`. |
 | `cmd/recycler/tui.go`, `cmd/recycler/ui/` | The full-screen browser: its Bubble Tea model, and the TML document and theme it renders. |
 
@@ -27,13 +30,26 @@ call rather than cached, so tests can redirect the recycle bin with `HOME` and
 
 ## Invariants
 
-- **Nothing here deletes permanently.** The `backend` interface is `recycle`,
-  `list` and `restore`, and an item leaves the bin only by being restored.
-  Emptying the bin belongs to the desktop environment. Do not add a purge or
-  empty operation, a `--force` that removes an entry, or a backend method that
-  unlinks anything in the bin.
-  `TestBackendHasNoDestructiveOperation` and `TestNoDestructiveCommands`
-  lock that down at both layers.
+- **Nothing a user can ask for deletes permanently.** No command destroys an
+  entry: an item leaves the bin by being restored, and emptying it belongs to
+  the desktop environment. Do not add a purge or empty command, a `--force`
+  that removes an entry, or a second backend method that unlinks anything.
+  `TestNoDestructiveCommands` locks the CLI down, and
+  `TestBackendDestroysOnlyUnderDiskPressure` pins the interface to exactly one
+  destructive method.
+- **That method is `evict`, and only disk pressure calls it.** Recycling defers
+  a deletion rather than performing one, which holds only while there is room to
+  defer into: a bin nobody empties fills the filesystem, and the recycled copy
+  is what holds the space. `daemon.go` gives back the oldest items when a
+  filesystem drops under `FreeTarget` - a tenth of itself, capped at 1 GiB.
+  Pressure decides what goes, never a user typing a command.
+- **A recycled item's size is measured once, when it is recycled.** What sits
+  in the bin does not change, so `recycle` records the size and every later
+  reader takes that number. The daemon polls, so a `list` that walked each
+  item's tree would walk the whole bin every 30 seconds. An entry another
+  implementation wrote records no size: it is measured on first sight and the
+  number written back, so that walk happens once too. An item whose size is
+  still unknown is never evicted, because it cannot be accounted for.
 - **An `Item.ID` is a path inside a recycle bin directory, and is validated
   before use.** Every backend's `resolveID` checks that the ID names an existing
   entry inside one of *this user's* trash directories before restoring

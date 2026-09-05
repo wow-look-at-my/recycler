@@ -39,7 +39,7 @@ func TestTrashInfoIsSpecCompliant(t *testing.T) {
 	require.NoError(t, err)
 
 	lines := strings.Split(strings.TrimRight(string(raw), "\n"), "\n")
-	require.Len(t, lines, 3, "unexpected metadata file: %q", raw)
+	require.GreaterOrEqual(t, len(lines), 3, "unexpected metadata file: %q", raw)
 	assert.Equal(t, "[Trash Info]", lines[0])
 	assert.Equal(t, "Path="+escapePath(path), lines[1])
 	assert.Contains(t, lines[1], "%20", "the path was not percent-encoded")
@@ -48,6 +48,105 @@ func TestTrashInfoIsSpecCompliant(t *testing.T) {
 	require.True(t, ok, "third line = %q, want a DeletionDate", lines[2])
 	_, err = time.ParseInLocation(deletionDateLayout, date, time.Local)
 	assert.NoError(t, err, "DeletionDate %q is not in the format the specification requires", date)
+
+	// The specification names the keys an entry must carry, not the only ones
+	// it may: a reader takes the keys it knows and ignores the rest, which is
+	// what lets this record a Size next to them. Every extra line still has to
+	// be a key, so nothing here can produce a file another tool trips over.
+	for _, line := range lines[3:] {
+		key, _, ok := strings.Cut(line, "=")
+		assert.True(t, ok, "line %q is not a key=value pair", line)
+		assert.NotEmpty(t, key, "line %q has an empty key", line)
+	}
+}
+
+// TestEvictDestroysAnEntryAndItsMetadata covers the only operation here that
+// destroys anything. Both halves of the entry have to go: a leftover
+// .trashinfo is an entry whose file is missing.
+func TestEvictDestroysAnEntryAndItsMetadata(t *testing.T) {
+	work := isolateTrash(t)
+	require.NoError(t, Recycle(writeFile(t, filepath.Join(work, "doomed.txt"), "bytes")))
+
+	b, err := platformBackend()
+	require.NoError(t, err)
+	items, err := b.list()
+	require.NoError(t, err)
+	require.Len(t, items, 1)
+
+	require.NoError(t, b.evict(items[0].ID))
+
+	after, err := b.list()
+	require.NoError(t, err)
+	assert.Empty(t, after)
+	assert.NoFileExists(t, items[0].ID)
+
+	entries, err := os.ReadDir(filepath.Join(homeTrash(t), trashInfoDir))
+	require.NoError(t, err)
+	assert.Empty(t, entries, "the .trashinfo outlived the file it described")
+}
+
+// TestEvictRejectsAnIDOutsideTheBin holds eviction to the same validation
+// restore gets. This is the one path that deletes, so an ID that names
+// something outside the bin must reach nothing at all.
+func TestEvictRejectsAnIDOutsideTheBin(t *testing.T) {
+	work := isolateTrash(t)
+	outsider := writeFile(t, filepath.Join(work, "innocent.txt"), "do not touch")
+	require.NoError(t, Recycle(writeFile(t, filepath.Join(work, "decoy.txt"), "decoy")))
+
+	b, err := platformBackend()
+	require.NoError(t, err)
+	for _, id := range []string{"", "not-an-id", outsider, filepath.Join(work, "nope", "files", "x")} {
+		assert.ErrorIs(t, b.evict(id), ErrNotFound, "evict(%q)", id)
+	}
+	assert.FileExists(t, outsider, "a hostile ID reached a file outside the bin")
+}
+
+// TestSizeIsRecordedWhenRecycled checks the number the daemon evicts by. It has
+// to be written when the item is recycled: after that the original is gone, and
+// walking the copy in the bin is what recording it exists to avoid.
+func TestSizeIsRecordedWhenRecycled(t *testing.T) {
+	work := isolateTrash(t)
+	path := writeFile(t, filepath.Join(work, "sized.txt"), strings.Repeat("x", 4096))
+	require.NoError(t, Recycle(path))
+
+	items, err := List()
+	require.NoError(t, err)
+	require.Len(t, items, 1)
+	assert.Equal(t, int64(4096), items[0].Size)
+
+	infoDir := filepath.Join(homeTrash(t), trashInfoDir)
+	entries, err := os.ReadDir(infoDir)
+	require.NoError(t, err)
+	require.Len(t, entries, 1)
+	raw, err := os.ReadFile(filepath.Join(infoDir, entries[0].Name()))
+	require.NoError(t, err)
+	assert.Contains(t, string(raw), "Size=4096")
+}
+
+// TestAForeignEntryIsSizedOnceAndRecorded covers an entry another trash
+// implementation wrote, which carries no size. It is measured on first sight
+// and the number written back, so the walk happens once rather than on every
+// poll the daemon makes.
+func TestAForeignEntryIsSizedOnceAndRecorded(t *testing.T) {
+	isolateTrash(t)
+	trash := homeTrash(t)
+	require.NoError(t, ensureTrashDir(trash))
+
+	name := "foreign.txt"
+	require.NoError(t, os.WriteFile(filepath.Join(trash, trashFilesDir, name),
+		[]byte(strings.Repeat("y", 512)), 0o600))
+	infoPath := filepath.Join(trash, trashInfoDir, name+trashInfoExt)
+	require.NoError(t, os.WriteFile(infoPath, []byte(
+		"[Trash Info]\nPath=/home/ada/foreign.txt\nDeletionDate=2026-01-02T03:04:05\n"), 0o600))
+
+	items, err := List()
+	require.NoError(t, err)
+	require.Len(t, items, 1)
+	assert.Equal(t, int64(512), items[0].Size)
+
+	raw, err := os.ReadFile(infoPath)
+	require.NoError(t, err)
+	assert.Contains(t, string(raw), "Size=512", "the size was not written back: %q", raw)
 }
 
 // TestReadsForeignTrashEntries checks that entries written by another trash

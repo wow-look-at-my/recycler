@@ -7,10 +7,15 @@
 // from [List]; IDs are stable for as long as the item stays in the bin, but are
 // not meaningful across platforms and must not be constructed by hand.
 //
-// This package deliberately offers no way to delete anything permanently.
-// Recycling is reversible and everything here keeps it that way: an item is
-// removed from the bin only by restoring it. Emptying the bin is the desktop
-// environment's job. Do not add a purge or empty operation back.
+// Nothing here lets a caller delete anything permanently. Recycling is
+// reversible and everything a user can reach keeps it that way: an item leaves
+// the bin by being restored. Emptying the bin is the desktop environment's job.
+// Do not add a purge or empty operation.
+//
+// The one exception is disk pressure, and it is not an operation a caller
+// names. Deferring a deletion only works while there is room to defer it into,
+// so [Sweep] gives back the oldest items when the filesystem holding a bin runs
+// low. Pressure decides what goes, never a command.
 //
 // Platform behaviour differs in ways the API cannot hide; those differences are
 // documented on each function and summarised in the package README.
@@ -38,6 +43,10 @@ var (
 
 	// ErrExists is returned when a restore would overwrite an existing file.
 	ErrExists = errors.New("recycler: destination already exists")
+
+	// ErrDaemonRunning is returned by RunDaemon when another daemon already
+	// holds the lock.
+	ErrDaemonRunning = errors.New("recycler: a daemon is already running")
 )
 
 // SizeUnknown is reported in [Item.Size] when the platform does not record the
@@ -83,10 +92,15 @@ func (i Item) String() string {
 }
 
 // backend is the per-platform implementation of the package API.
+//
+// evict is the only method that destroys anything, and exists only for the
+// disk-pressure daemon. It must validate its ID exactly as restore does, so a
+// malformed one can never reach a file outside the bin.
 type backend interface {
 	recycle(paths []string) error
 	list() ([]Item, error)
 	restore(id, dest string) (string, error)
+	evict(id string) error
 }
 
 // Available reports whether this platform has a recycle bin implementation.

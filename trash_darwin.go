@@ -136,6 +136,20 @@ func (t *macTrash) restore(id, dest string) (string, error) {
 	return dest, clearPutBack(dir, name)
 }
 
+// evict destroys a trashed item. Only the disk-pressure daemon calls this.
+//
+// The item's put back records are left in the trash directory's .DS_Store.
+// They are keyed by a name that is now free, Finder ignores a record whose
+// item is gone, and rewriting the whole file under its lock to drop two
+// strings would put the display settings beside them at risk for nothing.
+func (t *macTrash) evict(id string) error {
+	file, err := t.resolveID(id)
+	if err != nil {
+		return err
+	}
+	return os.RemoveAll(file)
+}
+
 // resolveID validates an item ID, rejecting anything that does not name an
 // existing entry directly inside one of this user's trash directories.
 func (t *macTrash) resolveID(id string) (string, error) {

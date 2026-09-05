@@ -231,6 +231,22 @@ func (t *winTrash) restore(id, dest string) (string, error) {
 	return dest, nil
 }
 
+// evict destroys a recycled item and its $I metadata. Only the disk-pressure
+// daemon calls this.
+func (t *winTrash) evict(id string) error {
+	data, metaPath, err := t.resolveID(id)
+	if err != nil {
+		return err
+	}
+	if err := os.RemoveAll(data); err != nil {
+		return err
+	}
+	// The data is gone. A leftover $I lists as an entry whose file is
+	// missing, which list already skips.
+	os.Remove(metaPath)
+	return nil
+}
+
 // resolveID validates an item ID and returns the paths of its data and metadata
 // files. IDs that do not name a "$R" file inside one of this user's recycle bin
 // directories are rejected, so a malformed ID can never reach outside the bin.

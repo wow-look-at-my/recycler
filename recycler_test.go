@@ -154,18 +154,19 @@ func TestRestoreRefusesToOverwrite(t *testing.T) {
 	assert.Len(t, mustList(t), 1, "the item should still be in the recycle bin after a refused restore")
 }
 
-// TestBackendHasNoDestructiveOperation holds the package to its central
-// promise: recycling is reversible. A backend can move a file into the bin,
-// list what is there and move it back out, and it is given no operation that
-// destroys anything. Adding one is what this test exists to catch.
-func TestBackendHasNoDestructiveOperation(t *testing.T) {
+// TestBackendDestroysOnlyUnderDiskPressure holds the package to its central
+// promise: recycling is reversible. A backend moves a file into the bin, lists
+// what is there and moves it back out. It is given exactly one operation that
+// destroys anything - evict, which only the disk-pressure daemon calls - and a
+// second one is what this test exists to catch.
+func TestBackendDestroysOnlyUnderDiskPressure(t *testing.T) {
 	iface := reflect.TypeOf((*backend)(nil)).Elem()
 	got := make([]string, 0, iface.NumMethod())
 	for i := range iface.NumMethod() {
 		got = append(got, iface.Method(i).Name)
 	}
 	sort.Strings(got)
-	assert.Equal(t, []string{"list", "recycle", "restore"}, got)
+	assert.Equal(t, []string{"evict", "list", "recycle", "restore"}, got)
 }
 
 func TestUnknownIDsAreRejected(t *testing.T) {

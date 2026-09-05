@@ -54,6 +54,7 @@ func platformBackend() (backend, error) {
 type trashInfo struct {
 	origPath  string // as written in the file, possibly relative to a top directory
 	deletedAt time.Time
+	size      int64 // SizeUnknown when the file records none
 }
 
 func (t *fdoTrash) recycle(paths []string) error {
@@ -97,9 +98,13 @@ func (t *fdoTrash) recycleOne(path string) error {
 	if err != nil {
 		return err
 	}
+	// The size is measured here, while the item is still at its original
+	// location, and recorded. This is the only walk of its contents there ever
+	// is: what is in the bin does not change, so every later reader takes the
+	// recorded number instead of walking the tree again.
 	infoPath := filepath.Join(dir, trashInfoDir, name+trashInfoExt)
-	_, err = fmt.Fprintf(info, "[Trash Info]\nPath=%s\nDeletionDate=%s\n",
-		escapePath(recorded), time.Now().Format(deletionDateLayout))
+	_, err = fmt.Fprintf(info, "[Trash Info]\nPath=%s\nDeletionDate=%s\nSize=%d\n",
+		escapePath(recorded), time.Now().Format(deletionDateLayout), treeSize(abs))
 	if closeErr := info.Close(); err == nil {
 		err = closeErr
 	}
@@ -148,12 +153,22 @@ func (t *fdoTrash) list() ([]Item, error) {
 			if deletedAt.IsZero() {
 				deletedAt = st.ModTime()
 			}
+			size := info.size
+			if size == SizeUnknown {
+				// An entry another implementation wrote records no size.
+				// Measure it once and record it, so this is the last walk
+				// of it: listing is on the daemon's poll path, and a bin
+				// full of foreign entries would otherwise be re-walked
+				// every time anything asks what is in it.
+				size = treeSize(file)
+				recordSize(filepath.Join(dir, trashInfoDir, entry.Name()), size)
+			}
 			items = append(items, Item{
 				ID:           file,
 				Name:         filepath.Base(orig),
 				OriginalPath: orig,
 				DeletedAt:    deletedAt,
-				Size:         treeSize(file),
+				Size:         size,
 				IsDir:        st.IsDir(),
 			})
 		}
@@ -196,6 +211,24 @@ func (t *fdoTrash) restore(id, dest string) (string, error) {
 	}
 	os.Remove(infoPath)
 	return dest, nil
+}
+
+// evict destroys a recycled item and its metadata. Only the disk-pressure
+// daemon calls this. resolveID does the same validation restore relies on, so
+// an ID that does not name an entry in this user's bin removes nothing.
+func (t *fdoTrash) evict(id string) error {
+	file, infoPath, err := t.resolveID(id)
+	if err != nil {
+		return err
+	}
+	if err := os.RemoveAll(file); err != nil {
+		return err
+	}
+	// The data is gone; a leftover .trashinfo would list as an entry whose
+	// file is missing. list already skips those, so a failure to remove it
+	// is untidy rather than wrong.
+	os.Remove(infoPath)
+	return nil
 }
 
 // resolveID validates an item ID and returns the path of the recycled file and
@@ -342,7 +375,7 @@ func readInfoFile(path string) (trashInfo, error) {
 	}
 	defer f.Close()
 
-	var info trashInfo
+	info := trashInfo{size: SizeUnknown}
 	scanner := bufio.NewScanner(f)
 	for scanner.Scan() {
 		key, value, ok := strings.Cut(scanner.Text(), "=")
@@ -358,12 +391,35 @@ func readInfoFile(path string) (trashInfo, error) {
 			}
 		case "DeletionDate":
 			info.deletedAt = parseDeletionDate(strings.TrimSpace(value))
+		case "Size":
+			if n, err := strconv.ParseInt(strings.TrimSpace(value), 10, 64); err == nil {
+				info.size = n
+			}
 		}
 	}
 	if err := scanner.Err(); err != nil {
 		return trashInfo{}, err
 	}
 	return info, nil
+}
+
+// recordSize appends a Size line to a .trashinfo file that has none, so the
+// tree behind it is never walked a second time. The size of something in the
+// bin does not change, which is what makes one measurement enough.
+//
+// Best effort: a bin on a read-only mount, or one owned by another user, keeps
+// working and pays for a walk each time it is listed. Nothing but that walk is
+// lost, so a failure here is not worth failing a listing over.
+func recordSize(infoPath string, size int64) {
+	if size == SizeUnknown {
+		return
+	}
+	f, err := os.OpenFile(infoPath, os.O_WRONLY|os.O_APPEND, 0o600)
+	if err != nil {
+		return
+	}
+	fmt.Fprintf(f, "Size=%d\n", size)
+	f.Close()
 }
 
 func parseDeletionDate(value string) time.Time {
