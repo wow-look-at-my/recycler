@@ -7,26 +7,25 @@ uniform API on Linux (and the BSDs), macOS and Windows.
 
 | Path | What lives there |
 |---|---|
-| `recycler.go` | Public API: `Item`, the errors, `Recycle`/`List`/`Get`/`Restore`/`RestoreTo`, and the unexported `backend` interface every platform implements. |
-| `fsutil.go` | Platform-neutral filesystem helpers: `move` (rename with a copy fallback), `copyTree`, `treeSize`, `uniqueName`, `sortItems`, `prepareDest`. |
-| `fsutil_unix.go` | `deviceOf`, `topDirOf`, `isStickyDir` - shared by the FreeDesktop and macOS backends. |
-| `errno_{unix,windows,other}.go` | `errCrossDevice`, the errno a rename fails with across filesystems. |
-| `trash_freedesktop.go`, `mounts_freedesktop.go` | Linux/BSD backend and its mount table scanning. |
-| `trash_darwin.go` | macOS backend. |
-| `putback.go` | Finder's `ptbL`/`ptbN` put back records: reading them out of a trash directory's `.DS_Store` and editing them back in under a lock. Built on every Unix so the test suite covers it on Linux. |
-| `dsstore.go`, `dsstore_write.go` | Codec for the `.DS_Store` files those records live in: the B-tree parser, and the writer with its buddy allocator. Deliberately **not** build-constrained, so it is testable on any platform. |
-| `trash_windows.go`, `shfileop_windows*.go` | Windows backend, the `SHFILEOPSTRUCTW` declaration, and the guard that fails a 32-bit Windows build. |
-| `recyclebin_meta.go` | Codec for the Windows `$I` metadata files. Deliberately **not** build-constrained, so it is testable on any platform. |
-| `trash_unsupported.go` | Every other GOOS: all operations fail with `ErrUnsupported`. |
-| `daemon.go` | The disk-pressure daemon: `FreeTarget`, `Sweep` and the poll loop. The only thing here that destroys anything. |
-| `daemon_spawn.go`, `daemonlock_*.go`, `detach_*.go` | Starting one daemon per user: the lock that makes it one, and the per-platform detach. |
-| `diskfree_{unix,windows,unsupported}.go` | `diskFree`, what the daemon polls - `statfs` and `GetDiskFreeSpaceEx`, the same numbers `df` reports. |
+| `recycler.go` | The whole public API, and nothing else: `Item`, the errors, `Recycle`/`List`/`Get`/`Restore`/`RestoreTo`, and the daemon entry points. Every function here forwards into `internal/`. |
+| `internal/bin/` | What the rest agrees on: `Item`, the errors, `Sort`, and the `Backend` interface every platform implements. Imports nothing of its own, so no other package has to import a sibling to name a listing. |
+| `internal/trash/` | The platform backends and `Backend()`, which picks one: FreeDesktop (`freedesktop.go`, `mounts.go`), macOS (`darwin.go`), Windows (`windows.go`, `shfileop_*.go`), and `unsupported.go` for every other GOOS. |
+| `internal/dsstore/` | Codec for the `.DS_Store` files Finder's put back records live in: the B-tree parser, and the writer with its buddy allocator. Deliberately **not** build-constrained, so it is testable on any platform. |
+| `internal/putback/` | Finder's `ptbL`/`ptbN` put back records: reading them out of a trash directory's `.DS_Store` and editing them back in under a lock. Built on every Unix so the test suite covers it on Linux. |
+| `internal/winbin/` | Codec for the Windows `$I` metadata files. Deliberately **not** build-constrained, so it is testable on any platform. |
+| `internal/fsutil/` | Filesystem helpers the backends share: `Move` (rename with a copy fallback), `CopyTree`, `TreeSize`, `UniqueName`, `PrepareDest`, and the Unix-only `DeviceOf`/`TopDirOf`/`IsStickyDir`. |
+| `internal/diskfree/` | `Free`, what the daemon polls - `statfs`, `statvfs` and `GetDiskFreeSpaceEx`, the same numbers `df` reports. One file per spelling, because the BSDs disagree about all three. |
+| `internal/daemon/` | The disk-pressure daemon: `FreeTarget`, `Sweep`, the poll loop, and starting one per user (`spawn.go`, `lock_*.go`, `detach_*.go`). The only thing here that destroys anything. |
 | `cmd/recycler/` | Cobra CLI, one command per file, each registering itself in `init()`. |
 | `cmd/recycler/tui.go`, `cmd/recycler/ui/` | The full-screen browser: its Bubble Tea model, and the TML document and theme it renders. |
 
-`platformBackend()` is defined once per platform and is called on **every** API
+`trash.Backend()` is defined once per platform and is called on **every** API
 call rather than cached, so tests can redirect the recycle bin with `HOME` and
 `XDG_DATA_HOME` between calls. Keep it that way.
+
+Nothing under `internal/` imports the root package, and the root package imports
+only `bin`, `trash` and `daemon`. `bin` is what keeps that acyclic: the helpers,
+the backends and the daemon all name an `Item` without naming each other.
 
 ## Invariants
 
@@ -37,14 +36,14 @@ call rather than cached, so tests can redirect the recycle bin with `HOME` and
   `TestNoDestructiveCommands` locks the CLI down, and
   `TestBackendDestroysOnlyUnderDiskPressure` pins the interface to exactly one
   destructive method.
-- **That method is `evict`, and only disk pressure calls it.** Recycling defers
+- **That method is `Evict`, and only disk pressure calls it.** Recycling defers
   a deletion rather than performing one, which holds only while there is room to
   defer into: a bin nobody empties fills the filesystem, and the recycled copy
-  is what holds the space. `daemon.go` gives back the oldest items when a
+  is what holds the space. `internal/daemon` gives back the oldest items when a
   filesystem drops under `FreeTarget` - a tenth of itself, capped at 1 GiB.
   Pressure decides what goes, never a user typing a command.
 - **A recycled item's size is measured once, when it is recycled.** What sits
-  in the bin does not change, so `recycle` records the size and every later
+  in the bin does not change, so `Recycle` records the size and every later
   reader takes that number. The daemon polls, so a `list` that walked each
   item's tree would walk the whole bin every 30 seconds. An entry another
   implementation wrote records no size: it is measured on first sight and the
@@ -57,9 +56,9 @@ call rather than cached, so tests can redirect the recycle bin with `HOME` and
   the bin; `TestUnknownIDsAreRejected` locks that down.
 - **Recycling is a rename, never a copy.** Each backend picks a trash directory
   on the same filesystem as the file, which is what per-filesystem trash
-  directories exist for. `move` still falls back to copy-and-delete, which
-  matters for restoring to a different filesystem.
-- **Nothing is overwritten.** `move` and `prepareDest` fail with `ErrExists`
+  directories exist for. `fsutil.Move` still falls back to copy-and-delete,
+  which matters for restoring to a different filesystem.
+- **Nothing is overwritten.** `fsutil.Move` and `fsutil.PrepareDest` fail with `ErrExists`
   rather than clobber a file that took the original location back.
 - **Listing is best-effort per location.** An unreadable trash directory (a
   volume mounted by another user, say) is skipped, not fatal - one bad location
@@ -128,7 +127,7 @@ trashed item came from is a pair of records in that trash directory's
 | `ptbL` | `ustr` | the original parent directory, relative to the volume root (`Users/ada/Documents`) |
 | `ptbN` | `ustr` | the original name, which differs from the name in the trash when something was already called that |
 
-`putback.go` reads and writes exactly those, so an item recycled here can be put
+`internal/putback` reads and writes exactly those, so an item recycled here can be put
 back from Finder, and an item Finder trashed restores here. The whole `.DS_Store`
 is rewritten under an exclusive `flock`, preserving every record the file
 already had - the icon positions and window settings next to the put back
@@ -160,30 +159,31 @@ a pre-check that cannot be made reliable.
 
 Listing and restoring read `<drive>:\$Recycle.Bin\<user SID>\`
 directly. Each item is a `$R<id><ext>` data file with a `$I<id><ext>` metadata
-file; `recyclebin_meta.go` decodes both metadata versions (1 on Vista..8.1 with
+file; `internal/winbin` decodes both metadata versions (1 on Vista..8.1 with
 a fixed 260-character path, 2 on Windows 10+ with a length-prefixed one).
 
 Only **64-bit Windows** is supported. `SHFILEOPSTRUCTW` is byte-packed on 32-bit
 Windows (`shellapi.h` wraps it in `pshpack1.h` under `#ifndef _WIN64`), so the
-natural Go layout in `shfileop_windows.go` is right for amd64/arm64 and wrong
-for 386/arm. `shfileop_windows_unsupported.go` therefore fails a 32-bit build on
-purpose, rather than letting the shell read a delete request from the wrong
-offsets.
+natural Go layout in `internal/trash/shfileop_windows.go` is right for
+amd64/arm64 and wrong for 386/arm. `shfileop_unsupported.go` therefore fails a
+32-bit build on purpose, rather than letting the shell read a delete request
+from the wrong offsets.
 
 ## Building and testing
 
 Run `go-toolchain` in the repository root - never bare `go` commands. It tidies,
 vets, formats, runs the tests with a coverage floor of 80%, and builds.
 
-**It only compiles the host's files.** A type error in `trash_windows.go` or
-`trash_darwin.go` passes a full local `go-toolchain` run with "Build
+**It only compiles the host's files.** A type error in
+`internal/trash/windows.go` or `internal/trash/darwin.go` passes a full local
+`go-toolchain` run with "Build
 successful". The `cross-compile` job in `.github/workflows/ci.yml` is what
 catches those, by building every GOOS in this package's constraints. Run the
 same loop after touching a per-platform file rather than waiting for CI.
 
 **Do not build this project as a cosmo fat APE.** gosmopolitan compiles with
 `GOOS=cosmo`, which matches none of the backends' build constraints, so the APE
-falls through to `trash_unsupported.go` and every operation fails with
+falls through to `internal/trash/unsupported.go` and every operation fails with
 `ErrUnsupported` - verified by building one and running it. That APE is the only
 native output `go-toolchain matrix` still emits, which is why CI passes
 `autorelease: false`: this package has nothing it can honestly publish through
@@ -194,10 +194,13 @@ The test suite runs against a real recycle bin redirected into a temporary
 directory (`isolateTrash`), so it exercises the actual FreeDesktop
 implementation rather than a mock. Windows and macOS specific behaviour that
 cannot run on Linux is covered where possible by platform-neutral unit tests -
-that is why the `$I` codec has no build constraint, and why `putback.go` is
-built on every Unix rather than only on darwin.
+that is why the `$I` codec has no build constraint, and why `internal/putback`
+is built on every Unix rather than only on darwin. Those three packages are not
+reachable from a Linux build, so their statements are outside the coverage
+number even though their tests run: the floor is measured against the code the
+program actually links.
 
-The `.DS_Store` fixtures in `testdata/` were written by an independent
+The `.DS_Store` fixtures in `internal/dsstore/testdata/` were written by an independent
 implementation of the format (the `ds_store` Python package behind `dmgbuild`),
 which is what keeps the codec honest: `finder_trash.DS_Store` is a single-node
 file, `finder_trash_many.DS_Store` a tree with internal nodes, and

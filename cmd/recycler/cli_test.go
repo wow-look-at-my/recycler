@@ -282,3 +282,31 @@ func TestPathsEqual(t *testing.T) {
 	assert.False(t, pathsEqual("/a/b", ""))
 	assert.Equal(t, caseInsensitiveFilesystem, pathsEqual("/a/B", "/a/b"))
 }
+
+// A reference is usually the path the user typed, which is relative to wherever
+// they are standing. The listing records absolute paths, so the two only meet
+// once the reference is made absolute the same way.
+func TestAReferenceCanBeAPathRelativeToHere(t *testing.T) {
+	rel := filepath.Join("sub", "notes.txt")
+	item := recycler.Item{ID: "id-1", Name: "notes.txt", OriginalPath: absOrSelf(rel)}
+
+	got, err := resolve([]recycler.Item{item}, rel)
+	require.NoError(t, err)
+	assert.Equal(t, "id-1", got.ID)
+}
+
+// A full screen needs a terminal to draw on and a terminal to type at. The test
+// binary's output is a pipe, so it is never one.
+func TestAFullScreenNeedsATerminalAtBothEnds(t *testing.T) {
+	assert.False(t, interactive())
+
+	null, err := os.Open(os.DevNull)
+	require.NoError(t, err)
+	t.Cleanup(func() { null.Close() })
+	assert.True(t, charDevice(null), "the null device is a character device")
+
+	plain, err := os.Open(writeFile(t, filepath.Join(t.TempDir(), "plain"), ""))
+	require.NoError(t, err)
+	t.Cleanup(func() { plain.Close() })
+	assert.False(t, charDevice(plain), "a regular file is not a terminal")
+}

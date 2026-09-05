@@ -19,95 +19,63 @@
 //
 // Platform behaviour differs in ways the API cannot hide; those differences are
 // documented on each function and summarised in the package README.
+//
+// This file is the whole public surface. The implementation lives under
+// internal: the platform backends in internal/trash, the disk-pressure daemon
+// in internal/daemon, and the types both speak in internal/bin.
 package recycler
 
 import (
-	"errors"
+	"context"
 	"fmt"
 	"time"
+
+	"github.com/wow-look-at-my/recycler/internal/bin"
+	"github.com/wow-look-at-my/recycler/internal/daemon"
+	"github.com/wow-look-at-my/recycler/internal/trash"
 )
 
 // Errors reported by this package. Use [errors.Is] to test for them; the
 // returned errors are usually wrapped with additional context.
 var (
 	// ErrUnsupported is returned on platforms with no recycle bin support.
-	ErrUnsupported = errors.New("recycler: platform not supported")
+	ErrUnsupported = bin.ErrUnsupported
 
 	// ErrNotFound is returned when no item in the recycle bin has the
 	// requested ID.
-	ErrNotFound = errors.New("recycler: item not found in recycle bin")
+	ErrNotFound = bin.ErrNotFound
 
 	// ErrUnknownOrigin is returned by Restore when the item's original
 	// location is not recorded and no explicit destination was given.
-	ErrUnknownOrigin = errors.New("recycler: original location unknown")
+	ErrUnknownOrigin = bin.ErrUnknownOrigin
 
 	// ErrExists is returned when a restore would overwrite an existing file.
-	ErrExists = errors.New("recycler: destination already exists")
+	ErrExists = bin.ErrExists
 
 	// ErrDaemonRunning is returned by RunDaemon when another daemon already
 	// holds the lock.
-	ErrDaemonRunning = errors.New("recycler: a daemon is already running")
+	ErrDaemonRunning = bin.ErrDaemonRunning
 )
 
 // SizeUnknown is reported in [Item.Size] when the platform does not record the
 // size of a recycled item and it could not be determined.
-const SizeUnknown int64 = -1
+const SizeUnknown = bin.SizeUnknown
 
 // An Item is a single entry in the recycle bin.
-type Item struct {
-	// ID is an opaque, platform-specific handle for the item. It is stable
-	// while the item remains in the recycle bin.
-	ID string `json:"id"`
+type Item = bin.Item
 
-	// Name is the display name of the item, normally the base name of the
-	// file at the time it was recycled.
-	Name string `json:"name"`
+// An Eviction records one item the disk-pressure daemon destroyed to reclaim
+// space.
+type Eviction = daemon.Eviction
 
-	// OriginalPath is the absolute path the item was recycled from. It is
-	// empty when nothing recorded where the item came from: on macOS, where
-	// the location lives in Finder's own put back records, that means an item
-	// trashed by a tool that writes none.
-	OriginalPath string `json:"original_path,omitempty"`
-
-	// DeletedAt is when the item was moved to the recycle bin. When the
-	// platform records no deletion time - macOS does not - a timestamp of the
-	// recycled copy is used instead.
-	DeletedAt time.Time `json:"deleted_at"`
-
-	// Size is the size of the item in bytes: the total size of its contents
-	// for a directory, or [SizeUnknown] if it could not be determined.
-	Size int64 `json:"size"`
-
-	// IsDir reports whether the item is a directory.
-	IsDir bool `json:"is_dir"`
-}
-
-// String returns a short human-readable description of the item.
-func (i Item) String() string {
-	where := i.OriginalPath
-	if where == "" {
-		where = i.Name + " (original location unknown)"
-	}
-	return fmt.Sprintf("%s [%s]", where, i.DeletedAt.Format(time.RFC3339))
-}
-
-// backend is the per-platform implementation of the package API.
-//
-// evict is the only method that destroys anything, and exists only for the
-// disk-pressure daemon. It must validate its ID exactly as restore does, so a
-// malformed one can never reach a file outside the bin.
-type backend interface {
-	recycle(paths []string) error
-	list() ([]Item, error)
-	restore(id, dest string) (string, error)
-	evict(id string) error
-}
+// DefaultPollInterval is how often the daemon reads free space.
+const DefaultPollInterval = daemon.DefaultPollInterval
 
 // Available reports whether this platform has a recycle bin implementation.
 // When it returns false every other function in the package fails with
 // [ErrUnsupported].
 func Available() bool {
-	_, err := platformBackend()
+	_, err := trash.Backend()
 	return err == nil
 }
 
@@ -122,11 +90,11 @@ func Recycle(paths ...string) error {
 	if len(paths) == 0 {
 		return nil
 	}
-	b, err := platformBackend()
+	b, err := trash.Backend()
 	if err != nil {
 		return err
 	}
-	return b.recycle(paths)
+	return b.Recycle(paths)
 }
 
 // List returns everything currently in the recycle bin, newest first.
@@ -135,11 +103,11 @@ func Recycle(paths ...string) error {
 // be read - an unreadable per-volume trash directory, say - are skipped rather
 // than failing the whole listing.
 func List() ([]Item, error) {
-	b, err := platformBackend()
+	b, err := trash.Backend()
 	if err != nil {
 		return nil, err
 	}
-	return b.list()
+	return b.List()
 }
 
 // Get returns the item with the given ID, or [ErrNotFound].
@@ -167,9 +135,52 @@ func Restore(id string) (string, error) {
 // it was restored to. An empty dest means the item's original location, making
 // it equivalent to [Restore]. Missing parent directories of dest are created.
 func RestoreTo(id, dest string) (string, error) {
-	b, err := platformBackend()
+	b, err := trash.Backend()
 	if err != nil {
 		return "", err
 	}
-	return b.restore(id, dest)
+	return b.Restore(id, dest)
 }
+
+// FreeTarget returns the number of available bytes the daemon keeps on a
+// filesystem of the given total size: min(10% of the filesystem, 1 GiB).
+func FreeTarget(total uint64) uint64 { return daemon.FreeTarget(total) }
+
+// Sweep reclaims space on every filesystem holding a recycle bin whose
+// available space is under [FreeTarget], destroying the oldest items until it
+// is met or the bin is empty. It returns what it evicted.
+//
+// Sizes come from what was recorded when each item was recycled. Nothing in the
+// bin is walked or stat-ed to size it: the contents of a recycled item do not
+// change, so the number taken at ingestion is still the number now, and a sweep
+// that re-measured would walk the whole bin every poll.
+//
+// An item whose size was never recorded is left alone. It cannot be accounted
+// for, and destroying something to reclaim an unknown quantity is not a trade
+// this can make honestly.
+func Sweep() ([]Eviction, error) { return daemon.Sweep() }
+
+// RunDaemon sweeps every interval until ctx is done. A zero interval means
+// [DefaultPollInterval]. Each sweep's evictions are handed to report, which may
+// be nil. It returns [ErrDaemonRunning] when another daemon already holds the
+// lock, so a second one started by hand stands down rather than sweeping in
+// parallel.
+func RunDaemon(ctx context.Context, interval time.Duration, report func([]Eviction, error)) error {
+	return daemon.Run(ctx, interval, report)
+}
+
+// DaemonLockPath returns the file whose lock names the running daemon. One
+// daemon holds it per user, which is what keeps a recycle every few seconds
+// from starting a daemon every few seconds.
+func DaemonLockPath() (string, error) { return daemon.LockPath() }
+
+// EnsureDaemon starts the disk-pressure daemon if one is not already running,
+// by running exe with the "daemon" argument detached from this process. It
+// reports whether it started one.
+//
+// Spawning is the caller's decision rather than something [Recycle] does: this
+// package is a library, and a library that forks a process out of an ordinary
+// call is not something a program can be expected to want. The CLI calls this
+// after recycling, which is what makes the daemon appear on first use of the
+// tool.
+func EnsureDaemon(exe string) (bool, error) { return daemon.Ensure(exe) }

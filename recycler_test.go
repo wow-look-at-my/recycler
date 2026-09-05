@@ -1,6 +1,7 @@
 package recycler
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -11,6 +12,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/wow-look-at-my/recycler/internal/bin"
 )
 
 // isolateTrash points the recycle bin at a temporary directory so tests never
@@ -154,19 +157,32 @@ func TestRestoreRefusesToOverwrite(t *testing.T) {
 	assert.Len(t, mustList(t), 1, "the item should still be in the recycle bin after a refused restore")
 }
 
-// TestBackendDestroysOnlyUnderDiskPressure holds the package to its central
+// TestBackendDestroysOnlyUnderDiskPressure holds the module to its central
 // promise: recycling is reversible. A backend moves a file into the bin, lists
 // what is there and moves it back out. It is given exactly one operation that
-// destroys anything - evict, which only the disk-pressure daemon calls - and a
+// destroys anything - Evict, which only the disk-pressure daemon calls - and a
 // second one is what this test exists to catch.
 func TestBackendDestroysOnlyUnderDiskPressure(t *testing.T) {
-	iface := reflect.TypeOf((*backend)(nil)).Elem()
+	iface := reflect.TypeOf((*bin.Backend)(nil)).Elem()
 	got := make([]string, 0, iface.NumMethod())
 	for i := range iface.NumMethod() {
 		got = append(got, iface.Method(i).Name)
 	}
 	sort.Strings(got)
-	assert.Equal(t, []string{"evict", "list", "recycle", "restore"}, got)
+	assert.Equal(t, []string{"Evict", "List", "Recycle", "Restore"}, got)
+}
+
+// Sweep against a real bin with room to spare: it reads the listing, finds no
+// filesystem under its target, and gives nothing back.
+func TestSweepGivesNothingBackWhenThereIsRoom(t *testing.T) {
+	work := isolateTrash(t)
+	require.NoError(t, Recycle(writeFile(t, filepath.Join(work, "safe.txt"), "safe")))
+
+	evicted, err := Sweep()
+	require.NoError(t, err)
+	assert.Empty(t, evicted)
+
+	assert.Len(t, mustList(t), 1)
 }
 
 func TestUnknownIDsAreRejected(t *testing.T) {
@@ -217,14 +233,29 @@ func TestListOnAnEmptyBin(t *testing.T) {
 	assert.Empty(t, items)
 }
 
-func TestItemString(t *testing.T) {
-	when := time.Date(2026, 7, 26, 11, 24, 9, 0, time.UTC)
-	described := Item{Name: "notes.txt", OriginalPath: "/home/user/notes.txt", DeletedAt: when}
-	assert.Equal(t, "/home/user/notes.txt [2026-07-26T11:24:09Z]", described.String())
+// The daemon is reached through this package, so each entry point has to
+// actually forward to it. A wrapper that compiles is not a wrapper that is
+// wired to anything.
+func TestTheDaemonIsReachableFromHere(t *testing.T) {
+	isolateTrash(t)
+	t.Setenv("XDG_CACHE_HOME", t.TempDir())
 
-	unknown := Item{Name: "notes.txt", DeletedAt: when}
-	assert.Contains(t, unknown.String(), "notes.txt")
-	assert.Contains(t, unknown.String(), "unknown")
+	assert.Equal(t, uint64(100), FreeTarget(1000), "a tenth of a small filesystem")
+
+	lock, err := DaemonLockPath()
+	require.NoError(t, err)
+	assert.Equal(t, "daemon.lock", filepath.Base(lock))
+	assert.DirExists(t, filepath.Dir(lock))
+
+	// A test binary is never the daemon: running one with a "daemon" argument
+	// re-runs the suite, which recycles, which starts another.
+	started, err := EnsureDaemon(filepath.Join(t.TempDir(), "recycler.test"))
+	assert.False(t, started)
+	require.Error(t, err)
+
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	assert.ErrorIs(t, RunDaemon(ctx, time.Millisecond, func([]Eviction, error) { cancel() }), context.Canceled)
 }
 
 func TestAvailable(t *testing.T) {
