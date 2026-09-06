@@ -8,9 +8,7 @@ import (
 	"github.com/wow-look-at-my/recycler"
 )
 
-// resolve turns a user-supplied reference into a recycle bin item. A reference
-// is an ID as printed by "recycler list", an original path, or a file name -
-// a path and a name resolve only when they match a single item.
+// resolve turns a user-supplied reference into a recycle bin item.
 func resolve(items []recycler.Item, ref string) (recycler.Item, error) {
 	for _, item := range items {
 		if item.ID == ref {

@@ -2,11 +2,11 @@
 
 package trash
 
-// shellapi.h declares SHFILEOPSTRUCTW with default packing on 64-bit Windows -
+// shellapi.h declares SHFILEOPSTRUCTW with default packing on wide Windows -
 // it wraps the struct in pshpack1.h only under #ifndef _WIN64 - and that is
 // exactly the layout Go's own struct rules produce here.
 //
-// 32-bit Windows, where the packed layout would move every field after fFlags,
+// narrow Windows, where the packed layout moves every field after fFlags,
 // is not supported: see shfileop_windows_unsupported.go.
 
 type shFileOpStruct struct {

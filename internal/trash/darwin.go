@@ -5,7 +5,7 @@ package trash
 // macOS Trash implementation.
 //
 // Finder moves deleted files into ~/.Trash (or .Trashes/$uid on other volumes)
-// and records where each one came from in that trash directory's own .DS_Store,
+// and records where each item came from in that trash directory's own .DS_Store,
 // as the "ptbL" and "ptbN" records behind its Put Back command. Apple documents
 // neither the file nor an API for reading it, but it is the only place the
 // original location exists, so this reads and writes those same records
@@ -141,12 +141,7 @@ func (t *macTrash) Restore(id, dest string) (string, error) {
 	return dest, putback.Clear(dir, name)
 }
 
-// evict destroys a trashed item. Only the disk-pressure daemon calls this.
-//
-// The item's put back records are left in the trash directory's .DS_Store.
-// They are keyed by a name that is now free, Finder ignores a record whose
-// item is gone, and rewriting the whole file under its lock to drop two
-// strings would put the display settings beside them at risk for nothing.
+// evict destroys a trashed item.
 func (t *macTrash) Evict(id string) error {
 	file, err := t.resolveID(id)
 	if err != nil {
@@ -155,8 +150,7 @@ func (t *macTrash) Evict(id string) error {
 	return os.RemoveAll(file)
 }
 
-// resolveID validates an item ID, rejecting anything that does not name an
-// existing entry directly inside one of this user's trash directories.
+// resolveID validates an item ID, rejecting anything.
 func (t *macTrash) resolveID(id string) (string, error) {
 	clean := filepath.Clean(id)
 	dir := filepath.Dir(clean)
@@ -176,9 +170,7 @@ func (t *macTrash) resolveID(id string) (string, error) {
 	return clean, nil
 }
 
-// trashDirFor returns the trash directory a path should be recycled into,
-// creating it if needed. Files outside the home volume go to that volume's
-// .Trashes directory so recycling stays a rename.
+// trashDirFor returns the trash directory a path should be recycled into.
 func (t *macTrash) trashDirFor(path string) (string, error) {
 	if err := os.MkdirAll(t.home, 0o700); err != nil {
 		return "", err
@@ -203,8 +195,7 @@ func (t *macTrash) trashDirFor(path string) (string, error) {
 	return dir, nil
 }
 
-// trashDirs returns every trash directory belonging to this user that exists
-// right now: the home trash plus one per mounted volume.
+// trashDirs returns every trash directory belonging to this user.
 func (t *macTrash) trashDirs() []string {
 	dirs := []string{t.home}
 	seen := map[string]bool{t.home: true}
@@ -225,9 +216,7 @@ func (t *macTrash) trashDirs() []string {
 	return dirs
 }
 
-// volumeRoot returns the mount point that a trash directory's put back
-// locations are relative to: the volume holding a .Trashes directory, and the
-// root for the home trash.
+// volumeRoot returns the mount point a trash directory's put back locations sit under.
 func (t *macTrash) volumeRoot(dir string) string {
 	if dir == t.home {
 		return "/"
@@ -235,11 +224,7 @@ func (t *macTrash) volumeRoot(dir string) string {
 	return filepath.Dir(filepath.Dir(dir))
 }
 
-// dataVolumePath rewrites a location Finder recorded through the data volume's
-// own mount point - /System/Volumes/Data/Users/me/notes.txt - as the
-// /Users/me/notes.txt that firmlinks make the very same file. It only does so
-// when that shorter path's directory really is there, so an unusual layout
-// keeps the location exactly as recorded.
+// dataVolumePath rewrites a location Finder recorded through the data volume's own mount.
 func dataVolumePath(path string) string {
 	rest, ok := strings.CutPrefix(path, "/System/Volumes/Data/")
 	if !ok {
@@ -252,9 +237,7 @@ func dataVolumePath(path string) string {
 	return short
 }
 
-// deletedAt reports when an item was moved to the trash. macOS records no
-// deletion time anywhere, but moving a file to the trash is a rename, which
-// updates its inode change time.
+// deletedAt reports when an item was moved to the trash.
 func deletedAt(info fs.FileInfo) time.Time {
 	if st, ok := info.Sys().(*syscall.Stat_t); ok {
 		return time.Unix(st.Ctimespec.Unix())

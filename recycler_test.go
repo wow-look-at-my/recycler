@@ -16,10 +16,7 @@ import (
 	"github.com/wow-look-at-my/recycler/internal/bin"
 )
 
-// isolateTrash points the recycle bin at a temporary directory so tests never
-// touch the developer's real one, and returns a scratch directory to recycle
-// files from. Both live on the same filesystem, which is what makes recycling a
-// rename.
+// isolateTrash points the recycle bin at a temporary directory so tests never touch.
 func isolateTrash(t *testing.T) string {
 	t.Helper()
 	if runtime.GOOS == "windows" {
@@ -108,7 +105,7 @@ func TestRecycleKeepsNamesApart(t *testing.T) {
 	require.Len(t, items, 2)
 	require.NotEqual(t, items[0].ID, items[1].ID, "two files with the same name share an ID")
 
-	// Each one has to restore to its own original location, with its own
+	// Each has to restore to its own original location, with its own
 	// content.
 	for _, item := range items {
 		_, err := Restore(item.ID)
@@ -157,11 +154,8 @@ func TestRestoreRefusesToOverwrite(t *testing.T) {
 	assert.Len(t, mustList(t), 1, "the item should still be in the recycle bin after a refused restore")
 }
 
-// TestBackendDestroysOnlyUnderDiskPressure holds the module to its central
-// promise: recycling is reversible. A backend moves a file into the bin, lists
-// what is there and moves it back out. It is given exactly one operation that
-// destroys anything - Evict, which only the disk-pressure daemon calls - and a
-// second one is what this test exists to catch.
+// TestBackendDestroysOnlyUnderDiskPressure holds the module to its central promise: recycling is
+// reversible.
 func TestBackendDestroysOnlyUnderDiskPressure(t *testing.T) {
 	iface := reflect.TypeOf((*bin.Backend)(nil)).Elem()
 	got := make([]string, 0, iface.NumMethod())
@@ -172,8 +166,8 @@ func TestBackendDestroysOnlyUnderDiskPressure(t *testing.T) {
 	assert.Equal(t, []string{"Evict", "List", "Recycle", "Restore"}, got)
 }
 
-// Sweep against a real bin with room to spare: it reads the listing, finds no
-// filesystem under its target, and gives nothing back.
+// Sweep against a real bin with room to spare: it reads the listing, finds no filesystem under its
+// target.
 func TestSweepGivesNothingBackWhenThereIsRoom(t *testing.T) {
 	work := isolateTrash(t)
 	require.NoError(t, Recycle(writeFile(t, filepath.Join(work, "safe.txt"), "safe")))
@@ -233,9 +227,7 @@ func TestListOnAnEmptyBin(t *testing.T) {
 	assert.Empty(t, items)
 }
 
-// The daemon is reached through this package, so each entry point has to
-// actually forward to it. A wrapper that compiles is not a wrapper that is
-// wired to anything.
+// The daemon is reached through this package, so each entry point has to actually forward to it.
 func TestTheDaemonIsReachableFromHere(t *testing.T) {
 	isolateTrash(t)
 	t.Setenv("XDG_CACHE_HOME", t.TempDir())
@@ -247,8 +239,8 @@ func TestTheDaemonIsReachableFromHere(t *testing.T) {
 	assert.Equal(t, "daemon.lock", filepath.Base(lock))
 	assert.DirExists(t, filepath.Dir(lock))
 
-	// A test binary is never the daemon: running one with a "daemon" argument
-	// re-runs the suite, which recycles, which starts another.
+	// A test binary is never the daemon: running it with a "daemon" argument re-runs the suite, which
+	// recycles.
 	started, err := EnsureDaemon(filepath.Join(t.TempDir(), "recycler.test"))
 	assert.False(t, started)
 	require.Error(t, err)

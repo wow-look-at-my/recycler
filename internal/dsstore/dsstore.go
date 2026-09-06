@@ -1,32 +1,25 @@
 package dsstore
 
 // Codec for the Finder's ".DS_Store" files. On macOS that is where the Trash
-// keeps the "Put Back" location of every item in it, as a pair of records per
-// trashed file: "ptbL" holds the original parent directory relative to the
-// volume root, "ptbN" the original name.
+// keeps the "Put Back" location of every item in it: "ptbL" holds the original
+// parent directory relative to the volume root, and "ptbN" the original name.
 //
 // Apple has never documented the format, but it has been reverse engineered
 // often enough to be reliable. A file is a B-tree of records, stored in blocks
-// managed by a buddy allocator:
+// managed by a buddy allocator. The header carries a fixed prefix, the magic
+// "Bud1", and the offset and length of the allocator's bookkeeping block. That
+// offset appears again further along, and the Finder rejects a file whose
+// copies disagree. The tail of the header has no known purpose.
 //
-//	offset  size  meaning
-//	0       4     always 00 00 00 01
-//	4       4     magic "Bud1"
-//	8       4     offset of the allocator's bookkeeping block
-//	12      4     size of that block
-//	16      4     the same offset again; the Finder rejects the file if the
-//	              two copies differ
-//	20      16    unknown
+// Every offset in the file is relative to the end of the prefix, which is what
+// the offset adjustment below accounts for. The bookkeeping block holds the block address
+// table, where an entry packs an offset together with the block's width in its
+// low bits. It also holds a directory mapping "DSDB" to the block number of the
+// B-tree master block, and a free list per width.
 //
-// Every offset in the file is relative to byte 4, hence the +4 below. The
-// bookkeeping block holds the block address table (each entry packs an offset
-// with the block's size as a power of two in its low five bits), a directory
-// that maps "DSDB" to the block number of the B-tree master block, and 32 free
-// lists, one per power of two.
-//
-// A B-tree node starts with two integers, P and a record count. P == 0 marks a
-// leaf, whose records follow directly; otherwise the node is internal and holds
-// count (child block number, record) pairs, with P as the rightmost child.
+// A B-tree node opens with P and a record count. A leaf leaves P empty and its
+// records follow directly. An internal node holds that many (child block
+// number, record) entries, with P as the rightmost child.
 //
 // This file deliberately has no build constraint: keeping the codec portable
 // keeps it testable on any platform.
@@ -44,40 +37,33 @@ import (
 const (
 	FileName    = ".DS_Store"
 	dsMagic     = "Bud1"
-	dsHeaderLen = 36     // the four-byte prefix plus the 32-byte header
+	dsHeaderLen = 36     // the prefix plus the header
 	dsPageSize  = 0x1000 // B-tree node size, and what the master block records
-	dsMinWidth  = 5      // block offsets are 32-byte aligned, so 2^5 is the floor
-	dsMaxWidth  = 31     // the allocator manages a 2GB address space
+	dsMinWidth  = 5      // the floor width, set by how a block offset is aligned
+	dsMaxWidth  = 31     // the widest block the allocator manages
 
-	// dsFirstNodeBlock is the block number of the first B-tree node in a file
-	// this package writes: block 0 is the allocator's own bookkeeping, block 1
-	// the B-tree master block, and the nodes follow in order.
 	dsFirstNodeBlock = 2
 )
 
-// dsUnknownHeader fills the 16 header bytes whose purpose is unknown. These are
-// the values the Finder itself writes, and which every other implementation
-// copies.
+// dsUnknownHeader fills the header bytes whose purpose is unknown.
 var dsUnknownHeader = []byte{
 	0x00, 0x00, 0x10, 0x0c, 0x00, 0x00, 0x00, 0x87,
 	0x00, 0x00, 0x20, 0x0b, 0x00, 0x00, 0x00, 0x00,
 }
 
-// errBadDSStore is returned for a .DS_Store file that cannot be understood.
+// errBadDSStore is returned for a .DS_Store file that cannot.
 var errBadDSStore = errors.New("recycler: malformed .DS_Store")
 
-// A Record is one property of one file in the directory the .DS_Store
-// describes. Data holds the value exactly as stored, so records this package
-// has no use for survive a rewrite untouched.
+// A Record is a property of a file in the directory the .DS_Store describes.
 type Record struct {
 	Name string // the file the record is about
-	Code string // four-character structure id, "ptbL" for a put back location
-	Type string // four-character data type, "ustr" for a Unicode string
+	Code string // structure id, "ptbL" for a put back location
+	Type string // data type, "ustr" for a Unicode string
 	Data []byte // raw value, including any length prefix
 }
 
-// Ustr builds a record holding a Unicode string, the type both put back
-// records use.
+// Ustr builds a record holding a Unicode string, the type every put back
+// record uses.
 func Ustr(name, code, value string) Record {
 	chars := utf16.Encode([]rune(value))
 	data := make([]byte, 4+len(chars)*2)
@@ -110,8 +96,7 @@ func (r Record) size() int {
 	return 4 + len(utf16.Encode([]rune(r.Name)))*2 + 8 + len(r.Data)
 }
 
-// dsValueLen returns the length of a value of the given type at the start of
-// data. It is how the parser knows where one record ends and the next begins.
+// dsValueLen returns the length.
 func dsValueLen(typ string, data []byte) (int, error) {
 	fixed := func(n int) (int, error) {
 		if len(data) < n {
@@ -144,7 +129,7 @@ func dsValueLen(typ string, data []byte) (int, error) {
 	}
 }
 
-// dsReader reads big-endian fields out of a block, refusing to run off its end.
+// dsReader reads big-endian fields out.
 type dsReader struct {
 	buf []byte
 	pos int
@@ -175,7 +160,7 @@ func (r *dsReader) take(n int) ([]byte, error) {
 	return b, nil
 }
 
-// utf16Str reads a big-endian UTF-16 string of count characters.
+// utf16Str reads a big-endian Unicode string of count characters.
 func (r *dsReader) utf16Str(count int) (string, error) {
 	b, err := r.take(count * 2)
 	if err != nil {
@@ -188,8 +173,7 @@ func (r *dsReader) utf16Str(count int) (string, error) {
 	return string(utf16.Decode(chars)), nil
 }
 
-// Parse decodes every record in a .DS_Store file, in the order they are
-// stored. A file with no B-tree yields no records and no error.
+// Parse decodes every record in a .DS_Store file, in the order they are stored.
 func Parse(data []byte) ([]Record, error) {
 	if len(data) < dsHeaderLen {
 		return nil, fmt.Errorf("%w: %d bytes is too short", errBadDSStore, len(data))
@@ -285,8 +269,7 @@ func Parse(data []byte) ([]Record, error) {
 	return records, nil
 }
 
-// dsSlice returns the bytes of the block at offset, remembering that offsets in
-// the file are relative to its fourth byte.
+// dsSlice returns the bytes of the block at offset, remembering that offsets in the file.
 func dsSlice(data []byte, offset, size uint32) ([]byte, error) {
 	start, end := int(offset)+4, int(offset)+4+int(size)
 	if offset > uint32(len(data)) || end > len(data) || start > end {
@@ -295,15 +278,14 @@ func dsSlice(data []byte, offset, size uint32) ([]byte, error) {
 	return data[start:end], nil
 }
 
-// parseDSBookkeeping reads the allocator's block address table and directory.
-// The free lists that follow are not needed to read a file.
+// parseDSBookkeeping reads the allocator's block address table.
 func parseDSBookkeeping(book []byte) ([]uint32, map[string]uint32, error) {
 	r := &dsReader{buf: book}
 	count, err := r.u32()
 	if err != nil {
 		return nil, nil, err
 	}
-	if _, err := r.u32(); err != nil { // unknown, always zero
+	if _, err := r.u32(); err != nil { // unknown, and never set
 		return nil, nil, err
 	}
 	if int(count) > len(book)/4 {
@@ -315,7 +297,7 @@ func parseDSBookkeeping(book []byte) ([]uint32, map[string]uint32, error) {
 			return nil, nil, err
 		}
 	}
-	// The table is padded with zeroes to a multiple of 256 entries.
+	// The table is padded with zeroes to a whole number of pages.
 	if padding := (256 - int(count)%256) % 256; padding > 0 {
 		if _, err := r.take(padding * 4); err != nil {
 			return nil, nil, err
@@ -345,7 +327,7 @@ func parseDSBookkeeping(book []byte) ([]uint32, map[string]uint32, error) {
 	return addresses, directory, nil
 }
 
-// readDSRecord reads one record at the reader's current position.
+// readDSRecord reads a record at the reader's current position.
 func readDSRecord(r *dsReader) (Record, error) {
 	length, err := r.u32()
 	if err != nil {

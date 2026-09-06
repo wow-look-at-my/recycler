@@ -23,8 +23,8 @@ func TestBinMetadataRoundTrip(t *testing.T) {
 	assert.Equal(t, want.OriginalPath, got.OriginalPath)
 }
 
-// TestBinMetadataVersion1 decodes a hand-built version 1 record, the layout
-// Windows Vista through 8.1 write, with its fixed-width 260-character path.
+// TestBinMetadataVersion1 decodes a hand-built older-version record, the layout Windows wrote before
+// the path.
 func TestBinMetadataVersion1(t *testing.T) {
 	const path = `D:\photos\holiday.jpg`
 	deletedAt := time.Date(2013, 3, 1, 8, 30, 0, 0, time.UTC)

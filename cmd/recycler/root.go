@@ -6,7 +6,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// version is overridden at build time with -ldflags "-X main.version=...".
 var version = "dev"
 
 var rootCmd = &cobra.Command{
@@ -28,8 +27,7 @@ the Trash on macOS and the Recycle Bin on Windows.`,
 	SilenceErrors: true,
 }
 
-// interactive reports whether both ends of the conversation are a terminal: a full screen needs somewhere to draw and
-// somebody to type.
+// interactive reports whether each end of the conversation.
 func interactive() bool {
 	return charDevice(os.Stdin) && charDevice(os.Stdout)
 }

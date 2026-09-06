@@ -12,9 +12,7 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-// A copy has to refuse what it cannot reproduce. Copying a socket or a device
-// node byte by byte would produce a plain file that restores as something else,
-// so the copy fails and says which file it was.
+// A copy has to refuse what it cannot reproduce.
 func TestCopyTreeRefusesWhatItCannotReproduce(t *testing.T) {
 	dir := t.TempDir()
 	fifo := filepath.Join(dir, "pipe")
@@ -31,7 +29,7 @@ func TestDeviceOf(t *testing.T) {
 	dev, err := DeviceOf(dir)
 	require.NoError(t, err)
 
-	// Everything inside one directory is on one filesystem.
+	// Everything inside a directory shares its filesystem.
 	sub := filepath.Join(dir, "sub")
 	require.NoError(t, os.Mkdir(sub, 0o755))
 	subDev, err := DeviceOf(sub)
@@ -47,15 +45,14 @@ func TestTopDirOf(t *testing.T) {
 	dev, err := DeviceOf(dir)
 	require.NoError(t, err)
 
-	// Walking up from a directory on a filesystem reaches that filesystem's
-	// mount point, which is always an ancestor of where it started.
+	// Walking up from a directory on a filesystem reaches that filesystem's mount point, which is always.
 	top := TopDirOf(dir, dev)
 	assert.True(t, dir == top || len(top) < len(dir), "top directory %q is not an ancestor of %q", top, dir)
 	topDev, err := DeviceOf(top)
 	require.NoError(t, err)
 	assert.Equal(t, dev, topDev)
 
-	// A device number that matches nothing stops the walk immediately.
+	// A device number that matches nothing.
 	assert.Equal(t, dir, TopDirOf(dir, ^uint64(0)))
 }
 

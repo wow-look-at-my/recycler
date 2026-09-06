@@ -5,7 +5,8 @@ package putback
 // The "Put Back" records macOS keeps for everything in the Trash, and the
 // reading and writing of the .DS_Store file that holds them.
 //
-// Each trashed item has two records in its trash directory's .DS_Store, keyed
+// Each trashed item has a location record and a name record in its trash
+// directory's .DS_Store, keyed
 // by the name the item has inside the trash:
 //
 //	ptbL  the original parent directory, relative to the volume root
@@ -14,8 +15,8 @@ package putback
 //
 // Nothing else records where a trashed file came from, so this is what Finder's
 // Put Back command reads, what other trash tools read, and what this package
-// both reads and writes. Keeping the records here rather than in a private
-// index is what makes the two interoperate.
+// it reads and writes. Keeping the records here rather than in a private
+// index is what makes Finder and this package interoperate.
 //
 // This file is built on every Unix so that the .DS_Store handling is exercised
 // by the test suite, which runs on Linux.
@@ -43,7 +44,7 @@ type Origin struct {
 	Name string // original name
 }
 
-// Of splits an absolute original path into the pair recorded for an item
+// Of splits an absolute original path into the records kept for an item
 // trashed onto the volume mounted at root.
 func Of(root, original string) Origin {
 	dir := filepath.Dir(original)
@@ -53,10 +54,7 @@ func Of(root, original string) Origin {
 	return Origin{Dir: dir, Name: filepath.Base(original)}
 }
 
-// path rebuilds the absolute original path of an item trashed onto the volume
-// mounted at root. It is empty when the location was never recorded. A location
-// that is already absolute is taken as it stands, which is what makes a record
-// written by some other trash implementation usable.
+// path rebuilds the absolute original path of an item trashed onto the volume mounted at root.
 func (p Origin) Path(root string) string {
 	if p.Dir == "" || p.Name == "" {
 		return ""
@@ -67,10 +65,7 @@ func (p Origin) Path(root string) string {
 	return filepath.Join(root, p.Dir, p.Name)
 }
 
-// TrashName picks the name an item takes inside a trash directory. The
-// directory's own .DS_Store holds the put back records, so nothing recycled
-// takes that name however free it looks - the record keeps the item's real name
-// regardless of what it is called in the trash.
+// TrashName picks the name an item takes inside a trash directory.
 func TrashName(want, dir string) string {
 	name := fsutil.UniqueName(want, dir)
 	if name == dsstore.FileName {
@@ -79,10 +74,7 @@ func TrashName(want, dir string) string {
 	return name
 }
 
-// Read returns the put back records of a trash directory, keyed by the
-// name of the item inside it. A missing, unreadable or unintelligible .DS_Store
-// yields no records rather than an error: an item whose origin is unknown is
-// still an item, and must still be listed.
+// Read returns the put back records of a trash directory, keyed by the name of the item inside it.
 func Read(dir string) map[string]Origin {
 	data, err := os.ReadFile(filepath.Join(dir, dsstore.FileName))
 	if err != nil {
@@ -149,8 +141,7 @@ func Clear(dir string, names ...string) error {
 	})
 }
 
-// withoutPutBack removes one item's put back records, keeping everything else
-// the .DS_Store has to say about the directory.
+// withoutPutBack removes an item's put back records, keeping everything else the .DS_Store.
 func withoutPutBack(records []dsstore.Record, name string) []dsstore.Record {
 	kept := records[:0]
 	for _, r := range records {
@@ -162,10 +153,7 @@ func withoutPutBack(records []dsstore.Record, name string) []dsstore.Record {
 	return kept
 }
 
-// updateDSStore rewrites a directory's .DS_Store with the records fn returns,
-// holding an exclusive lock so that two of these cannot race. Nothing can stop
-// Finder from writing the same file at the same moment; that race is Apple's
-// own, and loses put back information for Finder too.
+// updateDSStore rewrites a directory's .DS_Store with the records fn returns, holding.
 func updateDSStore(dir string, fn func([]dsstore.Record) []dsstore.Record) error {
 	f, err := os.OpenFile(filepath.Join(dir, dsstore.FileName), os.O_RDWR|os.O_CREATE, 0o600)
 	if err != nil {
@@ -183,10 +171,7 @@ func updateDSStore(dir string, fn func([]dsstore.Record) []dsstore.Record) error
 	}
 	var records []dsstore.Record
 	if len(data) > 0 {
-		// Everything else a .DS_Store holds is display settings - icon
-		// positions, window size - so a damaged one costs the trash window its
-		// appearance at worst. Losing the put back records instead is not a
-		// trade worth making.
+		// Everything else a .DS_Store holds is display settings - icon positions.
 		records, _ = dsstore.Parse(data)
 	}
 	updated, err := dsstore.Build(fn(records))

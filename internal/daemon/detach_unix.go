@@ -7,8 +7,7 @@ import (
 	"syscall"
 )
 
-// detach puts the daemon in its own session, so it outlives the shell that ran
-// the recycle and takes no signal aimed at that shell's process group.
+// detach puts the daemon in its own session, so it outlives the shell.
 func detach(cmd *exec.Cmd) {
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 }

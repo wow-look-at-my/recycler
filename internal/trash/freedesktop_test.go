@@ -23,8 +23,7 @@ func homeTrash(t *testing.T) string {
 	return b.(*fdoTrash).home
 }
 
-// TestTrashInfoIsSpecCompliant checks the metadata this package writes against
-// the FreeDesktop trash specification, so other trash tools can read it.
+// TestTrashInfoIsSpecCompliant checks the metadata this package writes against the FreeDesktop trash.
 func TestTrashInfoIsSpecCompliant(t *testing.T) {
 	work := isolateTrash(t)
 	path := writeFile(t, filepath.Join(work, "a file with spaces & symbols.txt"), "x")
@@ -51,10 +50,7 @@ func TestTrashInfoIsSpecCompliant(t *testing.T) {
 	_, err = time.ParseInLocation(deletionDateLayout, date, time.Local)
 	assert.NoError(t, err, "DeletionDate %q is not in the format the specification requires", date)
 
-	// The specification names the keys an entry must carry, not the only ones
-	// it may: a reader takes the keys it knows and ignores the rest, which is
-	// what lets this record a Size next to them. Every extra line still has to
-	// be a key, so nothing here can produce a file another tool trips over.
+	// The specification names the keys an entry must carry, not the only ones it may.
 	for _, line := range lines[3:] {
 		key, _, ok := strings.Cut(line, "=")
 		assert.True(t, ok, "line %q is not a key=value pair", line)
@@ -62,9 +58,7 @@ func TestTrashInfoIsSpecCompliant(t *testing.T) {
 	}
 }
 
-// TestEvictDestroysAnEntryAndItsMetadata covers the only operation here that
-// destroys anything. Both halves of the entry have to go: a leftover
-// .trashinfo is an entry whose file is missing.
+// TestEvictDestroysAnEntryAndItsMetadata covers the only operation here that destroys anything.
 func TestEvictDestroysAnEntryAndItsMetadata(t *testing.T) {
 	work := isolateTrash(t)
 	require.NoError(t, recycle(writeFile(t, filepath.Join(work, "doomed.txt"), "bytes")))
@@ -87,9 +81,7 @@ func TestEvictDestroysAnEntryAndItsMetadata(t *testing.T) {
 	assert.Empty(t, entries, "the .trashinfo outlived the file it described")
 }
 
-// TestEvictRejectsAnIDOutsideTheBin holds eviction to the same validation
-// restore gets. This is the one path that deletes, so an ID that names
-// something outside the bin must reach nothing at all.
+// TestEvictRejectsAnIDOutsideTheBin holds eviction to the same validation restore gets.
 func TestEvictRejectsAnIDOutsideTheBin(t *testing.T) {
 	work := isolateTrash(t)
 	outsider := writeFile(t, filepath.Join(work, "innocent.txt"), "do not touch")
@@ -103,9 +95,7 @@ func TestEvictRejectsAnIDOutsideTheBin(t *testing.T) {
 	assert.FileExists(t, outsider, "a hostile ID reached a file outside the bin")
 }
 
-// TestSizeIsRecordedWhenRecycled checks the number the daemon evicts by. It has
-// to be written when the item is recycled: after that the original is gone, and
-// walking the copy in the bin is what recording it exists to avoid.
+// TestSizeIsRecordedWhenRecycled checks the number the daemon evicts on.
 func TestSizeIsRecordedWhenRecycled(t *testing.T) {
 	work := isolateTrash(t)
 	path := writeFile(t, filepath.Join(work, "sized.txt"), strings.Repeat("x", 4096))
@@ -125,10 +115,8 @@ func TestSizeIsRecordedWhenRecycled(t *testing.T) {
 	assert.Contains(t, string(raw), "Size=4096")
 }
 
-// TestAForeignEntryIsSizedOnceAndRecorded covers an entry another trash
-// implementation wrote, which carries no size. It is measured on first sight
-// and the number written back, so the walk happens once rather than on every
-// poll the daemon makes.
+// TestAForeignEntryIsSizedOnceAndRecorded covers an entry another trash implementation wrote, which
+// carries no size.
 func TestAForeignEntryIsSizedOnceAndRecorded(t *testing.T) {
 	isolateTrash(t)
 	trash := homeTrash(t)
@@ -151,8 +139,7 @@ func TestAForeignEntryIsSizedOnceAndRecorded(t *testing.T) {
 	assert.Contains(t, string(raw), "Size=512", "the size was not written back: %q", raw)
 }
 
-// TestReadsForeignTrashEntries checks that entries written by another trash
-// implementation - a file manager, say - are listed and restored correctly.
+// TestReadsForeignTrashEntries checks that another implementation's entries read back.
 func TestReadsForeignTrashEntries(t *testing.T) {
 	work := isolateTrash(t)
 	trash := homeTrash(t)
@@ -224,7 +211,7 @@ func TestReadInfoFile(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, info.deletedAt.Equal(time.Date(2026, 7, 26, 11, 24, 9, 0, time.UTC)))
 
-	// Junk lines are ignored, and an unparseable date leaves the zero time
+	// Junk lines are ignored, and an unparseable date leaves an empty time
 	// behind for the caller to replace.
 	odd := writeFile(t, filepath.Join(dir, "odd"+trashInfoExt),
 		"[Trash Info]\nnonsense\nPath=%zz\nDeletionDate=not a date\n")

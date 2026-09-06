@@ -6,11 +6,7 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-// tryLock takes the daemon's exclusive lock without blocking. It reports
-// ok=false when another process already holds it.
-//
-// Windows releases a byte-range lock when the handle closes, including on a
-// process that exits without unlocking, so a crash leaves nothing stale.
+// tryLock takes the daemon's exclusive lock without.
 func tryLock(path string) (unlock func(), ok bool, err error) {
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o600)
 	if err != nil {

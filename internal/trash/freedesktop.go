@@ -2,8 +2,8 @@
 
 package trash
 
-// FreeDesktop.org Trash implementation, following the Trash specification v1.0:
-// https://specifications.freedesktop.org/trash-spec/trashspec-1.0.html
+// FreeDesktop.org Trash implementation, following the Trash specification, revision v1_0:
+// https://specifications.freedesktop.org/trash-spec/latest/
 //
 // Files recycled from the filesystem holding the home directory go to the home
 // trash ($XDG_DATA_HOME/Trash). Files on any other filesystem go to a trash
@@ -32,8 +32,7 @@ const (
 	trashFilesDir = "files"
 	trashInfoDir  = "info"
 	trashInfoExt  = ".trashinfo"
-	// deletionDateLayout is the local-time layout the spec mandates for the
-	// DeletionDate field.
+	// deletionDateLayout is the local-time.
 	deletionDateLayout = "2006-01-02T15:04:05"
 )
 
@@ -88,9 +87,7 @@ func (t *fdoTrash) recycleOne(path string) error {
 		return err
 	}
 
-	// Record the original location relative to the top directory when using a
-	// per-filesystem trash, so the entry survives the filesystem being mounted
-	// somewhere else.
+	// A per-filesystem trash records the location relative to the top directory.
 	recorded := abs
 	if top != "" {
 		if rel, err := filepath.Rel(top, abs); err == nil {
@@ -102,10 +99,7 @@ func (t *fdoTrash) recycleOne(path string) error {
 	if err != nil {
 		return err
 	}
-	// The size is measured here, while the item is still at its original
-	// location, and recorded. This is the only walk of its contents there ever
-	// is: what is in the bin does not change, so every later reader takes the
-	// recorded number instead of walking the tree again.
+	// The size is measured here, while the item is still at its original location, and recorded.
 	infoPath := filepath.Join(dir, trashInfoDir, name+trashInfoExt)
 	_, err = fmt.Fprintf(info, "[Trash Info]\nPath=%s\nDeletionDate=%s\nSize=%d\n",
 		escapePath(recorded), time.Now().Format(deletionDateLayout), fsutil.TreeSize(abs))
@@ -160,10 +154,6 @@ func (t *fdoTrash) List() ([]bin.Item, error) {
 			size := info.size
 			if size == bin.SizeUnknown {
 				// An entry another implementation wrote records no size.
-				// Measure it once and record it, so this is the last walk
-				// of it: listing is on the daemon's poll path, and a bin
-				// full of foreign entries would otherwise be re-walked
-				// every time anything asks what is in it.
 				size = fsutil.TreeSize(file)
 				recordSize(filepath.Join(dir, trashInfoDir, entry.Name()), size)
 			}
@@ -217,9 +207,7 @@ func (t *fdoTrash) Restore(id, dest string) (string, error) {
 	return dest, nil
 }
 
-// evict destroys a recycled item and its metadata. Only the disk-pressure
-// daemon calls this. resolveID does the same validation restore relies on, so
-// an ID that does not name an entry in this user's bin removes nothing.
+// evict destroys a recycled item and its metadata.
 func (t *fdoTrash) Evict(id string) error {
 	file, infoPath, err := t.resolveID(id)
 	if err != nil {
@@ -228,17 +216,11 @@ func (t *fdoTrash) Evict(id string) error {
 	if err := os.RemoveAll(file); err != nil {
 		return err
 	}
-	// The data is gone; a leftover .trashinfo would list as an entry whose
-	// file is missing. list already skips those, so a failure to remove it
-	// is untidy rather than wrong.
 	os.Remove(infoPath)
 	return nil
 }
 
-// resolveID validates an item ID and returns the path of the recycled file and
-// of its .trashinfo file. IDs that do not name a file inside a trash directory
-// belonging to this user are rejected, so a malformed ID can never delete or
-// move something outside the recycle bin.
+// resolveID validates an item ID and returns the path.
 func (t *fdoTrash) resolveID(id string) (file, infoPath string, err error) {
 	clean := filepath.Clean(id)
 	parent := filepath.Dir(clean)
@@ -262,9 +244,7 @@ func (t *fdoTrash) resolveID(id string) (file, infoPath string, err error) {
 	return clean, filepath.Join(dir, trashInfoDir, filepath.Base(clean)+trashInfoExt), nil
 }
 
-// trashDirFor returns the trash directory a path should be recycled into,
-// creating it if needed. top is the top directory of the filesystem when the
-// trash is a per-filesystem one, and empty for the home trash.
+// trashDirFor returns the trash directory a path should be recycled into.
 func (t *fdoTrash) trashDirFor(path string) (dir, top string, err error) {
 	if err := ensureTrashDir(t.home); err != nil {
 		return "", "", err
@@ -282,8 +262,7 @@ func (t *fdoTrash) trashDirFor(path string) (dir, top string, err error) {
 	}
 
 	top = fsutil.TopDirOf(filepath.Dir(path), srcDev)
-	// Preferred location: an administrator-created $topdir/.Trash with the
-	// sticky bit set, in which each user gets a subdirectory.
+	// Preferred location: an administrator-created $topdir/.Trash with the sticky bit.
 	if shared := filepath.Join(top, ".Trash"); fsutil.IsStickyDir(shared) {
 		dir = filepath.Join(shared, strconv.Itoa(t.uid))
 		if err := ensureTrashDir(dir); err == nil {
@@ -297,8 +276,7 @@ func (t *fdoTrash) trashDirFor(path string) (dir, top string, err error) {
 	return dir, top, nil
 }
 
-// trashDirs returns every trash directory belonging to this user that exists
-// right now: the home trash plus one per mounted filesystem.
+// trashDirs returns every trash directory belonging to this user.
 func (t *fdoTrash) trashDirs() []string {
 	dirs := []string{t.home}
 	seen := set.Of[string](t.home)
@@ -319,8 +297,8 @@ func (t *fdoTrash) trashDirs() []string {
 	return dirs
 }
 
-// topDirOfTrash returns the filesystem top directory a per-filesystem trash
-// directory belongs to, or "" if dir is not one.
+// topDirOfTrash returns the filesystem top directory a per-filesystem trash directory belongs to, or
+// "".
 func topDirOfTrash(dir string) string {
 	base := filepath.Base(dir)
 	switch {
@@ -344,8 +322,7 @@ func ensureTrashDir(dir string) error {
 	return nil
 }
 
-// createInfoFile atomically claims a free name in the trash directory by
-// creating its .trashinfo file, and returns the name along with the open file.
+// createInfoFile atomically claims a free name.
 func createInfoFile(dir, want string) (string, *os.File, error) {
 	if want == "" || want == "." || want == ".." || strings.ContainsRune(want, filepath.Separator) {
 		want = "recycled"
@@ -407,13 +384,8 @@ func readInfoFile(path string) (trashInfo, error) {
 	return info, nil
 }
 
-// recordSize appends a Size line to a .trashinfo file that has none, so the
-// tree behind it is never walked a second time. The size of something in the
-// bin does not change, which is what makes one measurement enough.
-//
-// Best effort: a bin on a read-only mount, or one owned by another user, keeps
-// working and pays for a walk each time it is listed. Nothing but that walk is
-// lost, so a failure here is not worth failing a listing over.
+// recordSize appends a Size line to a .trashinfo file that has none, so the tree behind it is never
+// walked again.
 func recordSize(infoPath string, size int64) {
 	if size == bin.SizeUnknown {
 		return
@@ -435,8 +407,7 @@ func parseDeletionDate(value string) time.Time {
 	return time.Time{}
 }
 
-// escapePath percent-encodes a path for the Path field of a .trashinfo file,
-// leaving the separators intact as the specification requires.
+// escapePath percent-encodes a path for a .trashinfo Path field, separators intact.
 func escapePath(path string) string {
 	u := url.URL{Path: path}
 	return u.EscapedPath()

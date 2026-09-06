@@ -12,8 +12,7 @@ import (
 	"github.com/wow-look-at-my/recycler/internal/bin"
 )
 
-// move relocates src to dst, falling back to a copy when the two are on
-// different filesystems. It never overwrites an existing dst.
+// move relocates src to dst, falling back to a copy when src and dst.
 func Move(src, dst string) error {
 	if _, err := os.Lstat(dst); err == nil {
 		return fmt.Errorf("%w: %s", bin.ErrExists, dst)
@@ -93,8 +92,7 @@ func copyFile(src, dst string, perm fs.FileMode) error {
 	return out.Close()
 }
 
-// TreeSize returns the total size in bytes of a file or directory tree, or
-// [bin.SizeUnknown] if it cannot be determined.
+// TreeSize returns the total size.
 func TreeSize(path string) int64 {
 	info, err := os.Lstat(path)
 	if err != nil {
@@ -124,10 +122,7 @@ func TreeSize(path string) int64 {
 	return total
 }
 
-// UniqueName returns a name derived from want that does not yet exist in any of
-// the given directories, together with the suffix that was appended (if any).
-// Both directories are checked so a trash implementation can keep its data and
-// metadata file names in sync.
+// UniqueName returns a name derived from want that does not yet exist.
 func UniqueName(want string, dirs ...string) string {
 	if want == "" || want == "." || want == ".." || strings.ContainsRune(want, filepath.Separator) {
 		want = "recycled"

@@ -14,7 +14,7 @@ import (
 	"github.com/wow-look-at-my/recycler/internal/diskfree"
 )
 
-// fakeBackend records what the sweep evicted without touching a filesystem.
+// fakeBackend records what the sweep evicted without.
 type fakeBackend struct {
 	evicted []string
 	fail    map[string]error
@@ -42,18 +42,18 @@ func item(name string, size int64, ageHours int) bin.Item {
 	}
 }
 
-// freeSpace returns a probe reporting a fixed filesystem, so a test can put one
-// under pressure without filling a real disk.
+// freeSpace returns a probe reporting a fixed filesystem, so a test can put it under pressure without
+// filling.
 func freeSpace(avail, total uint64) func(string) (uint64, uint64, error) {
 	return func(string) (uint64, uint64, error) { return avail, total, nil }
 }
 
 func TestFreeTargetIsATenthCappedAtAGigabyte(t *testing.T) {
-	// A small filesystem keeps a tenth of itself.
+	// A small filesystem keeps the fraction.
 	assert.Equal(t, uint64(100), FreeTarget(1000))
-	// A large one stops at the ceiling rather than reserving a tenth of it.
+	// A large filesystem stops at the ceiling.
 	assert.Equal(t, uint64(freeTargetCeiling), FreeTarget(1<<40))
-	// Exactly at the crossover the two agree.
+	// Exactly at the crossover the fraction and the ceiling agree.
 	assert.Equal(t, uint64(freeTargetCeiling), FreeTarget(10*freeTargetCeiling))
 }
 
@@ -69,8 +69,7 @@ func TestASweepLeavesAFilesystemWithRoomAlone(t *testing.T) {
 
 func TestASweepTakesTheOldestFirstAndStopsAtTheTarget(t *testing.T) {
 	b := &fakeBackend{}
-	// A 2000-byte filesystem wants 200 free and has 50. Freeing the oldest
-	// 200-byte item alone clears the target, so the newer ones stay.
+	// A filesystem below its target, where freeing the oldest item alone clears the target.
 	items := []bin.Item{
 		item("newest.txt", 200, 1),
 		item("oldest.txt", 200, 72),
@@ -93,7 +92,7 @@ func TestASweepKeepsGoingUntilTheTargetIsMet(t *testing.T) {
 		item("c.txt", 100, 1),
 	}
 
-	// Wants 200 free of 2000 and has none, so two items go and the newest
+	// Wants a target it has none of, so items go oldest before newest and the newest
 	// survives.
 	_, err := sweepItems(b, items, freeSpace(0, 2000))
 	require.NoError(t, err)
@@ -103,8 +102,7 @@ func TestASweepKeepsGoingUntilTheTargetIsMet(t *testing.T) {
 	}, b.evicted)
 }
 
-// An item of unknown size cannot be accounted for, so evicting it would be
-// destroying something to reclaim a quantity the sweep cannot name.
+// An item of unknown size cannot be accounted for, so evicting it would be destroying something.
 func TestAnItemOfUnknownSizeIsNeverEvicted(t *testing.T) {
 	b := &fakeBackend{}
 	items := []bin.Item{
@@ -118,8 +116,7 @@ func TestAnItemOfUnknownSizeIsNeverEvicted(t *testing.T) {
 		"the unsized item must survive even though it is older")
 }
 
-// A failed eviction frees nothing, so the sweep must not count its bytes and
-// stop short of the target believing it got them.
+// A failed eviction frees nothing, so the sweep must not count its bytes and stop short.
 func TestAFailedEvictionDoesNotCountAsSpaceReclaimed(t *testing.T) {
 	stuck := filepath.Join("/trash", "files", "stuck.txt")
 	b := &fakeBackend{fail: map[string]error{stuck: errors.New("permission denied")}}
@@ -136,8 +133,7 @@ func TestAFailedEvictionDoesNotCountAsSpaceReclaimed(t *testing.T) {
 	assert.NoError(t, evicted[1].Error)
 }
 
-// Each filesystem is judged on its own free space: a full one must not reach
-// across and evict items sitting on a different disk.
+// Each filesystem is judged on its own free space: a full filesystem must not reach.
 func TestEachFilesystemIsSweptOnItsOwnPressure(t *testing.T) {
 	b := &fakeBackend{}
 	items := []bin.Item{
@@ -156,9 +152,7 @@ func TestEachFilesystemIsSweptOnItsOwnPressure(t *testing.T) {
 	assert.Equal(t, []string{"/trash/files/a.txt"}, b.evicted)
 }
 
-// A filesystem that cannot be read is skipped, the same way an unreadable
-// trash directory is skipped when listing: one bad mount must not stop the
-// daemon guarding the rest.
+// A filesystem that cannot be read is skipped, the way a bad trash directory is.
 func TestAnUnreadableFilesystemIsSkipped(t *testing.T) {
 	b := &fakeBackend{}
 	items := []bin.Item{item("a.txt", 200, 1)}
@@ -171,8 +165,7 @@ func TestAnUnreadableFilesystemIsSkipped(t *testing.T) {
 	assert.Empty(t, b.evicted)
 }
 
-// The lock is what makes it one daemon per user. A second one has to find the
-// lock held and stand down rather than sweep alongside the first.
+// The lock is what makes it a daemon per user.
 func TestASecondDaemonStandsDown(t *testing.T) {
 	t.Setenv("XDG_CACHE_HOME", t.TempDir())
 	lock, err := LockPath()
@@ -190,9 +183,7 @@ func TestASecondDaemonStandsDown(t *testing.T) {
 	assert.ErrorIs(t, Run(t.Context(), time.Second, nil), bin.ErrDaemonRunning)
 }
 
-// The loop is what makes it a daemon: it sweeps, reports, waits for the tick
-// and sweeps again, until the context is done. A zero interval takes the
-// default rather than spinning.
+// The loop is what makes it a daemon: it sweeps, reports, waits for the tick and sweeps again.
 func TestTheDaemonSweepsUntilItsContextIsDone(t *testing.T) {
 	t.Setenv("XDG_CACHE_HOME", t.TempDir())
 	home := t.TempDir()
@@ -214,7 +205,7 @@ func TestTheDaemonSweepsUntilItsContextIsDone(t *testing.T) {
 	assert.GreaterOrEqual(t, sweeps, 2, "the daemon stopped after its first sweep")
 }
 
-// A zero interval is the caller not choosing one, not a request to spin.
+// An unset interval is the caller not choosing, not a request to spin.
 func TestAZeroIntervalTakesTheDefault(t *testing.T) {
 	t.Setenv("XDG_CACHE_HOME", t.TempDir())
 	home := t.TempDir()
@@ -224,8 +215,7 @@ func TestAZeroIntervalTakesTheDefault(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 
-	// The first sweep runs before the first tick, so cancelling from it returns
-	// without ever waiting out DefaultPollInterval.
+	// A sweep runs before any tick, so cancelling from it returns without ever waiting out.
 	err := Run(ctx, 0, func([]Eviction, error) { cancel() })
 	assert.ErrorIs(t, err, context.Canceled)
 }
@@ -238,9 +228,7 @@ func TestDiskFreeReportsARealFilesystem(t *testing.T) {
 	assert.LessOrEqual(t, avail, total)
 }
 
-// Ensure must refuse a test binary. os.Executable() under `go test` is the test
-// binary, and running one with a "daemon" argument re-runs the whole suite,
-// which recycles, which lands back here: a fork bomb.
+// Ensure must refuse a test binary.
 func TestTheDaemonIsNeverStartedFromATestBinary(t *testing.T) {
 	started, err := Ensure(filepath.Join(t.TempDir(), "recycler.test"))
 	assert.False(t, started)

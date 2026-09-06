@@ -13,9 +13,7 @@ import (
 	"github.com/wow-look-at-my/recycler/internal/dsstore"
 )
 
-// Fixtures written by an independent implementation of the format, kept beside
-// the package that parses it. Reading them here is what proves a real Finder
-// store's put back records come back.
+// Fixtures an independent implementation of the format wrote.
 const (
 	finderTrashStore     = "../dsstore/testdata/finder_trash.DS_Store"
 	editedElsewhereStore = "../dsstore/testdata/edited_elsewhere.DS_Store"
@@ -88,8 +86,7 @@ func TestPutBackReplacesAStaleRecord(t *testing.T) {
 
 func TestNothingRecycledTakesTheDSStoreName(t *testing.T) {
 	dir := t.TempDir()
-	// A file really can be called .DS_Store, and recycling one must not put it
-	// where the put back records live - writing them would destroy it.
+	// A file really can be called .DS_Store, and recycling it must not put.
 	name := TrashName(dsstore.FileName, dir)
 	assert.NotEqual(t, dsstore.FileName, name)
 
@@ -141,8 +138,7 @@ func TestUnusableStoresAreNotFatal(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(dir, dsstore.FileName), []byte("not a .DS_Store at all"), 0o600))
 	assert.Empty(t, Read(dir), "a damaged .DS_Store failed to list")
 
-	// Recording an origin must work even when what was there is unreadable: the
-	// put back records matter, the icon positions do not.
+	// Recording an origin must work even when what was there is unreadable: the put back records matter.
 	require.NoError(t, Set(dir, "notes.txt", Origin{Dir: "Users/ada", Name: "notes.txt"}))
 	assert.Equal(t, map[string]Origin{
 		"notes.txt": {Dir: "Users/ada", Name: "notes.txt"},
@@ -162,9 +158,8 @@ func TestReadsPutBacksFromAForeignStore(t *testing.T) {
 }
 
 func TestReadsPutBacksAnotherImplementationWrote(t *testing.T) {
-	// Finder rewrites the trash's .DS_Store whenever it feels like it, so a
-	// file this package wrote comes back reorganised by something else, with
-	// records this package never wrote in it.
+	// Finder rewrites the trash's .DS_Store whenever it feels like it, so a file this package wrote comes
+	// back.
 	dir := t.TempDir()
 	data, err := os.ReadFile(editedElsewhereStore)
 	require.NoError(t, err)

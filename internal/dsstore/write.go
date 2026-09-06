@@ -16,8 +16,6 @@ import (
 )
 
 // Build writes a complete .DS_Store file holding exactly these records.
-// The whole file is rebuilt rather than edited in place, which is what keeps
-// the buddy allocator's bookkeeping honest.
 func Build(records []Record) ([]byte, error) {
 	sorted := make([]Record, len(records))
 	copy(sorted, records)
@@ -41,10 +39,8 @@ func Build(records []Record) ([]byte, error) {
 	}
 	nodes := dsEncodeNodes(levels)
 
-	// The bookkeeping block is block 0, but its size depends on how much the
-	// allocator ends up doing, so lay the file out with an estimate and repeat
-	// until the estimate holds.
-	bookSize := 1264 // what an empty store needs, and enough for a small one
+	// The bookkeeping block comes at the start, but its size depends on how much.
+	bookSize := 1264 // what an empty store needs, and enough for a small store
 	for attempt := 0; ; attempt++ {
 		file, actual, err := dsLayout(nodes, len(levels)-1, len(sorted), bookSize)
 		if err != nil {
@@ -60,9 +56,7 @@ func Build(records []Record) ([]byte, error) {
 	}
 }
 
-// dsBuildLevels packs records into B-tree nodes, bottom up. levels[0] holds the
-// leaves; each later level holds the records that did not fit in the level
-// below, which become the pivots between its nodes.
+// dsBuildLevels packs records into B-tree nodes, bottom up.
 func dsBuildLevels(records []Record) ([][][]Record, error) {
 	if len(records) == 0 {
 		return [][][]Record{{{}}}, nil
@@ -85,7 +79,7 @@ func dsBuildLevels(records []Record) ([][][]Record, error) {
 					return nil, fmt.Errorf("%w: the record for %q does not fit in a %d-byte node", errBadDSStore, r.Name, dsPageSize)
 				}
 				// The record that did not fit becomes the pivot between this
-				// node and the next, one level up.
+				// node and the next, a level up.
 				nodes = append(nodes, node)
 				next = append(next, r)
 				node, total = nil, 8
@@ -105,10 +99,7 @@ func dsBuildLevels(records []Record) ([][][]Record, error) {
 	}
 }
 
-// dsEncodeNodes turns packed levels into the bytes of each B-tree node, in the
-// order they are laid out: children before parents, so the root comes last. The
-// child pointers a node holds are allocator block numbers, which is why the
-// caller must allocate the nodes starting at dsFirstNodeBlock.
+// dsEncodeNodes turns packed levels into the bytes of each B-tree.
 func dsEncodeNodes(levels [][][]Record) [][]byte {
 	var (
 		encoded  [][]byte
@@ -154,13 +145,10 @@ func appendDSRecord(buf []byte, r Record) []byte {
 	return append(buf, r.Data...)
 }
 
-// dsLayout allocates blocks for the master block and every node, then writes
-// the whole file. It also returns how many bytes the bookkeeping block actually
-// needed, so the caller can lay the file out again if the reservation was too
-// small.
+// dsLayout allocates blocks for the master block and every node.
 func dsLayout(nodes [][]byte, internalLevels, records, bookSize int) ([]byte, int, error) {
 	alloc := newDSAllocator()
-	book, err := alloc.allocate(bookSize) // block 0, by convention
+	book, err := alloc.allocate(bookSize) // the bookkeeping block, by convention
 	if err != nil {
 		return nil, 0, err
 	}
@@ -215,16 +203,13 @@ func dsLayout(nodes [][]byte, internalLevels, records, bookSize int) ([]byte, in
 	return file, len(bookBlock), nil
 }
 
-// dsAllocator is the buddy allocator a .DS_Store is built with. Blocks are
-// never released here: every file is written from scratch.
+// dsAllocator is the buddy allocator a .DS_Store is built with.
 type dsAllocator struct {
 	free      [32][]uint32 // offsets of the free blocks of each width
 	addresses []uint32     // offset packed with width, indexed by block number
 }
 
-// newDSAllocator starts from the state of an empty file: the 32-byte header
-// block at offset 0 is allocated but never listed, which splits the address
-// space into exactly one free block of every width from 5 to 30.
+// newDSAllocator starts from the state of an empty file.
 func newDSAllocator() *dsAllocator {
 	a := &dsAllocator{}
 	for width := dsMinWidth; width < dsMaxWidth; width++ {
@@ -247,7 +232,7 @@ func (a *dsAllocator) allocate(size int) (int, error) {
 	return len(a.addresses) - 1, nil
 }
 
-// take removes a free block of the given width, splitting a larger one when
+// take removes a free block of the given width, splitting a wider block when
 // there is none.
 func (a *dsAllocator) take(width int) (uint32, error) {
 	found := width
@@ -270,8 +255,7 @@ func (a *dsAllocator) take(width int) (uint32, error) {
 func (a *dsAllocator) offset(block int) uint32 { return a.addresses[block] &^ 0x1f }
 func (a *dsAllocator) size(block int) int      { return 1 << (a.addresses[block] & 0x1f) }
 
-// bookkeeping serialises the allocator's state: the block address table, the
-// directory naming the B-tree master block, and the free lists.
+// bookkeeping serialises the allocator's state: the block address table, the directory.
 func (a *dsAllocator) bookkeeping(directory map[string]int) []byte {
 	buf := make([]byte, 0, 1264)
 	buf = binary.BigEndian.AppendUint32(buf, uint32(len(a.addresses)))

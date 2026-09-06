@@ -12,16 +12,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// Fixtures written by an independent implementation of the format - the
-// ds_store Python package behind dmgbuild - so that reading real files is
-// tested against something other than this package's own writer.
 const (
-	// finderTrashStore holds what a trash directory's file holds: put back
-	// records, plus the display settings Finder keeps next to them.
+	// finderTrashStore holds what a trash directory's.
 	finderTrashStore = "testdata/finder_trash.DS_Store"
 
-	// finderTrashManyStore holds enough records to need a tree of several
-	// nodes, so that reading internal nodes is covered too.
+	// finderTrashManyStore holds enough records to need.
 	finderTrashManyStore = "testdata/finder_trash_many.DS_Store"
 )
 
@@ -124,8 +119,7 @@ func TestUstrValues(t *testing.T) {
 }
 
 func TestBuildsATreeOfManyNodes(t *testing.T) {
-	// Enough records, with long enough values, to need several 4KB nodes and
-	// therefore a level of internal nodes above them.
+	// Enough records, with long enough values, to need several 4KB nodes and therefore a level.
 	var records []Record
 	for i := 0; i < 400; i++ {
 		name := fmt.Sprintf("item-%03d.txt", i)
@@ -192,8 +186,8 @@ func TestRejectsMalformedFiles(t *testing.T) {
 }
 
 func TestSurvivesArbitraryDamage(t *testing.T) {
-	// A .DS_Store is written by other programs and can be damaged by any of
-	// them; parsing one must fail cleanly rather than panic or hang.
+	// A .DS_Store is written by other programs and can be damaged by any of them; parsing such a file
+	// must.
 	valid, err := Build([]Record{
 		Ustr("notes.txt", "ptbL", "Users/ada/Documents"),
 		Ustr("notes.txt", "ptbN", "notes.txt"),

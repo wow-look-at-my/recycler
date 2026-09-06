@@ -11,8 +11,7 @@ import (
 	"github.com/wow-look-at-my/recycler/internal/bin"
 )
 
-// recycle, list and restore are what the recycler package's own functions do,
-// so a backend test reads the way a caller's code does.
+// recycle, list and restore are what the recycler package's own functions do, so a backend test.
 func recycle(paths ...string) error {
 	b, err := Backend()
 	if err != nil {
@@ -37,10 +36,7 @@ func restore(id string) (string, error) {
 	return b.Restore(id, "")
 }
 
-// isolateTrash points the recycle bin at a temporary directory so tests never
-// touch the developer's real one, and returns a scratch directory to recycle
-// files from. Both live on the same filesystem, which is what makes recycling a
-// rename.
+// isolateTrash points the recycle bin at a temporary directory so tests never touch.
 func isolateTrash(t *testing.T) string {
 	t.Helper()
 	if runtime.GOOS == "windows" {

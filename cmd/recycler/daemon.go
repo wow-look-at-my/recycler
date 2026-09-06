@@ -72,12 +72,9 @@ func reportEvictions(out io.Writer, evicted []recycler.Eviction, err error) {
 	}
 }
 
-// noDaemonEnv turns the automatic start off.
 const noDaemonEnv = "RECYCLER_NO_DAEMON"
 
-// startDaemon brings the daemon up after a recycle. A failure is reported and
-// nothing more: the file is already in the bin, so failing a recycle that
-// worked helps nobody, and a daemon that never started frees nothing.
+// startDaemon brings the daemon up after a recycle.
 func startDaemon(stderr io.Writer) {
 	if os.Getenv(noDaemonEnv) != "" {
 		return

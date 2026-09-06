@@ -35,8 +35,6 @@ const (
 	fofNoConfirmMkDir = 0x0200
 	fofNoErrorUI      = 0x0400
 
-	// rpcChangedMode reports that the thread is already in a different COM
-	// apartment, which is not a problem for a file operation.
 	rpcChangedMode = 0x80010106
 
 	recycleBinDirName = "$Recycle.Bin"
@@ -86,15 +84,14 @@ func (t *winTrash) Recycle(paths []string) error {
 }
 
 // shFileOperationDelete asks the shell to delete every path to the recycle bin
-// in one operation.
+// in the same call.
 func shFileOperationDelete(paths []string) error {
 	from, err := doubleNullTerminated(paths)
 	if err != nil {
 		return err
 	}
 
-	// The shell is apartment-threaded, so the operation has to stay on one
-	// initialised OS thread for its whole duration.
+	// The shell is apartment-threaded, so the operation has to stay on the same initialised OS.
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 	if err := windows.CoInitializeEx(0, windows.COINIT_APARTMENTTHREADED); err != nil {
@@ -123,7 +120,7 @@ func shFileOperationDelete(paths []string) error {
 	return nil
 }
 
-// doubleNullTerminated builds the NUL-separated, double-NUL-terminated string
+// doubleNullTerminated builds the NUL-separated, NUL-NUL-terminated string
 // list that the file operation API expects.
 func doubleNullTerminated(paths []string) ([]uint16, error) {
 	var out []uint16
@@ -245,15 +242,12 @@ func (t *winTrash) Evict(id string) error {
 	if err := os.RemoveAll(data); err != nil {
 		return err
 	}
-	// The data is gone. A leftover $I lists as an entry whose file is
-	// missing, which list already skips.
+	// The data is gone.
 	os.Remove(metaPath)
 	return nil
 }
 
-// resolveID validates an item ID and returns the paths of its data and metadata
-// files. IDs that do not name a "$R" file inside one of this user's recycle bin
-// directories are rejected, so a malformed ID can never reach outside the bin.
+// resolveID validates an item ID and returns the paths.
 func (t *winTrash) resolveID(id string) (data, metaPath string, err error) {
 	clean := filepath.Clean(id)
 	dir := filepath.Dir(clean)
@@ -278,7 +272,7 @@ func (t *winTrash) resolveID(id string) (data, metaPath string, err error) {
 }
 
 // binDirs returns this user's recycle bin directory on every volume that has
-// one.
+// a directory.
 func (t *winTrash) binDirs() []string {
 	var dirs []string
 	mask, err := windows.GetLogicalDrives()
@@ -297,9 +291,7 @@ func (t *winTrash) binDirs() []string {
 	return dirs
 }
 
-// readOrNil returns the content of a file, or nil when it cannot be read. The
-// callers treat unreadable metadata as a malformed entry and skip it, which is
-// the right outcome for a half-written or inaccessible bin entry.
+// readOrNil returns the content of a file, or nil when it cannot be read.
 func readOrNil(path string) []byte {
 	data, err := os.ReadFile(path)
 	if err != nil {

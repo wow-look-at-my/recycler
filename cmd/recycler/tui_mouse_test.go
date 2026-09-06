@@ -10,8 +10,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// Clicking a row is the mouse's version of the arrow keys, and the table's
-// header is not a row: a click on it must not move the cursor onto item zero.
+// Clicking a row is the mouse's version of the arrow keys, and the table's header is not a row: a
+// click.
 func TestClickingARowSelectsIt(t *testing.T) {
 	m, _ := binWith(t, "first.txt", "second.txt", "third.txt")
 	require.Len(t, m.shown, 3)
@@ -23,8 +23,7 @@ func TestClickingARowSelectsIt(t *testing.T) {
 	assert.Equal(t, 2, m.selected, "a click on the header moved the cursor")
 }
 
-// The confirmation has two buttons because restoring writes a file back outside
-// the bin. Cancel has to leave the item where it is.
+// The confirmation offers a yes and a no because restoring writes a file back outside the bin.
 func TestTheConfirmationButtonsRestoreOrCancel(t *testing.T) {
 	m, work := binWith(t, "notes.txt")
 	restored := filepath.Join(work, "notes.txt")
@@ -43,9 +42,7 @@ func TestTheConfirmationButtonsRestoreOrCancel(t *testing.T) {
 	assert.Empty(t, m.shown, "the restored item is still listed")
 }
 
-// The frame counter is what animates the interface. Each tick advances it and
-// schedules the next one; a tick that scheduled nothing would stop the
-// animation dead.
+// The frame counter is what animates the interface.
 func TestATickAdvancesTheFrameAndSchedulesTheNext(t *testing.T) {
 	m, _ := binWith(t, "notes.txt")
 	before := m.frame
@@ -56,16 +53,14 @@ func TestATickAdvancesTheFrameAndSchedulesTheNext(t *testing.T) {
 	assert.NotNil(t, m.Init(), "the interface starts without a tick")
 }
 
-// The view is what reaches the terminal, and it has to ask for motion events:
-// without them a click never arrives at the model at all.
+// The view is what reaches the terminal, and it has to ask for motion events: without them a click
+// never.
 func TestTheViewAsksForMouseMotion(t *testing.T) {
 	m, _ := binWith(t, "notes.txt")
 	assert.Equal(t, tea.MouseModeAllMotion, m.View().MouseMode)
 }
 
-// A page is however tall the last frame made the listing. Before anything is
-// painted there is no viewport to measure, and a page of zero rows would make
-// the page keys do nothing at all.
+// A page is however tall the last frame made the listing.
 func TestAPageIsTheHeightOfThePaintedListing(t *testing.T) {
 	isolateTrash(t)
 	unpainted, err := newModel()

@@ -18,9 +18,7 @@ import (
 	"github.com/wow-look-at-my/recycler"
 )
 
-// isolateTrash points the recycle bin at a temporary directory so the tests
-// never touch the developer's own, and returns a scratch directory to
-// recycle files from.
+// isolateTrash points the recycle bin at a temporary directory so the tests never touch.
 func isolateTrash(t *testing.T) string {
 	t.Helper()
 	if runtime.GOOS == "windows" {
@@ -31,7 +29,6 @@ func isolateTrash(t *testing.T) string {
 	require.NoError(t, os.MkdirAll(home, 0o700))
 	t.Setenv("HOME", home)
 	t.Setenv("XDG_DATA_HOME", filepath.Join(home, ".local", "share"))
-	// Every recycle here would otherwise try to start a daemon.
 	t.Setenv(noDaemonEnv, "1")
 
 	work := filepath.Join(root, "work")
@@ -46,9 +43,7 @@ func writeFile(t *testing.T, path, content string) string {
 	return path
 }
 
-// run executes the command line and returns everything it printed. The command
-// tree is a package-level singleton, so every flag is put back the way it was
-// afterwards.
+// run executes the command line and returns everything it printed.
 func run(t *testing.T, stdin string, args ...string) (string, error) {
 	t.Helper()
 	t.Cleanup(resetCommands)
@@ -185,9 +180,8 @@ func TestUnknownReferenceIsRejected(t *testing.T) {
 	require.ErrorIs(t, err, recycler.ErrNotFound)
 }
 
-// The daemon command has to run against a bin under no pressure and give
-// nothing back: room is the normal case, and a sweep that evicted anyway would
-// be destroying files nobody needed it to.
+// The daemon command has to run against a bin under no pressure and give nothing back: room is the
+// normal.
 func TestTheDaemonCommandSweepsOnceAndKeepsWhatItCan(t *testing.T) {
 	work := isolateTrash(t)
 	_, err := run(t, "", "trash", writeFile(t, filepath.Join(work, "kept.txt"), "kept"))
@@ -201,8 +195,7 @@ func TestTheDaemonCommandSweepsOnceAndKeepsWhatItCan(t *testing.T) {
 	assert.Len(t, items, 1, "a sweep with room to spare took something anyway")
 }
 
-// What a sweep destroyed has to be said out loud, and a failure to destroy
-// something has to be said differently from success.
+// What a sweep destroyed has to be said out loud, and a failure to destroy something has to be said.
 func TestEvictionsAreReported(t *testing.T) {
 	var out bytes.Buffer
 	when := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
@@ -222,9 +215,7 @@ func TestASweepFailureIsReported(t *testing.T) {
 	assert.Contains(t, out.String(), "sweep failed: no such filesystem")
 }
 
-// TestNoDestructiveCommands locks down what this CLI must never grow back: a
-// way to destroy a recycled file. An item leaves the bin by being restored, and
-// by nothing else.
+// TestNoDestructiveCommands locks down what this CLI must never grow back: a way to destroy.
 func TestNoDestructiveCommands(t *testing.T) {
 	for _, name := range []string{"purge", "empty", "remove", "destroy", "shred", "wipe"} {
 		for _, cmd := range rootCmd.Commands() {
@@ -233,8 +224,7 @@ func TestNoDestructiveCommands(t *testing.T) {
 		}
 	}
 
-	// The names a user reaches for to delete something must keep meaning
-	// "recycle it", so typing any of them can never destroy the file.
+	// The names a user reaches for to delete something must keep meaning "recycle it", so typing any.
 	for _, cmd := range rootCmd.Commands() {
 		for _, alias := range []string{"rm", "delete"} {
 			if slices.Contains(cmd.Aliases, alias) {
@@ -283,9 +273,7 @@ func TestPathsEqual(t *testing.T) {
 	assert.Equal(t, caseInsensitiveFilesystem, pathsEqual("/a/B", "/a/b"))
 }
 
-// A reference is usually the path the user typed, which is relative to wherever
-// they are standing. The listing records absolute paths, so the two only meet
-// once the reference is made absolute the same way.
+// A reference is usually the path the user typed, which is relative to wherever they are standing.
 func TestAReferenceCanBeAPathRelativeToHere(t *testing.T) {
 	rel := filepath.Join("sub", "notes.txt")
 	item := recycler.Item{ID: "id-1", Name: "notes.txt", OriginalPath: absOrSelf(rel)}
@@ -295,8 +283,7 @@ func TestAReferenceCanBeAPathRelativeToHere(t *testing.T) {
 	assert.Equal(t, "id-1", got.ID)
 }
 
-// A full screen needs a terminal to draw on and a terminal to type at. The test
-// binary's output is a pipe, so it is never one.
+// A full screen needs a terminal to draw on and a terminal to type at.
 func TestAFullScreenNeedsATerminalAtBothEnds(t *testing.T) {
 	assert.False(t, interactive())
 

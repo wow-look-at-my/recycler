@@ -4,9 +4,7 @@ package diskfree
 
 import "golang.org/x/sys/unix"
 
-// Free reports the available and total bytes of the filesystem holding
-// path. NetBSD and Solaris expose this through statvfs; there is no Statfs_t
-// on either.
+// Free reports the available and total bytes of the filesystem holding path.
 func Free(path string) (avail, total uint64, err error) {
 	var st unix.Statvfs_t
 	if err := unix.Statvfs(path, &st); err != nil {

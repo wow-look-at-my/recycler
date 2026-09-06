@@ -10,10 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// Ensure has to actually start something, so this hands it a program that exits
-// at once. It is a script rather than the test binary on purpose: running the
-// test binary with a "daemon" argument is the fork bomb the suffix check exists
-// to refuse.
+// Ensure has to actually start something, so this hands it a program that exits together.
 func TestEnsureStartsADaemon(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("the stand-in daemon is a shell script")
@@ -28,8 +25,8 @@ func TestEnsureStartsADaemon(t *testing.T) {
 	assert.True(t, started, "no daemon was started")
 }
 
-// One daemon per user is the whole point of the lock: a recycle every few
-// seconds must not start a daemon every few seconds.
+// A daemon per user is the whole point of the lock: a recycle every few seconds must not start a
+// daemon every.
 func TestEnsureStandsDownWhileADaemonHoldsTheLock(t *testing.T) {
 	t.Setenv("XDG_CACHE_HOME", t.TempDir())
 	lock, err := LockPath()
@@ -45,8 +42,8 @@ func TestEnsureStandsDownWhileADaemonHoldsTheLock(t *testing.T) {
 	assert.False(t, started, "a second daemon was started while one held the lock")
 }
 
-// The lock lives under the user's cache directory, and Ensure creates it rather
-// than failing on a cache directory nobody has made yet.
+// The lock lives under the user's cache directory, and Ensure creates it rather than failing on a
+// cache.
 func TestLockPathIsCreatedUnderTheCacheDirectory(t *testing.T) {
 	cache := t.TempDir()
 	t.Setenv("XDG_CACHE_HOME", cache)

@@ -1,18 +1,19 @@
 package winbin
 
 // Codec for the "$I" metadata files Windows writes next to every recycled
-// file in <drive>:\$Recycle.Bin\<user SID>\. Each recycled item is a pair:
+// file in <drive>:\$Recycle.Bin\<user SID>\. Each recycled item has:
 // "$R<id><ext>" holds the data, "$I<id><ext>" the metadata below.
 //
 // The layout is fixed little-endian:
 //
 //	offset  size  meaning
-//	0       8     format version (1 on Vista..8.1, 2 on Windows 10 and later)
-//	8       8     size of the recycled item in bytes
-//	16      8     deletion time, as a Windows FILETIME
-//	24      -     original path, UTF-16: version 1 has a fixed 260-character
-//	              buffer, version 2 a 4-byte character count followed by that
-//	              many characters. Both include the terminating NUL.
+// The record opens with the format version, then the size of the recycled item
+// in bytes, then the deletion time as a Windows FILETIME, and ends with the
+// original path in Unicode. The older version, which Vista onward wrote, gives
+// the path a fixed-width buffer. The newer version, which Windows a decade
+// later writes, gives it a character count and then that many characters. Each
+// includes the terminating NUL. binMetaVersion below names each, and the
+// constants beside it carry every width.
 //
 // This file deliberately has no build constraint: keeping the codec portable
 // keeps it testable on any platform.
@@ -77,9 +78,7 @@ func Parse(data []byte) (Metadata, error) {
 	return meta, nil
 }
 
-// Encode produces a version 2 $I file. Windows itself writes these
-// files; this package only needs the encoder to test the decoder against a
-// known-good layout.
+// Encode produces a newer-version $I file.
 func Encode(meta Metadata) []byte {
 	chars := utf16.Encode([]rune(meta.OriginalPath))
 	chars = append(chars, 0)
@@ -107,8 +106,7 @@ func decodeUTF16LE(b []byte) []uint16 {
 	return chars
 }
 
-// fileTimeEpochOffset is the number of 100-nanosecond intervals between the
-// FILETIME epoch (1601-01-01 UTC) and the Unix epoch.
+// fileTimeEpochOffset is how many FILETIME.
 const fileTimeEpochOffset = 116444736000000000
 
 func fileTimeToTime(ft uint64) time.Time {

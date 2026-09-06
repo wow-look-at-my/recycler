@@ -52,7 +52,7 @@ func mountPoints() []string {
 	return points
 }
 
-// systemMountPoints reads the kernel's mount table when one is available.
+// systemMountPoints reads the kernel's mount table where it exists.
 func systemMountPoints() []string {
 	f, err := os.Open("/proc/self/mounts")
 	if err != nil {
@@ -72,8 +72,7 @@ func systemMountPoints() []string {
 	return points
 }
 
-// unescapeMountPoint decodes the octal escapes the kernel writes for spaces and
-// other special characters in mount point paths.
+// unescapeMountPoint decodes the octal escapes the kernel writes for spaces.
 func unescapeMountPoint(s string) string {
 	if !strings.Contains(s, `\`) {
 		return s

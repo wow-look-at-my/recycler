@@ -90,8 +90,7 @@ func TestCopyFileRefusesAnExistingDestination(t *testing.T) {
 	assert.Equal(t, "old", string(content), "the destination was overwritten")
 }
 
-// A tree it cannot walk has no total, and reporting a partial one as the whole
-// is what would let the daemon evict an item to reclaim more than it holds.
+// A tree it cannot walk has no total, and reporting a partial size as the whole.
 func TestTreeSizeReportsUnknownForAnUnreadableTree(t *testing.T) {
 	if os.Geteuid() == 0 {
 		t.Skip("root reads a directory whatever its mode says")
