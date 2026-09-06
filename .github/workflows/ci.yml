@@ -3,8 +3,6 @@ name: CI
 on:
   push:
     branches: ['**']
-  # Without this, asking for a fresh run takes a new commit.
-  workflow_dispatch:
 
 permissions:
   contents: write # dependency-graph submission
