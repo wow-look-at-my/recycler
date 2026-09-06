@@ -21,7 +21,6 @@ import (
 //go:embed ui
 var uiFS embed.FS
 
-// cellSep joins a row's cells for <Table>, which splits them again. Every printable delimiter is legal in a file name.
 const cellSep = "\x1f"
 
 var tuiCmd = &cobra.Command{
@@ -116,8 +115,7 @@ func (m *model) apply() {
 	m.follow()
 }
 
-// follow scrolls the selected row into view. A table draws its header and a rule above the rows, so a row sits that
-// much further down than its index. How tall the viewport is comes from where the last frame put it.
+// follow scrolls the selected row into view.
 func (m *model) follow() {
 	target, ok := m.view.UI().Target("items")
 	if !ok || target.Rect.H <= 0 {
@@ -133,7 +131,6 @@ func (m *model) follow() {
 	m.offset = max(0, m.offset)
 }
 
-// tableHeaderLines is the header and the rule under it, which every row is drawn below.
 const tableHeaderLines = 2
 
 func (m *model) say(text, style string) {
@@ -377,9 +374,7 @@ func (m *model) props() tml.Props {
 	return props
 }
 
-// rows are the listing as the table's delimited cells. The name leads and the directory trails, because a cut falls on
-// the end of the row: the directory is the part the line below spells out in full, and the name is the part that has to
-// survive a narrow terminal.
+// rows are the listing as the table's delimited cells.
 func (m *model) rows() []string {
 	rows := make([]string, 0, len(m.shown))
 	for _, item := range m.shown {

@@ -22,7 +22,7 @@ func capture(t *testing.T, terminal bool, args ...string) (string, error) {
 	return out.String(), err
 }
 
-// Redirected, a bare invocation has nobody to drive a full screen, so it prints the help a script was asking for.
+// Redirected, a bare invocation has nobody to drive a full screen.
 func TestABareInvocationWithoutATerminalPrintsHelp(t *testing.T) {
 	isolateTrash(t)
 
@@ -32,7 +32,7 @@ func TestABareInvocationWithoutATerminalPrintsHelp(t *testing.T) {
 	assert.Contains(t, out, "tui", "the help names the command that opens the browser anyway")
 }
 
-// A terminal is not enough on its own: an invocation that named a command runs that command.
+// A terminal is not enough on its own: an invocation.
 func TestACommandRunsEvenOnATerminal(t *testing.T) {
 	isolateTrash(t)
 
@@ -49,7 +49,7 @@ func TestTUICommandIsRegistered(t *testing.T) {
 	require.NotNil(t, cmd.RunE, "the command runs something")
 }
 
-// Routing on a bare invocation must not swallow an argument, or a typo would open the browser instead of failing.
+// Routing on a bare invocation must not swallow an argument.
 func TestAnUnknownCommandIsStillReported(t *testing.T) {
 	isolateTrash(t)
 

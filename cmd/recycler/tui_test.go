@@ -12,8 +12,7 @@ import (
 	"github.com/wow-look-at-my/tml"
 )
 
-// screen renders a frame with the styling taken off, so an assertion is about what the interface says rather than how
-// it decorates it.
+// screen renders a frame with the styling taken off, so an assertion is about.
 func screen(t *testing.T, m *model) string {
 	t.Helper()
 	return ansi.Strip(m.frameOf(100, 30))
@@ -63,8 +62,8 @@ func TestAnEmptyBinSaysSoRatherThanDrawingAnEmptyTable(t *testing.T) {
 	assert.Contains(t, screen(t, m), "the recycle bin is empty")
 }
 
-// An item costs the row it is listed on and nothing more: the cursor is a bar the table draws across that row, and
-// what sits under the listing is the same item's original path in full, which its FROM column is too narrow to hold.
+// An item costs the row it is listed on and nothing more: the cursor is a bar the table draws across
+// that row.
 func TestMovingTheCursorMovesTheBarAndThePath(t *testing.T) {
 	m, work := binWith(t, "first.txt", "second.txt")
 	require.Len(t, m.shown, 2)
@@ -81,7 +80,7 @@ func TestMovingTheCursorMovesTheBarAndThePath(t *testing.T) {
 	assert.Contains(t, screen(t, m), filepath.Join(work, next.Name), "and the path under the listing followed")
 }
 
-// The cursor stops at the ends rather than wrapping, so holding a key cannot walk it off the listing.
+// The cursor stops at the ends rather than wrapping, so holding a key cannot.
 func TestTheCursorStopsAtBothEnds(t *testing.T) {
 	m, _ := binWith(t, "a.txt", "b.txt")
 
@@ -105,7 +104,7 @@ func TestFilteringNarrowsTheListing(t *testing.T) {
 	assert.NotContains(t, out, "notes.md")
 }
 
-// A filter that matches nothing says so, rather than leaving a blank panel that reads as an empty bin.
+// A filter that matches nothing says so, rather than leaving a blank panel.
 func TestAFilterMatchingNothingSaysSo(t *testing.T) {
 	m, _ := binWith(t, "notes.md")
 
@@ -201,7 +200,7 @@ func TestQTypesIntoTheFilterRatherThanQuitting(t *testing.T) {
 	assert.Contains(t, screen(t, m), "quarterly.txt", "and the filter still matched on it")
 }
 
-// The interface has no way to destroy anything, which is the package's own invariant reaching the screen.
+// The interface has no way to destroy anything, which is the package's own invariant.
 func TestTheInterfaceOffersNoWayToDeleteAnything(t *testing.T) {
 	m, _ := binWith(t, "notes.md")
 

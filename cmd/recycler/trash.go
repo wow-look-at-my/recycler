@@ -21,14 +21,19 @@ without stopping the remaining ones.`,
 		quiet, _ := cmd.Flags().GetBool("quiet")
 		// A call per path, so a failure affects only its own path.
 		var errs []error
+		recycled := 0
 		for _, path := range args {
 			if err := recycler.Recycle(path); err != nil {
 				errs = append(errs, err)
 				continue
 			}
+			recycled++
 			if !quiet {
 				fmt.Fprintf(cmd.OutOrStdout(), "recycled %s\n", path)
 			}
+		}
+		if recycled > 0 {
+			startDaemon(cmd.ErrOrStderr())
 		}
 		return errors.Join(errs...)
 	},
