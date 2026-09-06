@@ -2,8 +2,7 @@
 
 One Go API, and one command, for the recycle bin on Linux, macOS and Windows.
 
-Files go to the platform's own recycle bin — the FreeDesktop trash can, macOS
-Trash or the Windows Recycle Bin — so the desktop shows them where you expect.
+Files go to the platform's own recycle bin: the FreeDesktop trash can, macOS Trash or the Windows Recycle Bin. The desktop then shows them where you expect.
 
 ## Command
 
@@ -19,22 +18,13 @@ recycler restore notes.txt          # put it back where it came from
 recycler daemon                     # watch free space (started for you)
 ```
 
-No command of yours deletes anything: an item leaves the bin by being restored,
-and emptying the bin is left to the desktop environment.
+No command of yours deletes anything: an item leaves the bin by being restored, and emptying the bin is left to the desktop environment.
 
-Disk pressure is the exception, because a bin nobody empties fills the disk and
-the recycled copy is what holds the space. Recycling something starts a daemon
-that reads free space every 30 seconds and gives back the oldest items when a
-filesystem drops under a tenth free, or 1 GiB, whichever is smaller. It uses the
-size recorded when each item was recycled, so it never walks the bin to measure
-it. Set `RECYCLER_NO_DAEMON=1` to run it yourself instead, or not at all.
+Disk pressure is the exception, because a bin nobody empties fills the disk and the recycled copy is what holds the space. Recycling something starts a daemon that reads free space every 30 seconds. It gives back the oldest items when a filesystem drops under a tenth free, or 1 GiB, whichever is smaller. It uses the size recorded when each item was recycled, so it never walks the bin to measure it. Set `RECYCLER_NO_DAEMON=1` to run it yourself instead, or not at all.
 
-Run on a terminal with no arguments, `recycler` opens the bin in a browser:
-arrows move, `/` filters, `enter` restores what is selected. Redirected, it
-prints the help instead, and `recycler tui` opens the browser either way.
+Run on a terminal with no arguments, `recycler` opens the bin in a browser: arrows move, `/` filters, `enter` restores what is selected. Redirected, it prints the help instead, and `recycler tui` opens the browser either way.
 
-`restore` takes the ID from `recycler list`, or a name or original path when it
-matches exactly one item. `list --json` prints the same data for scripts.
+`restore` takes the ID from `recycler list`, or a name or original path when it matches exactly one item. `list --json` prints the same data for scripts.
 
 ## Library
 
@@ -46,17 +36,12 @@ items, _ := recycler.List()              // newest first
 path, _ := recycler.Restore(items[0].ID) // back to where it came from
 ```
 
-The API is those three operations and nothing else. Recycling is reversible,
-and the package offers no operation that makes it permanent.
+The API is those three operations and nothing else. Recycling is reversible, and the package offers no operation that makes it permanent.
 
 ## Platform notes
 
-- **Linux** and the BSDs follow the FreeDesktop trash specification, including
-  per-filesystem trash directories, so other trash tools interoperate.
-- **macOS** uses `~/.Trash`, reading and writing Finder's own "Put Back" records
-  rather than an index of its own, so what this restores and what Finder puts
-  back are the same thing.
-- **Windows** (64-bit) recycles through the shell, exactly like deleting in
-  Explorer, and reads `$Recycle.Bin` directly to list and restore.
+- **Linux** and the BSDs follow the FreeDesktop trash specification, including per-filesystem trash directories, so other trash tools interoperate.
+- **macOS** uses `~/.Trash`. It reads and writes Finder's own "Put Back" records rather than an index of its own. What this restores and what Finder puts back are the same thing.
+- **Windows** (64-bit) recycles through the shell, exactly like deleting in Explorer, and reads `$Recycle.Bin` directly to list and restore.
 
 Details, invariants and the on-disk formats are in [CLAUDE.md](CLAUDE.md).
