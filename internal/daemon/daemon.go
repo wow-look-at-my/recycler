@@ -20,8 +20,7 @@ const (
 	freeTargetFraction = 10
 	freeTargetCeiling  = 1 << 30
 
-	// recoverMultiple is how far past the trigger a sweep frees, so a writer
-	// cannot take back the whole sweep.
+	// recoverMultiple is how far past the trigger a sweep frees, for runway.
 	recoverMultiple = 8
 )
 
