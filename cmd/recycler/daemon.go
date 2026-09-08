@@ -20,22 +20,40 @@ var daemonCmd = &cobra.Command{
 	Long: `Watch free space and give back the oldest recycled items when it runs low.
 
 Recycling defers a deletion instead of performing one, which works only while
-there is room to defer it into. This reads free space every 30 seconds and,
-when a filesystem holding a recycle bin has less than a tenth of itself free
-(or less than 1 GiB, whichever is smaller), destroys recycled items oldest
-first until it does.
+there is room to defer it into. This reads free space on the interval below
+and, when a filesystem holding a recycle bin has less than a tenth of itself
+free (or less than 1 GiB, whichever is smaller), destroys recycled items
+oldest first until it does.
 
-Sizes are the ones recorded when each item was recycled, so this never walks
-the bin to measure it. An item whose size was never recorded is left alone.
+Sizes are the ones recorded when each item was recycled, so a sweep does not
+walk the bin to measure it. An item whose size is unknown is left alone.
 
-The tool starts this by itself the first time it recycles something. Run it by
-hand to watch what it does; a second one exits rather than sweeping alongside
-the first.`,
+The tool starts this by itself the first time it recycles something. Use
+--ensure to start it up front. Run it by hand to watch what it does; a second
+one exits rather than sweeping alongside the first.`,
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		interval, _ := cmd.Flags().GetDuration("interval")
 		once, _ := cmd.Flags().GetBool("once")
+		ensure, _ := cmd.Flags().GetBool("ensure")
 		out := cmd.OutOrStdout()
+
+		if ensure {
+			exe, err := os.Executable()
+			if err != nil {
+				return err
+			}
+			started, err := recycler.EnsureDaemon(exe)
+			if err != nil {
+				return err
+			}
+			if started {
+				fmt.Fprintln(out, "started the disk-pressure daemon")
+			} else {
+				fmt.Fprintln(out, "the disk-pressure daemon is already running")
+			}
+			return nil
+		}
 
 		if once {
 			evicted, err := recycler.Sweep()
@@ -91,5 +109,6 @@ func startDaemon(stderr io.Writer) {
 func init() {
 	daemonCmd.Flags().Duration("interval", recycler.DefaultPollInterval, "how often to read free space")
 	daemonCmd.Flags().Bool("once", false, "sweep once and exit")
+	daemonCmd.Flags().Bool("ensure", false, "start a detached daemon if none is running, then exit")
 	rootCmd.AddCommand(daemonCmd)
 }
