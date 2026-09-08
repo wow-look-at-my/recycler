@@ -12,16 +12,14 @@ import (
 // daemonNice is the priority the sweep runs at: pressure arrives on a busy machine.
 const daemonNice = -5
 
-// raisePriority puts every thread of this process at daemonNice and reports whether any of them
-// took it. A negative nice needs CAP_SYS_NICE, so the daemon runs either way.
+// raisePriority puts every thread of this process at daemonNice and reports whether any took it.
+// A negative nice needs CAP_SYS_NICE, so the daemon runs either way.
 //
-// Linux setpriority(PRIO_PROCESS) names a THREAD, and the Go runtime spreads a sweep's syscalls
-// over threads it makes itself. Naming the caller alone left the other threads at the priority the
-// daemon was started with. A thread clones the priority of the thread that makes it, so the sweep
-// below also covers every thread the runtime makes after it.
+// Linux setpriority(PRIO_PROCESS) names a THREAD, and the Go runtime spreads a sweep over threads
+// it makes itself. A thread clones the priority of its maker, so covering them all covers the rest.
 func raisePriority() bool {
 	granted := false
-	// A thread made during the sweep clones from one either already covered or covered next round.
+	// A thread made mid-sweep clones from a covered thread, or is covered on the next pass.
 	for range 2 {
 		tasks, err := os.ReadDir("/proc/self/task")
 		if err != nil {

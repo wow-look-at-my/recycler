@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// threadNice reads the nice value of one thread out of /proc.
+// threadNice reads a thread's nice value out of /proc.
 func threadNice(t *testing.T, tid string) int {
 	t.Helper()
 	raw, err := os.ReadFile("/proc/self/task/" + tid + "/stat")
