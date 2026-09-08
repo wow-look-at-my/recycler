@@ -57,6 +57,38 @@ func TestFreeTargetIsATenthCappedAtAGigabyte(t *testing.T) {
 	assert.Equal(t, uint64(freeTargetCeiling), FreeTarget(10*freeTargetCeiling))
 }
 
+// A sweep has to free past the trigger, or a writer takes the same space back
+// before the next look and the daemon never gets ahead of it.
+func TestRecoverTargetFreesPastTheTrigger(t *testing.T) {
+	// Where FreeTarget is capped, recovering reaches well beyond it.
+	big := uint64(1) << 40
+	assert.Equal(t, uint64(freeTargetCeiling), FreeTarget(big))
+	assert.Greater(t, RecoverTarget(big), FreeTarget(big))
+	assert.Equal(t, uint64(freeTargetCeiling)*recoverMultiple, RecoverTarget(big))
+
+	// A filesystem small enough to keep the fraction is never emptied past it.
+	assert.Equal(t, uint64(100), FreeTarget(1000))
+	assert.Equal(t, uint64(100), RecoverTarget(1000))
+}
+
+// The recovery target is what the eviction loop stops at, not the trigger.
+func TestASweepKeepsEvictingPastTheTrigger(t *testing.T) {
+	b := &fakeBackend{}
+	total := uint64(1) << 40
+	gib := uint64(1) << 30
+	items := []bin.Item{
+		item("oldest.bin", int64(gib), 72),
+		item("middle.bin", int64(gib), 48),
+		item("newest.bin", int64(gib), 1),
+	}
+
+	// Just under the trigger. Reaching it back takes one item; reaching the
+	// recovery target takes more, which is the whole point of the change.
+	_, err := sweepItems(b, items, freeSpace(gib-1, total))
+	require.NoError(t, err)
+	assert.Greater(t, len(b.evicted), 1, "stopping at the trigger leaves no runway")
+}
+
 func TestASweepLeavesAFilesystemWithRoomAlone(t *testing.T) {
 	b := &fakeBackend{}
 	items := []bin.Item{item("old.txt", 500, 48), item("new.txt", 500, 1)}
