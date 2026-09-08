@@ -92,6 +92,12 @@ func copyFile(src, dst string, perm fs.FileMode) error {
 	return out.Close()
 }
 
+// statWorkers is how many entries are stat-ed at once. A directory read gives a
+// name and a type but never a size, so every file costs its own lstat, and that
+// call waits on the inode rather than on a core. Overlapping the waits is what
+// makes a large tree quick, so this sits well above the core count.
+const statWorkers = 64
+
 // TreeSize returns the total size.
 func TreeSize(path string) int64 {
 	info, err := os.Lstat(path)
@@ -101,7 +107,28 @@ func TreeSize(path string) int64 {
 	if !info.IsDir() {
 		return info.Size()
 	}
-	var total int64
+
+	entries := make(chan fs.DirEntry, statWorkers)
+	var total atomic.Int64
+	var failed atomic.Bool
+	var workers sync.WaitGroup
+	for range statWorkers {
+		workers.Add(1)
+		go func() {
+			defer workers.Done()
+			for d := range entries {
+				fi, err := d.Info()
+				if err != nil {
+					failed.Store(true)
+					continue
+				}
+				total.Add(fi.Size())
+			}
+		}()
+	}
+
+	// The walk stays on one goroutine: a tree holds far fewer directories than
+	// files, and reading one is a single getdents rather than a stat apiece.
 	err = filepath.WalkDir(path, func(_ string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -109,17 +136,16 @@ func TreeSize(path string) int64 {
 		if d.IsDir() {
 			return nil
 		}
-		fi, err := d.Info()
-		if err != nil {
-			return err
-		}
-		total += fi.Size()
+		entries <- d
 		return nil
 	})
-	if err != nil {
+	close(entries)
+	workers.Wait()
+
+	if err != nil || failed.Load() {
 		return bin.SizeUnknown
 	}
-	return total
+	return total.Load()
 }
 
 // UniqueName returns a name derived from want that does not yet exist.

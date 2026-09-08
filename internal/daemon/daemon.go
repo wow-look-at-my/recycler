@@ -13,16 +13,21 @@ import (
 )
 
 const (
-	// DefaultPollInterval is how often. A tick that finds room costs one statfs
-	// per filesystem, benchmarked at 1.4 microseconds, so looking every second
-	// spends a millionth of a core. What the old 30s bought was a writer losing
-	// up to 30 seconds of output against a target of a gigabyte: at 20 MB/s
-	// that is 600 MB of the buffer gone between two looks.
+	// DefaultPollInterval is how often. A tick costs one statfs per filesystem,
+	// benchmarked at 1.4 microseconds, so looking every second spends about a
+	// millionth of a core and is affordable even while a build has the machine.
 	DefaultPollInterval = time.Second
 
 	// freeTargetFraction and freeTargetCeiling.
 	freeTargetFraction = 10
 	freeTargetCeiling  = 1 << 30
+
+	// recoverMultiple is how much further than the trigger a sweep frees. A
+	// sweep that stops the moment it reaches the target hands a writer the
+	// same gigabyte it just took, and a build takes it back before the next
+	// look, so the daemon re-triggers forever and never gets ahead. Freeing
+	// past the trigger buys runway instead.
+	recoverMultiple = 8
 )
 
 // FreeTarget is the available bytes the daemon keeps on a filesystem of the given size.
@@ -33,6 +38,16 @@ func FreeTarget(total uint64) uint64 {
 	return freeTargetCeiling
 }
 
+// RecoverTarget is what a sweep frees up to once FreeTarget has been crossed,
+// bounded by a tenth of the filesystem so a small one is not emptied outright.
+func RecoverTarget(total uint64) uint64 {
+	recover := FreeTarget(total) * recoverMultiple
+	if ceiling := total / freeTargetFraction; recover > ceiling {
+		return ceiling
+	}
+	return recover
+}
+
 // An Eviction records an item the daemon destroyed to reclaim space.
 type Eviction struct {
 	Item  bin.Item
@@ -41,44 +56,15 @@ type Eviction struct {
 
 // Sweep reclaims space on every filesystem holding a recycle bin whose available space.
 func Sweep() ([]Eviction, error) {
-	evicted, _, err := sweep()
-	return evicted, err
-}
-
-// sweep is Sweep, also returning the filesystems it found a bin on so the poll
-// loop can re-probe them without listing again.
-func sweep() ([]Eviction, []string, error) {
 	b, err := trash.Backend()
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	items, err := b.List()
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
-	probes := make([]string, 0, 4)
-	for _, group := range groupByFilesystem(items) {
-		probes = append(probes, group.probe)
-	}
-	evicted, err := sweepItems(b, items, diskfree.Free)
-	return evicted, probes, err
-}
-
-// underPressure reports whether any of these filesystems has dropped below its
-// FreeTarget. One statfs each, which is what lets the loop look often: listing
-// the bin costs far more and is only worth paying once something is wrong.
-func underPressure(probes []string, free func(string) (uint64, uint64, error)) bool {
-	for _, probe := range probes {
-		avail, total, err := free(probe)
-		if err != nil {
-			// An unreadable filesystem is the listing's problem, not this check's.
-			return true
-		}
-		if avail < FreeTarget(total) {
-			return true
-		}
-	}
-	return false
+	return sweepItems(b, items, diskfree.Free)
 }
 
 // sweepItems is Sweep's body against an already-read listing and an injected free-space probe.
@@ -90,10 +76,11 @@ func sweepItems(b bin.Backend, items []bin.Item, free func(string) (uint64, uint
 			// An unreadable filesystem must not stop.
 			continue
 		}
-		target := FreeTarget(total)
-		if avail >= target {
+		if avail >= FreeTarget(total) {
 			continue
 		}
+		// Crossing the target starts the sweep. Reaching it does not stop one.
+		target := RecoverTarget(total)
 
 		// The oldest goes at the front: the longer something.
 		sort.Slice(group.items, func(i, j int) bool {
@@ -157,25 +144,17 @@ func Run(ctx context.Context, interval time.Duration, report func([]Eviction, er
 	}
 	defer unlock()
 
+	raisePriority()
+
 	if interval <= 0 {
 		interval = DefaultPollInterval
 	}
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
-	// The filesystems a bin was last seen on. Empty forces the full path, which
-	// is what refills it, so the first tick and any tick after an error list.
-	var probes []string
 	for {
-		if len(probes) == 0 || underPressure(probes, diskfree.Free) {
-			evicted, found, err := sweep()
-			if err != nil {
-				probes = nil
-			} else {
-				probes = found
-			}
-			if report != nil {
-				report(evicted, err)
-			}
+		evicted, err := Sweep()
+		if report != nil {
+			report(evicted, err)
 		}
 		select {
 		case <-ctx.Done():
