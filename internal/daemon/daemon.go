@@ -13,12 +13,15 @@ import (
 )
 
 const (
-	// DefaultPollInterval is how often.
-	DefaultPollInterval = 30 * time.Second
+	// DefaultPollInterval is how often. A tick costs a statfs per filesystem.
+	DefaultPollInterval = time.Second
 
 	// freeTargetFraction and freeTargetCeiling.
 	freeTargetFraction = 10
 	freeTargetCeiling  = 1 << 30
+
+	// recoverMultiple is how far past the trigger a sweep frees, for runway.
+	recoverMultiple = 8
 )
 
 // FreeTarget is the available bytes the daemon keeps on a filesystem of the given size.
@@ -27,6 +30,16 @@ func FreeTarget(total uint64) uint64 {
 		return target
 	}
 	return freeTargetCeiling
+}
+
+// RecoverTarget is what a sweep frees up to after FreeTarget is crossed, bounded
+// by the fraction FreeTarget uses so a small filesystem is not emptied.
+func RecoverTarget(total uint64) uint64 {
+	recover := FreeTarget(total) * recoverMultiple
+	if ceiling := total / freeTargetFraction; recover > ceiling {
+		return ceiling
+	}
+	return recover
 }
 
 // An Eviction records an item the daemon destroyed to reclaim space.
@@ -57,10 +70,11 @@ func sweepItems(b bin.Backend, items []bin.Item, free func(string) (uint64, uint
 			// An unreadable filesystem must not stop.
 			continue
 		}
-		target := FreeTarget(total)
-		if avail >= target {
+		if avail >= FreeTarget(total) {
 			continue
 		}
+		// Crossing the target starts the sweep. Reaching it does not stop it.
+		target := RecoverTarget(total)
 
 		// The oldest goes at the front: the longer something.
 		sort.Slice(group.items, func(i, j int) bool {
@@ -123,6 +137,8 @@ func Run(ctx context.Context, interval time.Duration, report func([]Eviction, er
 		return bin.ErrDaemonRunning
 	}
 	defer unlock()
+
+	raisePriority()
 
 	if interval <= 0 {
 		interval = DefaultPollInterval

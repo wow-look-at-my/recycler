@@ -8,6 +8,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
+	"sync/atomic"
 
 	"github.com/wow-look-at-my/recycler/internal/bin"
 )
@@ -92,6 +94,9 @@ func copyFile(src, dst string, perm fs.FileMode) error {
 	return out.Close()
 }
 
+// statWorkers bounds the concurrent stats: an lstat waits on the inode, not a core.
+const statWorkers = 64
+
 // TreeSize returns the total size.
 func TreeSize(path string) int64 {
 	info, err := os.Lstat(path)
@@ -101,7 +106,27 @@ func TreeSize(path string) int64 {
 	if !info.IsDir() {
 		return info.Size()
 	}
-	var total int64
+
+	entries := make(chan fs.DirEntry, statWorkers)
+	var total atomic.Int64
+	var failed atomic.Bool
+	var workers sync.WaitGroup
+	for range statWorkers {
+		workers.Add(1)
+		go func() {
+			defer workers.Done()
+			for d := range entries {
+				fi, err := d.Info()
+				if err != nil {
+					failed.Store(true)
+					continue
+				}
+				total.Add(fi.Size())
+			}
+		}()
+	}
+
+	// The walk itself is serial: a tree holds far fewer directories than files.
 	err = filepath.WalkDir(path, func(_ string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -109,17 +134,16 @@ func TreeSize(path string) int64 {
 		if d.IsDir() {
 			return nil
 		}
-		fi, err := d.Info()
-		if err != nil {
-			return err
-		}
-		total += fi.Size()
+		entries <- d
 		return nil
 	})
-	if err != nil {
+	close(entries)
+	workers.Wait()
+
+	if err != nil || failed.Load() {
 		return bin.SizeUnknown
 	}
-	return total
+	return total.Load()
 }
 
 // UniqueName returns a name derived from want that does not yet exist.

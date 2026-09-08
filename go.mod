@@ -12,7 +12,7 @@ require (
 
 require (
 	charm.land/bubbletea/v2 v2.0.9
-	github.com/wow-look-at-my/tml v0.0.0-20260904221419-92bbafca1cf2 // go-toolchain:auto-branch
+	github.com/wow-look-at-my/tml v0.0.0-20260906010451-55d1cae28f7e // go-toolchain:auto-branch
 )
 
 require github.com/charmbracelet/x/ansi v0.11.8
