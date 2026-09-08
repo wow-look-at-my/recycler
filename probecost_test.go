@@ -3,6 +3,7 @@ package recycler
 import (
 	"testing"
 
+	"github.com/stretchr/testify/require"
 	"github.com/wow-look-at-my/recycler/internal/diskfree"
 )
 
@@ -12,8 +13,8 @@ func BenchmarkFreeProbe(b *testing.B) {
 	dir := b.TempDir()
 	b.ResetTimer()
 	for range b.N {
-		if _, _, err := diskfree.Free(dir); err != nil {
-			b.Fatal(err)
-		}
+		_, _, err := diskfree.Free(dir)
+		require.Nil(b, err)
+
 	}
 }
