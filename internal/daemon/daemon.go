@@ -13,20 +13,16 @@ import (
 )
 
 const (
-	// DefaultPollInterval is how often. A tick costs one statfs per filesystem,
-	// benchmarked at 1.4 microseconds, so looking every second spends about a
-	// millionth of a core and is affordable even while a build has the machine.
+	// DefaultPollInterval is how often. A tick costs a statfs per filesystem,
+	// cheap enough to look this often while a build has the machine.
 	DefaultPollInterval = time.Second
 
 	// freeTargetFraction and freeTargetCeiling.
 	freeTargetFraction = 10
 	freeTargetCeiling  = 1 << 30
 
-	// recoverMultiple is how much further than the trigger a sweep frees. A
-	// sweep that stops the moment it reaches the target hands a writer the
-	// same gigabyte it just took, and a build takes it back before the next
-	// look, so the daemon re-triggers forever and never gets ahead. Freeing
-	// past the trigger buys runway instead.
+	// recoverMultiple is how far past the trigger a sweep frees. Stopping at the
+	// trigger hands a writer back what it just took, so nothing gets ahead.
 	recoverMultiple = 8
 )
 
@@ -39,7 +35,7 @@ func FreeTarget(total uint64) uint64 {
 }
 
 // RecoverTarget is what a sweep frees up to once FreeTarget has been crossed,
-// bounded by a tenth of the filesystem so a small one is not emptied outright.
+// bounded by the fraction FreeTarget uses so a small filesystem is not emptied.
 func RecoverTarget(total uint64) uint64 {
 	recover := FreeTarget(total) * recoverMultiple
 	if ceiling := total / freeTargetFraction; recover > ceiling {
@@ -79,7 +75,7 @@ func sweepItems(b bin.Backend, items []bin.Item, free func(string) (uint64, uint
 		if avail >= FreeTarget(total) {
 			continue
 		}
-		// Crossing the target starts the sweep. Reaching it does not stop one.
+		// Crossing the target starts the sweep. Reaching it does not stop it.
 		target := RecoverTarget(total)
 
 		// The oldest goes at the front: the longer something.

@@ -94,10 +94,8 @@ func copyFile(src, dst string, perm fs.FileMode) error {
 	return out.Close()
 }
 
-// statWorkers is how many entries are stat-ed at once. A directory read gives a
-// name and a type but never a size, so every file costs its own lstat, and that
-// call waits on the inode rather than on a core. Overlapping the waits is what
-// makes a large tree quick, so this sits well above the core count.
+// statWorkers bounds the concurrent stats. A directory read carries no size, so
+// each file needs an lstat, and that waits on the inode rather than on a core.
 const statWorkers = 64
 
 // TreeSize returns the total size.
@@ -129,8 +127,7 @@ func TreeSize(path string) int64 {
 		}()
 	}
 
-	// The walk stays on one goroutine: a tree holds far fewer directories than
-	// files, and reading one is a single getdents rather than a stat apiece.
+	// The walk itself is serial: a tree holds far fewer directories than files.
 	err = filepath.WalkDir(path, func(_ string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
