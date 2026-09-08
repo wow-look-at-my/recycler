@@ -13,16 +13,15 @@ import (
 )
 
 const (
-	// DefaultPollInterval is how often. A tick costs a statfs per filesystem,
-	// cheap enough to look this often while a build has the machine.
+	// DefaultPollInterval is how often. A tick costs a statfs per filesystem.
 	DefaultPollInterval = time.Second
 
 	// freeTargetFraction and freeTargetCeiling.
 	freeTargetFraction = 10
 	freeTargetCeiling  = 1 << 30
 
-	// recoverMultiple is how far past the trigger a sweep frees. Stopping at the
-	// trigger hands a writer back what it just took, so nothing gets ahead.
+	// recoverMultiple is how far past the trigger a sweep frees, so a writer
+	// cannot take back the whole sweep.
 	recoverMultiple = 8
 )
 
@@ -34,8 +33,8 @@ func FreeTarget(total uint64) uint64 {
 	return freeTargetCeiling
 }
 
-// RecoverTarget is what a sweep frees up to once FreeTarget has been crossed,
-// bounded by the fraction FreeTarget uses so a small filesystem is not emptied.
+// RecoverTarget is what a sweep frees up to after FreeTarget is crossed, bounded
+// by the fraction FreeTarget uses so a small filesystem is not emptied.
 func RecoverTarget(total uint64) uint64 {
 	recover := FreeTarget(total) * recoverMultiple
 	if ceiling := total / freeTargetFraction; recover > ceiling {

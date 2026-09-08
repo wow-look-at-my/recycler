@@ -388,8 +388,8 @@ func readInfoFile(path string) (trashInfo, error) {
 	return info, nil
 }
 
-// recordSize appends a Size line to a .trashinfo file that has none, so the tree behind it is never
-// walked again. A failure is returned: swallowing one leaves the walk to repeat on every poll.
+// recordSize appends a Size line to a .trashinfo file that has none, so the tree behind it is not
+// walked again. A failure is returned rather than swallowed: a swallowed failure repeats the walk.
 func recordSize(infoPath string, size int64) error {
 	if size == bin.SizeUnknown {
 		return nil
@@ -405,9 +405,8 @@ func recordSize(infoPath string, size int64) error {
 	return f.Close()
 }
 
-// sizeIsRecordable reports whether a Size line can be appended to infoPath. A trash directory
-// another user owns is readable and not writable, and a measurement that cannot be kept is a
-// tree walk the next poll repeats.
+// sizeIsRecordable reports whether a Size line can be appended. A measurement
+// that cannot be kept is a tree walk the next poll repeats.
 func sizeIsRecordable(infoPath string) bool {
 	f, err := os.OpenFile(infoPath, os.O_WRONLY|os.O_APPEND, 0o600)
 	if err != nil {

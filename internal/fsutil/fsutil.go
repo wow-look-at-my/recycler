@@ -94,8 +94,7 @@ func copyFile(src, dst string, perm fs.FileMode) error {
 	return out.Close()
 }
 
-// statWorkers bounds the concurrent stats. A directory read carries no size, so
-// each file needs an lstat, and that waits on the inode rather than on a core.
+// statWorkers bounds the concurrent stats: an lstat waits on the inode, not a core.
 const statWorkers = 64
 
 // TreeSize returns the total size.

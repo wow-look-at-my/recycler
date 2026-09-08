@@ -122,8 +122,7 @@ func TestASweepKeepsGoingUntilTheTargetIsMet(t *testing.T) {
 		item("c.txt", 100, 1),
 	}
 
-	// Wants a target it has none of, so items go oldest before newest and the newest
-	// survives.
+	// Wants a target it has none of, so items go oldest first and the newest survives.
 	_, err := sweepItems(b, items, freeSpace(0, 2000))
 	require.NoError(t, err)
 	assert.Equal(t, []string{

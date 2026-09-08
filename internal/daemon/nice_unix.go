@@ -4,8 +4,7 @@ package daemon
 
 import "golang.org/x/sys/unix"
 
-// daemonNice is the priority the sweep runs at. Disk pressure arrives while the
-// machine is busy, and a sweep wants syscalls rather than a core.
+// daemonNice is the priority the sweep runs at: pressure arrives on a busy machine.
 const daemonNice = -5
 
 // raisePriority asks for daemonNice and reports whether it was granted. A
