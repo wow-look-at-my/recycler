@@ -139,6 +139,34 @@ func TestAForeignEntryIsSizedOnceAndRecorded(t *testing.T) {
 	assert.Contains(t, string(raw), "Size=512", "the size was not written back: %q", raw)
 }
 
+// A measurement that cannot be written back is a walk the next poll repeats, so an entry whose
+// record is read-only is left unsized instead.
+func TestAnUnwritableForeignEntryIsNotWalked(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root writes a read-only file")
+	}
+	isolateTrash(t)
+	trash := homeTrash(t)
+	require.NoError(t, ensureTrashDir(trash))
+
+	name := "readonly.txt"
+	require.NoError(t, os.WriteFile(filepath.Join(trash, trashFilesDir, name),
+		[]byte(strings.Repeat("z", 512)), 0o600))
+	infoPath := filepath.Join(trash, trashInfoDir, name+trashInfoExt)
+	require.NoError(t, os.WriteFile(infoPath, []byte(
+		"[Trash Info]\nPath=/home/ada/readonly.txt\nDeletionDate=2026-01-02T03:04:05\n"), 0o400))
+
+	items, err := list()
+	require.NoError(t, err)
+	require.Len(t, items, 1)
+	assert.Equal(t, int64(bin.SizeUnknown), items[0].Size,
+		"an unrecordable size must stay unknown, which is what keeps the item un-evictable")
+
+	raw, err := os.ReadFile(infoPath)
+	require.NoError(t, err)
+	assert.NotContains(t, string(raw), "Size=", "nothing may be written to a read-only record")
+}
+
 // TestReadsForeignTrashEntries checks that another implementation's entries read back.
 func TestReadsForeignTrashEntries(t *testing.T) {
 	work := isolateTrash(t)

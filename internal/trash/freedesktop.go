@@ -152,10 +152,14 @@ func (t *fdoTrash) List() ([]bin.Item, error) {
 				deletedAt = st.ModTime()
 			}
 			size := info.size
-			if size == bin.SizeUnknown {
+			infoPath := filepath.Join(dir, trashInfoDir, entry.Name())
+			if size == bin.SizeUnknown && sizeIsRecordable(infoPath) {
 				// An entry another implementation wrote records no size.
 				size = fsutil.TreeSize(file)
-				recordSize(filepath.Join(dir, trashInfoDir, entry.Name()), size)
+				if err := recordSize(infoPath, size); err != nil {
+					// The number did not land, so nothing may be evicted on it.
+					size = bin.SizeUnknown
+				}
 			}
 			items = append(items, bin.Item{
 				ID:           file,
@@ -385,17 +389,31 @@ func readInfoFile(path string) (trashInfo, error) {
 }
 
 // recordSize appends a Size line to a .trashinfo file that has none, so the tree behind it is never
-// walked again.
-func recordSize(infoPath string, size int64) {
+// walked again. A failure is returned: swallowing one leaves the walk to repeat on every poll.
+func recordSize(infoPath string, size int64) error {
 	if size == bin.SizeUnknown {
-		return
+		return nil
 	}
 	f, err := os.OpenFile(infoPath, os.O_WRONLY|os.O_APPEND, 0o600)
 	if err != nil {
-		return
+		return err
 	}
-	fmt.Fprintf(f, "Size=%d\n", size)
-	f.Close()
+	if _, err := fmt.Fprintf(f, "Size=%d\n", size); err != nil {
+		f.Close()
+		return err
+	}
+	return f.Close()
+}
+
+// sizeIsRecordable reports whether a Size line can be appended to infoPath. A trash directory
+// another user owns is readable and not writable, and a measurement that cannot be kept is a
+// tree walk the next poll repeats.
+func sizeIsRecordable(infoPath string) bool {
+	f, err := os.OpenFile(infoPath, os.O_WRONLY|os.O_APPEND, 0o600)
+	if err != nil {
+		return false
+	}
+	return f.Close() == nil
 }
 
 func parseDeletionDate(value string) time.Time {
