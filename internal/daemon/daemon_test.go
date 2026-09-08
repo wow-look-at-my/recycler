@@ -57,8 +57,7 @@ func TestFreeTargetIsATenthCappedAtAGigabyte(t *testing.T) {
 	assert.Equal(t, uint64(freeTargetCeiling), FreeTarget(10*freeTargetCeiling))
 }
 
-// A sweep has to free past the trigger, or a writer takes the same space back
-// before the next look and the daemon never gets ahead of it.
+// A writer takes back what a sweep frees, so a sweep has to overshoot.
 func TestRecoverTargetFreesPastTheTrigger(t *testing.T) {
 	// Where FreeTarget is capped, recovering reaches well beyond it.
 	big := uint64(1) << 40
@@ -82,8 +81,7 @@ func TestASweepKeepsEvictingPastTheTrigger(t *testing.T) {
 		item("newest.bin", int64(gib), 1),
 	}
 
-	// Just under the trigger. Reaching it back takes one item; reaching the
-	// recovery target takes more, which is the whole point of the change.
+	// Just under the trigger, where recovering has to evict further than it.
 	_, err := sweepItems(b, items, freeSpace(gib-1, total))
 	require.NoError(t, err)
 	assert.Greater(t, len(b.evicted), 1, "stopping at the trigger leaves no runway")
