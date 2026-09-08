@@ -28,32 +28,14 @@ oldest first until it does.
 Sizes are the ones recorded when each item was recycled, so a sweep does not
 walk the bin to measure it. An item whose size is unknown is left alone.
 
-The tool starts this by itself the first time it recycles something. Use
---ensure to start it up front. Run it by hand to watch what it does; a second
-one exits rather than sweeping alongside the first.`,
+The tool starts this by itself the first time it recycles something.
+"recycler daemon up" starts it up front. Run it by hand to watch what it does;
+a second one exits rather than sweeping alongside the first.`,
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		interval, _ := cmd.Flags().GetDuration("interval")
 		once, _ := cmd.Flags().GetBool("once")
-		ensure, _ := cmd.Flags().GetBool("ensure")
 		out := cmd.OutOrStdout()
-
-		if ensure {
-			exe, err := os.Executable()
-			if err != nil {
-				return err
-			}
-			started, err := recycler.EnsureDaemon(exe)
-			if err != nil {
-				return err
-			}
-			if started {
-				fmt.Fprintln(out, "started the disk-pressure daemon")
-			} else {
-				fmt.Fprintln(out, "the disk-pressure daemon is already running")
-			}
-			return nil
-		}
 
 		if once {
 			evicted, err := recycler.Sweep()
@@ -90,6 +72,35 @@ func reportEvictions(out io.Writer, evicted []recycler.Eviction, err error) {
 	}
 }
 
+var daemonUpCmd = &cobra.Command{
+	Use:   "up",
+	Short: "Start the daemon in the background if it is not already running",
+	Long: `Start a detached daemon and return.
+
+Something has to bring the daemon up before the first thing is recycled: until
+then nothing is watching free space, and a machine can fill the disk long
+before it deletes anything. This is safe to run from a login script or on a
+timer. It takes the daemon's own lock, so a second one finds it held and
+returns rather than sweeping alongside the first.`,
+	Args: cobra.NoArgs,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		exe, err := os.Executable()
+		if err != nil {
+			return err
+		}
+		started, err := recycler.EnsureDaemon(exe)
+		if err != nil {
+			return err
+		}
+		if started {
+			fmt.Fprintln(cmd.OutOrStdout(), "started the disk-pressure daemon")
+		} else {
+			fmt.Fprintln(cmd.OutOrStdout(), "the disk-pressure daemon is already running")
+		}
+		return nil
+	},
+}
+
 const noDaemonEnv = "RECYCLER_NO_DAEMON"
 
 // startDaemon brings the daemon up after a recycle.
@@ -109,6 +120,6 @@ func startDaemon(stderr io.Writer) {
 func init() {
 	daemonCmd.Flags().Duration("interval", recycler.DefaultPollInterval, "how often to read free space")
 	daemonCmd.Flags().Bool("once", false, "sweep once and exit")
-	daemonCmd.Flags().Bool("ensure", false, "start a detached daemon if none is running, then exit")
+	daemonCmd.AddCommand(daemonUpCmd)
 	rootCmd.AddCommand(daemonCmd)
 }

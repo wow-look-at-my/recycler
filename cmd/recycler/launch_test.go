@@ -49,13 +49,13 @@ func TestTUICommandIsRegistered(t *testing.T) {
 	require.NotNil(t, cmd.RunE, "the command runs something")
 }
 
-// --ensure must reach the spawner and return, never fall through to a foreground sweep loop that
+// "daemon up" must reach the spawner and return, never fall through to a foreground sweep loop that
 // nothing would stop. Under a test binary the spawner refuses, which is what proves it was reached.
-func TestEnsureAsksTheSpawnerAndReturns(t *testing.T) {
+func TestDaemonUpAsksTheSpawnerAndReturns(t *testing.T) {
 	isolateTrash(t)
 	t.Setenv("XDG_CACHE_HOME", t.TempDir())
 
-	_, err := capture(t, false, "daemon", "--ensure")
+	_, err := capture(t, false, "daemon", "up")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "test binary")
 }
