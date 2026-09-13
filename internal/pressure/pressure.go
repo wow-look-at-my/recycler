@@ -52,6 +52,12 @@ func Check(path string, size int64) Decision {
 	if err != nil {
 		return Decision{Size: size}
 	}
+	return decide(avail, total, size)
+}
+
+// decide is Check's rules against an already-read filesystem, so the cases can
+// be tested without one that is actually full.
+func decide(avail, total uint64, size int64) Decision {
 	d := Decision{Avail: avail, Target: Floor(total), Size: size}
 	switch {
 	case avail < d.Target:

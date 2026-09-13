@@ -33,6 +33,25 @@ func isolateTrash(t *testing.T) string {
 	return work
 }
 
+// requireRecycled asserts a Recycle succeeded and deferred every path rather
+// than deleting any outright. The suite runs on a filesystem with room, so a
+// permanent deletion here means the pressure check read the wrong one.
+func requireRecycled(t *testing.T, disposals []Disposal, err error) {
+	t.Helper()
+	require.NoError(t, err)
+	for _, d := range disposals {
+		require.False(t, d.Permanent, "%s was deleted outright: %s", d.Path, d.Reason)
+	}
+}
+
+func assertRecycled(t *testing.T, disposals []Disposal, err error) {
+	t.Helper()
+	assert.NoError(t, err)
+	for _, d := range disposals {
+		assert.False(t, d.Permanent, "%s was deleted outright: %s", d.Path, d.Reason)
+	}
+}
+
 func writeFile(t *testing.T, path, content string) string {
 	t.Helper()
 	require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
@@ -51,7 +70,7 @@ func TestRecycleAndRestore(t *testing.T) {
 	work := isolateTrash(t)
 	path := writeFile(t, filepath.Join(work, "notes.txt"), "keep me")
 
-	require.NoError(t, Recycle(path))
+	requireRecycled(t, Recycle(path))
 	assert.NoFileExists(t, path, "the recycled file is still at its original location")
 
 	items := mustList(t)
@@ -79,7 +98,7 @@ func TestRecycleDirectory(t *testing.T) {
 	writeFile(t, filepath.Join(dir, "a.txt"), "aaa")
 	writeFile(t, filepath.Join(dir, "sub", "b.txt"), "bbbb")
 
-	require.NoError(t, Recycle(dir))
+	requireRecycled(t, Recycle(dir))
 
 	items := mustList(t)
 	require.Len(t, items, 1)
@@ -99,7 +118,7 @@ func TestRecycleKeepsNamesApart(t *testing.T) {
 	first := writeFile(t, filepath.Join(work, "one", "same.txt"), "first")
 	second := writeFile(t, filepath.Join(work, "two", "same.txt"), "second")
 
-	require.NoError(t, Recycle(first, second))
+	requireRecycled(t, Recycle(first, second))
 
 	items := mustList(t)
 	require.Len(t, items, 2)
@@ -121,7 +140,7 @@ func TestRecycleKeepsNamesApart(t *testing.T) {
 func TestRestoreToExplicitDestination(t *testing.T) {
 	work := isolateTrash(t)
 	path := writeFile(t, filepath.Join(work, "move-me.txt"), "hello")
-	require.NoError(t, Recycle(path))
+	requireRecycled(t, Recycle(path))
 
 	items := mustList(t)
 	require.Len(t, items, 1)
@@ -139,7 +158,7 @@ func TestRestoreToExplicitDestination(t *testing.T) {
 func TestRestoreRefusesToOverwrite(t *testing.T) {
 	work := isolateTrash(t)
 	path := writeFile(t, filepath.Join(work, "busy.txt"), "recycled")
-	require.NoError(t, Recycle(path))
+	requireRecycled(t, Recycle(path))
 	writeFile(t, path, "new file in the old place")
 
 	items := mustList(t)
@@ -170,7 +189,7 @@ func TestBackendDestroysOnlyUnderDiskPressure(t *testing.T) {
 // target.
 func TestSweepGivesNothingBackWhenThereIsRoom(t *testing.T) {
 	work := isolateTrash(t)
-	require.NoError(t, Recycle(writeFile(t, filepath.Join(work, "safe.txt"), "safe")))
+	requireRecycled(t, Recycle(writeFile(t, filepath.Join(work, "safe.txt"), "safe")))
 
 	evicted, err := Sweep()
 	require.NoError(t, err)
@@ -184,7 +203,7 @@ func TestUnknownIDsAreRejected(t *testing.T) {
 	outsider := writeFile(t, filepath.Join(work, "innocent.txt"), "do not touch")
 
 	// Recycle something so the trash directories exist.
-	require.NoError(t, Recycle(writeFile(t, filepath.Join(work, "decoy.txt"), "decoy")))
+	requireRecycled(t, Recycle(writeFile(t, filepath.Join(work, "decoy.txt"), "decoy")))
 
 	for _, id := range []string{"", "not-an-id", outsider, filepath.Join(work, "nope", "files", "x")} {
 		_, getErr := Get(id)
@@ -205,7 +224,7 @@ func TestRecycleReportsMissingPaths(t *testing.T) {
 	work := isolateTrash(t)
 	good := writeFile(t, filepath.Join(work, "good.txt"), "good")
 
-	err := Recycle(filepath.Join(work, "absent.txt"), good)
+	_, err := Recycle(filepath.Join(work, "absent.txt"), good)
 	require.Error(t, err, "expected an error for the missing path")
 	assert.Contains(t, err.Error(), "absent.txt", "the error does not mention the failing path")
 
@@ -217,7 +236,7 @@ func TestRecycleReportsMissingPaths(t *testing.T) {
 
 func TestRecycleNothing(t *testing.T) {
 	isolateTrash(t)
-	assert.NoError(t, Recycle())
+	assertRecycled(t, Recycle())
 }
 
 func TestListOnAnEmptyBin(t *testing.T) {
@@ -247,7 +266,7 @@ func TestTheDaemonIsReachableFromHere(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
-	assert.ErrorIs(t, RunDaemon(ctx, time.Millisecond, func([]Eviction, error) { cancel() }), context.Canceled)
+	assert.ErrorIs(t, RunDaemon(ctx, time.Millisecond, func([]Eviction, []Pressure, error) { cancel() }), context.Canceled)
 }
 
 func TestAvailable(t *testing.T) {
