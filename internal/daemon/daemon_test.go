@@ -235,7 +235,7 @@ func TestTheDaemonSweepsUntilItsContextIsDone(t *testing.T) {
 	defer cancel()
 
 	sweeps := 0
-	err := Run(ctx, time.Millisecond, func(evicted []Eviction, err error) {
+	err := Run(ctx, time.Millisecond, func(evicted []Eviction, _ []Pressure, err error) {
 		assert.NoError(t, err)
 		assert.Empty(t, evicted, "an empty bin has nothing to give back")
 		if sweeps++; sweeps == 2 {
@@ -257,7 +257,7 @@ func TestAZeroIntervalTakesTheDefault(t *testing.T) {
 	defer cancel()
 
 	// A sweep runs before any tick, so cancelling from it returns without ever waiting out.
-	err := Run(ctx, 0, func([]Eviction, error) { cancel() })
+	err := Run(ctx, 0, func([]Eviction, []Pressure, error) { cancel() })
 	assert.ErrorIs(t, err, context.Canceled)
 }
 
