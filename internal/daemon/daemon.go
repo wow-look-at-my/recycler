@@ -95,7 +95,12 @@ func Sweep() ([]Eviction, []Pressure, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	return sweepItems(b, items, b.Dirs(), diskfree.Free)
+	// A bin directory nothing has been recycled into yet does not exist, so the
+	// nearest existing ancestor is what statfs can answer for. Resolving it here
+	// keeps sweepItems free of the filesystem it is deciding about.
+	return sweepItems(b, items, b.Dirs(), func(dir string) (uint64, uint64, error) {
+		return diskfree.Free(probePath(dir))
+	})
 }
 
 // sweepItems is Sweep's body against an already-read listing and an injected free-space probe.
@@ -186,7 +191,7 @@ func groupByFilesystem(items []bin.Item, dirs []string) []filesystemGroup {
 	}
 	groups := make([]filesystemGroup, 0, len(order))
 	for _, dir := range order {
-		groups = append(groups, filesystemGroup{dir: dir, probe: probePath(dir), items: byDir[dir]})
+		groups = append(groups, filesystemGroup{dir: dir, probe: dir, items: byDir[dir]})
 	}
 	return groups
 }
