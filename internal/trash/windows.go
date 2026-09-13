@@ -23,6 +23,7 @@ import (
 
 	"github.com/wow-look-at-my/recycler/internal/bin"
 	"github.com/wow-look-at-my/recycler/internal/fsutil"
+	"github.com/wow-look-at-my/recycler/internal/pressure"
 	"github.com/wow-look-at-my/recycler/internal/winbin"
 )
 
@@ -59,8 +60,9 @@ func Backend() (bin.Backend, error) {
 	return &winTrash{sid: user.User.Sid.String()}, nil
 }
 
-func (t *winTrash) Recycle(paths []string) error {
+func (t *winTrash) Recycle(paths []string) ([]bin.Disposal, error) {
 	var errs []error
+	disposals := make([]bin.Disposal, 0, len(paths))
 	abs := make([]string, 0, len(paths))
 	for _, path := range paths {
 		p, err := filepath.Abs(path)
@@ -72,15 +74,27 @@ func (t *winTrash) Recycle(paths []string) error {
 			errs = append(errs, fmt.Errorf("recycling %s: %w", path, err))
 			continue
 		}
+		// The bin is on the volume it takes from, so recycling frees nothing
+		// there. Under the daemon's floor the deletion the caller asked for is
+		// the only thing that gives space back.
+		if decision := pressure.Check(p, fsutil.TreeSize(p)); decision.Permanent {
+			if err := os.RemoveAll(p); err != nil {
+				errs = append(errs, fmt.Errorf("deleting %s: %w", path, err))
+				continue
+			}
+			disposals = append(disposals, bin.Disposal{Path: p, Permanent: true, Reason: decision.Reason})
+			continue
+		}
 		abs = append(abs, p)
+		disposals = append(disposals, bin.Disposal{Path: p})
 	}
 	if len(abs) == 0 {
-		return errors.Join(errs...)
+		return disposals, errors.Join(errs...)
 	}
 	if err := shFileOperationDelete(abs); err != nil {
 		errs = append(errs, err)
 	}
-	return errors.Join(errs...)
+	return disposals, errors.Join(errs...)
 }
 
 // shFileOperationDelete asks the shell to delete every path to the recycle bin
@@ -270,6 +284,9 @@ func (t *winTrash) resolveID(id string) (data, metaPath string, err error) {
 	}
 	return clean, filepath.Join(dir, metaPrefix+base[len(dataPrefix):]), nil
 }
+
+// Dirs reports the recycle bin directories the daemon watches the volumes of.
+func (t *winTrash) Dirs() []string { return t.binDirs() }
 
 // binDirs returns this user's recycle bin directory on every volume that has
 // a directory.
