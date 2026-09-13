@@ -154,32 +154,62 @@ func sweepItems(b bin.Backend, items []bin.Item, dirs []string,
 	return evicted, pressures, nil
 }
 
-// filesystemGroup is the set of items sharing.
+// filesystemGroup is the set of items sharing a bin directory, with the path a
+// free-space probe reads. A group exists for a bin directory holding nothing,
+// because the filesystem behind it still has to be watched.
 type filesystemGroup struct {
+	dir   string
 	probe string
 	items []bin.Item
 }
 
-// groupByFilesystem splits a listing by the trash directory each item.
-func groupByFilesystem(items []bin.Item) []filesystemGroup {
-	order := make([]string, 0, 4)
-	byDir := make(map[string][]bin.Item, 4)
-	for _, it := range items {
-		dir := filepath.Dir(it.ID)
+// groupByFilesystem splits a listing by the trash directory each item sits in,
+// and adds a group for every bin directory the listing never mentions.
+func groupByFilesystem(items []bin.Item, dirs []string) []filesystemGroup {
+	order := make([]string, 0, len(dirs)+4)
+	byDir := make(map[string][]bin.Item, len(dirs)+4)
+	add := func(dir string) {
 		if _, seen := byDir[dir]; !seen {
 			order = append(order, dir)
+			byDir[dir] = nil
 		}
+	}
+	for _, it := range items {
+		dir := filepath.Dir(it.ID)
+		add(dir)
 		byDir[dir] = append(byDir[dir], it)
+	}
+	for _, dir := range dirs {
+		// An item's ID names the files/ subdirectory, so a bin directory is
+		// spelled the same way here for the two to land in one group.
+		add(filepath.Join(dir, "files"))
 	}
 	groups := make([]filesystemGroup, 0, len(order))
 	for _, dir := range order {
-		groups = append(groups, filesystemGroup{probe: dir, items: byDir[dir]})
+		groups = append(groups, filesystemGroup{dir: dir, probe: probePath(dir), items: byDir[dir]})
 	}
 	return groups
 }
 
+// probePath returns the nearest existing ancestor of dir, which is the path a
+// statfs can answer for. A bin directory nothing has been recycled into yet does
+// not exist, and refusing to measure its filesystem leaves the daemon blind
+// until the first recycle.
+func probePath(dir string) string {
+	for {
+		if _, err := os.Stat(dir); err == nil {
+			return dir
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return dir
+		}
+		dir = parent
+	}
+}
+
 // Run sweeps every interval until ctx is done.
-func Run(ctx context.Context, interval time.Duration, report func([]Eviction, error)) error {
+func Run(ctx context.Context, interval time.Duration, report func([]Eviction, []Pressure, error)) error {
 	lock, err := LockPath()
 	if err != nil {
 		return err
@@ -201,9 +231,9 @@ func Run(ctx context.Context, interval time.Duration, report func([]Eviction, er
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 	for {
-		evicted, err := Sweep()
+		evicted, pressures, err := Sweep()
 		if report != nil {
-			report(evicted, err)
+			report(evicted, pressures, err)
 		}
 		select {
 		case <-ctx.Done():

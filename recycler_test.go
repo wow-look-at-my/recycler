@@ -33,22 +33,15 @@ func isolateTrash(t *testing.T) string {
 	return work
 }
 
-// requireRecycled asserts a Recycle succeeded and deferred every path rather
-// than deleting any outright. The suite runs on a filesystem with room, so a
-// permanent deletion here means the pressure check read the wrong one.
-func requireRecycled(t *testing.T, disposals []Disposal, err error) {
+// recycleAll recycles every path and asserts each one was deferred rather than
+// deleted outright. The suite runs on a filesystem with room, so a permanent
+// deletion here means the pressure check read the wrong filesystem.
+func recycleAll(t *testing.T, paths ...string) {
 	t.Helper()
+	disposals, err := Recycle(paths...)
 	require.NoError(t, err)
 	for _, d := range disposals {
 		require.False(t, d.Permanent, "%s was deleted outright: %s", d.Path, d.Reason)
-	}
-}
-
-func assertRecycled(t *testing.T, disposals []Disposal, err error) {
-	t.Helper()
-	assert.NoError(t, err)
-	for _, d := range disposals {
-		assert.False(t, d.Permanent, "%s was deleted outright: %s", d.Path, d.Reason)
 	}
 }
 
@@ -70,7 +63,7 @@ func TestRecycleAndRestore(t *testing.T) {
 	work := isolateTrash(t)
 	path := writeFile(t, filepath.Join(work, "notes.txt"), "keep me")
 
-	requireRecycled(t, Recycle(path))
+	recycleAll(t, path)
 	assert.NoFileExists(t, path, "the recycled file is still at its original location")
 
 	items := mustList(t)
@@ -98,7 +91,7 @@ func TestRecycleDirectory(t *testing.T) {
 	writeFile(t, filepath.Join(dir, "a.txt"), "aaa")
 	writeFile(t, filepath.Join(dir, "sub", "b.txt"), "bbbb")
 
-	requireRecycled(t, Recycle(dir))
+	recycleAll(t, dir)
 
 	items := mustList(t)
 	require.Len(t, items, 1)
@@ -118,7 +111,7 @@ func TestRecycleKeepsNamesApart(t *testing.T) {
 	first := writeFile(t, filepath.Join(work, "one", "same.txt"), "first")
 	second := writeFile(t, filepath.Join(work, "two", "same.txt"), "second")
 
-	requireRecycled(t, Recycle(first, second))
+	recycleAll(t, first, second)
 
 	items := mustList(t)
 	require.Len(t, items, 2)
@@ -140,7 +133,7 @@ func TestRecycleKeepsNamesApart(t *testing.T) {
 func TestRestoreToExplicitDestination(t *testing.T) {
 	work := isolateTrash(t)
 	path := writeFile(t, filepath.Join(work, "move-me.txt"), "hello")
-	requireRecycled(t, Recycle(path))
+	recycleAll(t, path)
 
 	items := mustList(t)
 	require.Len(t, items, 1)
@@ -158,7 +151,7 @@ func TestRestoreToExplicitDestination(t *testing.T) {
 func TestRestoreRefusesToOverwrite(t *testing.T) {
 	work := isolateTrash(t)
 	path := writeFile(t, filepath.Join(work, "busy.txt"), "recycled")
-	requireRecycled(t, Recycle(path))
+	recycleAll(t, path)
 	writeFile(t, path, "new file in the old place")
 
 	items := mustList(t)
@@ -182,16 +175,19 @@ func TestBackendDestroysOnlyUnderDiskPressure(t *testing.T) {
 		got = append(got, iface.Method(i).Name)
 	}
 	sort.Strings(got)
-	assert.Equal(t, []string{"Evict", "List", "Recycle", "Restore"}, got)
+	// Evict is the only method here that destroys anything, and only the daemon
+	// calls it. Dirs reports where the bins are so the daemon can read their
+	// filesystems; adding a second destructive method is what this guards against.
+	assert.Equal(t, []string{"Dirs", "Evict", "List", "Recycle", "Restore"}, got)
 }
 
 // Sweep against a real bin with room to spare: it reads the listing, finds no filesystem under its
 // target.
 func TestSweepGivesNothingBackWhenThereIsRoom(t *testing.T) {
 	work := isolateTrash(t)
-	requireRecycled(t, Recycle(writeFile(t, filepath.Join(work, "safe.txt"), "safe")))
+	recycleAll(t, writeFile(t, filepath.Join(work, "safe.txt"), "safe"))
 
-	evicted, err := Sweep()
+	evicted, _, err := Sweep()
 	require.NoError(t, err)
 	assert.Empty(t, evicted)
 
@@ -203,7 +199,7 @@ func TestUnknownIDsAreRejected(t *testing.T) {
 	outsider := writeFile(t, filepath.Join(work, "innocent.txt"), "do not touch")
 
 	// Recycle something so the trash directories exist.
-	requireRecycled(t, Recycle(writeFile(t, filepath.Join(work, "decoy.txt"), "decoy")))
+	recycleAll(t, writeFile(t, filepath.Join(work, "decoy.txt"), "decoy"))
 
 	for _, id := range []string{"", "not-an-id", outsider, filepath.Join(work, "nope", "files", "x")} {
 		_, getErr := Get(id)
@@ -236,7 +232,7 @@ func TestRecycleReportsMissingPaths(t *testing.T) {
 
 func TestRecycleNothing(t *testing.T) {
 	isolateTrash(t)
-	assertRecycled(t, Recycle())
+	recycleAll(t)
 }
 
 func TestListOnAnEmptyBin(t *testing.T) {
