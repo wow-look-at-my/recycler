@@ -27,8 +27,16 @@ const SizeUnknown = bin.SizeUnknown
 
 type Item = bin.Item
 
+// A Disposal records what one path handed to [Recycle] actually got.
+type Disposal = bin.Disposal
+
 // An Eviction records an item.
 type Eviction = daemon.Eviction
+
+// Pressure is a filesystem the daemon left under its target because everything
+// filling it is live. Recycling defers a deletion; it cannot give back what was
+// never recycled.
+type Pressure = daemon.Pressure
 
 // DefaultPollInterval is how often the daemon reads.
 const DefaultPollInterval = daemon.DefaultPollInterval
@@ -39,14 +47,20 @@ func Available() bool {
 	return err == nil
 }
 
-// Recycle moves each path to the recycle bin.
-func Recycle(paths ...string) error {
+// Recycle moves each path to the recycle bin and reports what each one got.
+//
+// A bin shares the filesystem it takes from, so recycling moves bytes sideways
+// rather than freeing any. Below the daemon's target, or for an item larger than
+// the space left, that cannot help and the path is removed outright instead. The
+// [Disposal] for such a path is marked Permanent, with the measurement that
+// decided it. A caller that reports a recycle has to report these too.
+func Recycle(paths ...string) ([]Disposal, error) {
 	if len(paths) == 0 {
-		return nil
+		return nil, nil
 	}
 	b, err := trash.Backend()
 	if err != nil {
-		return err
+		return nil, err
 	}
 	return b.Recycle(paths)
 }
@@ -91,11 +105,12 @@ func RestoreTo(id, dest string) (string, error) {
 // FreeTarget returns the number of available bytes the daemon keeps.
 func FreeTarget(total uint64) uint64 { return daemon.FreeTarget(total) }
 
-// Sweep reclaims space on every filesystem holding.
-func Sweep() ([]Eviction, error) { return daemon.Sweep() }
+// Sweep reclaims space on every filesystem holding a bin, and reports every one
+// still under its target afterwards.
+func Sweep() ([]Eviction, []Pressure, error) { return daemon.Sweep() }
 
 // RunDaemon sweeps every interval until ctx is done.
-func RunDaemon(ctx context.Context, interval time.Duration, report func([]Eviction, error)) error {
+func RunDaemon(ctx context.Context, interval time.Duration, report func([]Eviction, []Pressure, error)) error {
 	return daemon.Run(ctx, interval, report)
 }
 

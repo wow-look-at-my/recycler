@@ -12,6 +12,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/wow-look-at-my/recycler"
+	"github.com/wow-look-at-my/recycler/internal/pressure"
 )
 
 var daemonCmd = &cobra.Command{
@@ -24,6 +25,15 @@ there is room to defer it into. This reads free space on the interval below
 and, when a filesystem holding a recycle bin has less than a tenth of itself
 free (or less than 1 GiB, whichever is smaller), destroys recycled items
 oldest first until it does.
+
+Free space is what this caller can reach. A filesystem that reserves blocks for
+another user reports them as free without ever handing them over, and a target
+read off the whole device would ask for space that never arrives.
+
+Every filesystem holding a bin is read on every tick, including one whose bin is
+empty. A filesystem left under its target is named, because a bin holds only
+what was recycled: a disk filling with files nobody recycled leaves this running
+and unable to help, and that is the state worth hearing about.
 
 Sizes are the ones recorded when each item was recycled, so a sweep does not
 walk the bin to measure it. An item whose size is unknown is left alone.
@@ -38,16 +48,20 @@ a second one exits rather than sweeping alongside the first.`,
 		out := cmd.OutOrStdout()
 
 		if once {
-			evicted, err := recycler.Sweep()
-			reportEvictions(out, evicted, err)
+			evicted, pressures, err := recycler.Sweep()
+			reportSweep(out, evicted, pressures, err)
 			return err
 		}
 
 		ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
 		defer stop()
 
-		err := recycler.RunDaemon(ctx, interval, func(evicted []recycler.Eviction, err error) {
+		// The poll is a second, so repeating an unchanged complaint every tick
+		// would bury the change that matters in a log nobody can read.
+		seen := map[string]bool{}
+		err := recycler.RunDaemon(ctx, interval, func(evicted []recycler.Eviction, pressures []recycler.Pressure, err error) {
 			reportEvictions(out, evicted, err)
+			reportPressureChanges(out, pressures, seen)
 		})
 		if errors.Is(err, context.Canceled) {
 			return nil
@@ -70,6 +84,47 @@ func reportEvictions(out io.Writer, evicted []recycler.Eviction, err error) {
 		fmt.Fprintf(out, "evicted %s (%d bytes, recycled %s)\n",
 			ev.Item.Name, ev.Item.Size, ev.Item.DeletedAt.Format(time.RFC3339))
 	}
+}
+
+// reportSweep is one sweep's whole account, for a run that ends after it.
+func reportSweep(out io.Writer, evicted []recycler.Eviction, pressures []recycler.Pressure, err error) {
+	reportEvictions(out, evicted, err)
+	for _, p := range pressures {
+		fmt.Fprintln(out, pressureLine(p))
+	}
+}
+
+// reportPressureChanges names a filesystem the sweep could not bring back up to
+// its target, and names it again when it recovers. A daemon that stays silent
+// here is indistinguishable from one keeping up, which is the state to report
+// loudest: everything filling the disk is live, and nothing recycled is left to
+// give back.
+func reportPressureChanges(out io.Writer, pressures []recycler.Pressure, seen map[string]bool) {
+	now := make(map[string]bool, len(pressures))
+	for _, p := range pressures {
+		now[p.Dir] = true
+		if !seen[p.Dir] {
+			fmt.Fprintln(out, pressureLine(p))
+		}
+	}
+	for dir := range seen {
+		if !now[dir] {
+			fmt.Fprintf(out, "%s is back above its target\n", dir)
+			delete(seen, dir)
+		}
+	}
+	for dir := range now {
+		seen[dir] = true
+	}
+}
+
+func pressureLine(p recycler.Pressure) string {
+	line := fmt.Sprintf("cannot keep %s above its target: %s available, %s short",
+		p.Dir, pressure.Bytes(p.Avail), pressure.Bytes(p.Shortfall()))
+	if p.Stranded > 0 {
+		return fmt.Sprintf("%s, and %s of recycled items would not go", line, pressure.Bytes(p.Stranded))
+	}
+	return line + ", and nothing recycled is left to give back"
 }
 
 var daemonUpCmd = &cobra.Command{

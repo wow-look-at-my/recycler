@@ -20,9 +20,10 @@ type fakeBackend struct {
 	fail    map[string]error
 }
 
-func (f *fakeBackend) Recycle([]string) error                 { return nil }
-func (f *fakeBackend) List() ([]bin.Item, error)              { return nil, nil }
-func (f *fakeBackend) Restore(string, string) (string, error) { return "", nil }
+func (f *fakeBackend) Recycle([]string) ([]bin.Disposal, error) { return nil, nil }
+func (f *fakeBackend) List() ([]bin.Item, error)                { return nil, nil }
+func (f *fakeBackend) Restore(string, string) (string, error)   { return "", nil }
+func (f *fakeBackend) Dirs() []string                           { return []string{"/trash"} }
 
 func (f *fakeBackend) Evict(id string) error {
 	if err, bad := f.fail[id]; bad {
@@ -48,6 +49,10 @@ func freeSpace(avail, total uint64) func(string) (uint64, uint64, error) {
 	return func(string) (uint64, uint64, error) { return avail, total, nil }
 }
 
+// dirs is the bin the tests' items sit in. A sweep is handed the bin directories
+// as well as the listing, so it reads a filesystem whose bin turned out empty.
+var dirs = []string{"/trash"}
+
 func TestFreeTargetIsATenthCappedAtAGigabyte(t *testing.T) {
 	// A small filesystem keeps the fraction.
 	assert.Equal(t, uint64(100), FreeTarget(1000))
@@ -65,9 +70,16 @@ func TestRecoverTargetFreesPastTheTrigger(t *testing.T) {
 	assert.Greater(t, RecoverTarget(big), FreeTarget(big))
 	assert.Equal(t, uint64(freeTargetCeiling)*recoverMultiple, RecoverTarget(big))
 
-	// A filesystem small enough to keep the fraction is never emptied past it.
+	// A filesystem small enough to keep the fraction still gets runway. Bounding
+	// recovery by the fraction the trigger uses would make the two equal here,
+	// so a sweep would free exactly back to the trigger and fire again on the
+	// next write.
 	assert.Equal(t, uint64(100), FreeTarget(1000))
-	assert.Equal(t, uint64(100), RecoverTarget(1000))
+	assert.Equal(t, uint64(200), RecoverTarget(1000))
+	assert.Greater(t, RecoverTarget(1000), FreeTarget(1000))
+
+	// It is still bounded, so a small filesystem is never emptied.
+	assert.Less(t, RecoverTarget(1000), uint64(1000))
 }
 
 // The recovery target is what the eviction loop stops at, not the trigger.
@@ -82,7 +94,7 @@ func TestASweepKeepsEvictingPastTheTrigger(t *testing.T) {
 	}
 
 	// Just under the trigger, where recovering has to evict further than it.
-	_, err := sweepItems(b, items, freeSpace(gib-1, total))
+	_, _, err := sweepItems(b, items, dirs, freeSpace(gib-1, total))
 	require.NoError(t, err)
 	assert.Greater(t, len(b.evicted), 1, "stopping at the trigger leaves no runway")
 }
@@ -91,7 +103,7 @@ func TestASweepLeavesAFilesystemWithRoomAlone(t *testing.T) {
 	b := &fakeBackend{}
 	items := []bin.Item{item("old.txt", 500, 48), item("new.txt", 500, 1)}
 
-	evicted, err := sweepItems(b, items, freeSpace(1000, 2000))
+	evicted, _, err := sweepItems(b, items, dirs, freeSpace(1000, 2000))
 	require.NoError(t, err)
 	assert.Empty(t, evicted)
 	assert.Empty(t, b.evicted, "nothing may go while there is room")
@@ -101,12 +113,12 @@ func TestASweepTakesTheOldestFirstAndStopsAtTheTarget(t *testing.T) {
 	b := &fakeBackend{}
 	// A filesystem below its target, where freeing the oldest item alone clears the target.
 	items := []bin.Item{
-		item("newest.txt", 200, 1),
-		item("oldest.txt", 200, 72),
-		item("middle.txt", 200, 24),
+		item("newest.txt", 400, 1),
+		item("oldest.txt", 400, 72),
+		item("middle.txt", 400, 24),
 	}
 
-	evicted, err := sweepItems(b, items, freeSpace(50, 2000))
+	evicted, _, err := sweepItems(b, items, dirs, freeSpace(50, 2000))
 	require.NoError(t, err)
 	assert.Equal(t, []string{filepath.Join("/trash", "files", "oldest.txt")}, b.evicted)
 	require.Len(t, evicted, 1)
@@ -117,13 +129,13 @@ func TestASweepTakesTheOldestFirstAndStopsAtTheTarget(t *testing.T) {
 func TestASweepKeepsGoingUntilTheTargetIsMet(t *testing.T) {
 	b := &fakeBackend{}
 	items := []bin.Item{
-		item("a.txt", 100, 72),
-		item("b.txt", 100, 48),
-		item("c.txt", 100, 1),
+		item("a.txt", 200, 72),
+		item("b.txt", 200, 48),
+		item("c.txt", 200, 1),
 	}
 
 	// Wants a target it has none of, so the oldest go and the newest survives.
-	_, err := sweepItems(b, items, freeSpace(0, 2000))
+	_, _, err := sweepItems(b, items, dirs, freeSpace(0, 2000))
 	require.NoError(t, err)
 	assert.Equal(t, []string{
 		filepath.Join("/trash", "files", "a.txt"),
@@ -139,7 +151,7 @@ func TestAnItemOfUnknownSizeIsNeverEvicted(t *testing.T) {
 		item("known.txt", 300, 1),
 	}
 
-	_, err := sweepItems(b, items, freeSpace(0, 2000))
+	_, _, err := sweepItems(b, items, dirs, freeSpace(0, 2000))
 	require.NoError(t, err)
 	assert.Equal(t, []string{filepath.Join("/trash", "files", "known.txt")}, b.evicted,
 		"the unsized item must survive even though it is older")
@@ -154,7 +166,7 @@ func TestAFailedEvictionDoesNotCountAsSpaceReclaimed(t *testing.T) {
 		item("next.txt", 200, 24),
 	}
 
-	evicted, err := sweepItems(b, items, freeSpace(0, 2000))
+	evicted, _, err := sweepItems(b, items, dirs, freeSpace(0, 2000))
 	require.NoError(t, err)
 	assert.Equal(t, []string{filepath.Join("/trash", "files", "next.txt")}, b.evicted)
 	require.Len(t, evicted, 2)
@@ -176,7 +188,7 @@ func TestEachFilesystemIsSweptOnItsOwnPressure(t *testing.T) {
 		return 2000, 2000, nil // empty
 	}
 
-	_, err := sweepItems(b, items, free)
+	_, _, err := sweepItems(b, items, dirs, free)
 	require.NoError(t, err)
 	assert.Equal(t, []string{"/trash/files/a.txt"}, b.evicted)
 }
@@ -186,7 +198,7 @@ func TestAnUnreadableFilesystemIsSkipped(t *testing.T) {
 	b := &fakeBackend{}
 	items := []bin.Item{item("a.txt", 200, 1)}
 
-	evicted, err := sweepItems(b, items, func(string) (uint64, uint64, error) {
+	evicted, _, err := sweepItems(b, items, dirs, func(string) (uint64, uint64, error) {
 		return 0, 0, errors.New("no such filesystem")
 	})
 	require.NoError(t, err)
@@ -223,7 +235,7 @@ func TestTheDaemonSweepsUntilItsContextIsDone(t *testing.T) {
 	defer cancel()
 
 	sweeps := 0
-	err := Run(ctx, time.Millisecond, func(evicted []Eviction, err error) {
+	err := Run(ctx, time.Millisecond, func(evicted []Eviction, _ []Pressure, err error) {
 		assert.NoError(t, err)
 		assert.Empty(t, evicted, "an empty bin has nothing to give back")
 		if sweeps++; sweeps == 2 {
@@ -245,7 +257,7 @@ func TestAZeroIntervalTakesTheDefault(t *testing.T) {
 	defer cancel()
 
 	// A sweep runs before any tick, so cancelling from it returns without ever waiting out.
-	err := Run(ctx, 0, func([]Eviction, error) { cancel() })
+	err := Run(ctx, 0, func([]Eviction, []Pressure, error) { cancel() })
 	assert.ErrorIs(t, err, context.Canceled)
 }
 
