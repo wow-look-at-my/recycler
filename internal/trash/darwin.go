@@ -27,6 +27,7 @@ import (
 	"github.com/wow-look-at-my/recycler/internal/bin"
 	"github.com/wow-look-at-my/recycler/internal/dsstore"
 	"github.com/wow-look-at-my/recycler/internal/fsutil"
+	"github.com/wow-look-at-my/recycler/internal/pressure"
 	"github.com/wow-look-at-my/recycler/internal/putback"
 )
 
@@ -43,40 +44,54 @@ func Backend() (bin.Backend, error) {
 	return &macTrash{home: filepath.Join(home, ".Trash"), uid: os.Getuid()}, nil
 }
 
-func (t *macTrash) Recycle(paths []string) error {
+func (t *macTrash) Recycle(paths []string) ([]bin.Disposal, error) {
 	var errs []error
+	disposals := make([]bin.Disposal, 0, len(paths))
 	for _, path := range paths {
-		if err := t.recycleOne(path); err != nil {
+		d, err := t.recycleOne(path)
+		if err != nil {
 			errs = append(errs, fmt.Errorf("recycling %s: %w", path, err))
+			continue
 		}
+		disposals = append(disposals, d)
 	}
-	return errors.Join(errs...)
+	return disposals, errors.Join(errs...)
 }
 
-func (t *macTrash) recycleOne(path string) error {
+func (t *macTrash) recycleOne(path string) (bin.Disposal, error) {
 	abs, err := filepath.Abs(path)
 	if err != nil {
-		return err
+		return bin.Disposal{}, err
 	}
 	if _, err := os.Lstat(abs); err != nil {
-		return err
+		return bin.Disposal{}, err
 	}
 	if abs == filepath.Clean("/") {
-		return errors.New("refusing to recycle the filesystem root")
+		return bin.Disposal{}, errors.New("refusing to recycle the filesystem root")
+	}
+
+	// A trash is on the volume it takes from, so recycling frees nothing there.
+	// Under the daemon's floor the deletion the caller asked for is the only
+	// thing that gives space back.
+	if decision := pressure.Check(abs, fsutil.TreeSize(abs)); decision.Permanent {
+		if err := os.RemoveAll(abs); err != nil {
+			return bin.Disposal{}, err
+		}
+		return bin.Disposal{Path: abs, Permanent: true, Reason: decision.Reason}, nil
 	}
 
 	dir, err := t.trashDirFor(abs)
 	if err != nil {
-		return err
+		return bin.Disposal{}, err
 	}
 	dest := filepath.Join(dir, putback.TrashName(filepath.Base(abs), dir))
 	if err := fsutil.Move(abs, dest); err != nil {
-		return err
+		return bin.Disposal{}, err
 	}
 	if err := putback.Set(dir, filepath.Base(dest), putback.Of(t.volumeRoot(dir), abs)); err != nil {
-		return fmt.Errorf("moved to the trash, but its original location could not be recorded: %w", err)
+		return bin.Disposal{}, fmt.Errorf("moved to the trash, but its original location could not be recorded: %w", err)
 	}
-	return nil
+	return bin.Disposal{Path: abs}, nil
 }
 
 func (t *macTrash) List() ([]bin.Item, error) {
@@ -194,6 +209,9 @@ func (t *macTrash) trashDirFor(path string) (string, error) {
 	}
 	return dir, nil
 }
+
+// Dirs reports the trash directories the daemon watches the filesystems of.
+func (t *macTrash) Dirs() []string { return t.trashDirs() }
 
 // trashDirs returns every trash directory belonging to this user.
 func (t *macTrash) trashDirs() []string {

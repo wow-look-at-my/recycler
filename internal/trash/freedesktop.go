@@ -26,6 +26,7 @@ import (
 
 	"github.com/wow-look-at-my/recycler/internal/bin"
 	"github.com/wow-look-at-my/recycler/internal/fsutil"
+	"github.com/wow-look-at-my/recycler/internal/pressure"
 )
 
 const (
@@ -60,31 +61,50 @@ type trashInfo struct {
 	size      int64 // bin.SizeUnknown when the file records none
 }
 
-func (t *fdoTrash) Recycle(paths []string) error {
+func (t *fdoTrash) Recycle(paths []string) ([]bin.Disposal, error) {
 	var errs []error
+	disposals := make([]bin.Disposal, 0, len(paths))
 	for _, path := range paths {
-		if err := t.recycleOne(path); err != nil {
+		d, err := t.recycleOne(path)
+		if err != nil {
 			errs = append(errs, fmt.Errorf("recycling %s: %w", path, err))
+			continue
 		}
+		disposals = append(disposals, d)
 	}
-	return errors.Join(errs...)
+	return disposals, errors.Join(errs...)
 }
 
-func (t *fdoTrash) recycleOne(path string) error {
+func (t *fdoTrash) recycleOne(path string) (bin.Disposal, error) {
 	abs, err := filepath.Abs(path)
 	if err != nil {
-		return err
+		return bin.Disposal{}, err
 	}
 	if _, err := os.Lstat(abs); err != nil {
-		return err
+		return bin.Disposal{}, err
 	}
 	if abs == filepath.Clean("/") {
-		return errors.New("refusing to recycle the filesystem root")
+		return bin.Disposal{}, errors.New("refusing to recycle the filesystem root")
+	}
+
+	// The size is measured here, while the item is still at its original
+	// location. It decides whether the item fits in what is left as well as
+	// what gets recorded, so it is read before anything is written.
+	size := fsutil.TreeSize(abs)
+
+	// A bin is on the filesystem it takes from, so recycling frees nothing here.
+	// Under the daemon's floor that stops being a deferral, and the deletion the
+	// caller asked for is the only thing that gives space back.
+	if decision := pressure.Check(abs, size); decision.Permanent {
+		if err := os.RemoveAll(abs); err != nil {
+			return bin.Disposal{}, err
+		}
+		return bin.Disposal{Path: abs, Permanent: true, Reason: decision.Reason}, nil
 	}
 
 	dir, top, err := t.trashDirFor(abs)
 	if err != nil {
-		return err
+		return bin.Disposal{}, err
 	}
 
 	// A per-filesystem trash records the location relative to the top directory.
@@ -97,25 +117,24 @@ func (t *fdoTrash) recycleOne(path string) error {
 
 	name, info, err := createInfoFile(dir, filepath.Base(abs))
 	if err != nil {
-		return err
+		return bin.Disposal{}, err
 	}
-	// The size is measured here, while the item is still at its original location, and recorded.
 	infoPath := filepath.Join(dir, trashInfoDir, name+trashInfoExt)
 	_, err = fmt.Fprintf(info, "[Trash Info]\nPath=%s\nDeletionDate=%s\nSize=%d\n",
-		escapePath(recorded), time.Now().Format(deletionDateLayout), fsutil.TreeSize(abs))
+		escapePath(recorded), time.Now().Format(deletionDateLayout), size)
 	if closeErr := info.Close(); err == nil {
 		err = closeErr
 	}
 	if err != nil {
 		os.Remove(infoPath)
-		return err
+		return bin.Disposal{}, err
 	}
 
 	if err := fsutil.Move(abs, filepath.Join(dir, trashFilesDir, name)); err != nil {
 		os.Remove(infoPath)
-		return err
+		return bin.Disposal{}, err
 	}
-	return nil
+	return bin.Disposal{Path: abs}, nil
 }
 
 func (t *fdoTrash) List() ([]bin.Item, error) {
@@ -279,6 +298,9 @@ func (t *fdoTrash) trashDirFor(path string) (dir, top string, err error) {
 	}
 	return dir, top, nil
 }
+
+// Dirs reports the trash directories the daemon watches the filesystems of.
+func (t *fdoTrash) Dirs() []string { return t.trashDirs() }
 
 // trashDirs returns every trash directory belonging to this user.
 func (t *fdoTrash) trashDirs() []string {

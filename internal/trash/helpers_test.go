@@ -17,6 +17,17 @@ func recycle(paths ...string) error {
 	if err != nil {
 		return err
 	}
+	_, err = b.Recycle(paths)
+	return err
+}
+
+// dispose is recycle for a test that has to see whether a path was deferred or
+// deleted outright.
+func dispose(paths ...string) ([]bin.Disposal, error) {
+	b, err := Backend()
+	if err != nil {
+		return nil, err
+	}
 	return b.Recycle(paths)
 }
 
