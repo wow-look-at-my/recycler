@@ -149,9 +149,13 @@ returns rather than sweeping alongside the first.`,
 		}
 		if started {
 			fmt.Fprintln(cmd.OutOrStdout(), "started the disk-pressure daemon")
-		} else {
-			fmt.Fprintln(cmd.OutOrStdout(), "the disk-pressure daemon is already running")
+			return nil
 		}
+		if running, ok := recycler.RunningDaemon(); ok {
+			fmt.Fprintf(cmd.OutOrStdout(), "the disk-pressure daemon is already running: %s, which this build does not replace\n", running)
+			return nil
+		}
+		fmt.Fprintln(cmd.OutOrStdout(), "the disk-pressure daemon is already running")
 		return nil
 	},
 }
@@ -173,6 +177,8 @@ func startDaemon(stderr io.Writer) {
 }
 
 func init() {
+	// The daemon is ordered against other daemons by the version printed here.
+	recycler.SetDaemonVersion(version)
 	daemonCmd.Flags().Duration("interval", recycler.DefaultPollInterval, "how often to read free space")
 	daemonCmd.Flags().Bool("once", false, "sweep once and exit")
 	daemonCmd.AddCommand(daemonUpCmd)

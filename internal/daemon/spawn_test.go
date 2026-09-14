@@ -2,6 +2,7 @@ package daemon
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"sync"
@@ -16,7 +17,7 @@ func TestEnsureStartsADaemon(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("the stand-in daemon is a shell script")
 	}
-	t.Setenv("XDG_CACHE_HOME", t.TempDir())
+	isolateDaemonState(t)
 
 	exe := filepath.Join(t.TempDir(), "stand-in-recycler")
 	require.NoError(t, os.WriteFile(exe, []byte("#!/bin/sh\nexit 0\n"), 0o700))
@@ -29,7 +30,7 @@ func TestEnsureStartsADaemon(t *testing.T) {
 // A daemon per user is the whole point of the lock: a recycle every few seconds must not start a
 // daemon every.
 func TestEnsureStandsDownWhileADaemonHoldsTheLock(t *testing.T) {
-	t.Setenv("XDG_CACHE_HOME", t.TempDir())
+	isolateDaemonState(t)
 	lock, err := LockPath()
 	require.NoError(t, err)
 
@@ -49,7 +50,10 @@ func TestConcurrentEnsureStartsOneDaemon(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("the stand-in daemon is a shell script")
 	}
-	t.Setenv("XDG_CACHE_HOME", t.TempDir())
+	if _, err := exec.LookPath("flock"); err != nil {
+		t.Skip("the stand-in daemon holds the lock with flock(1)")
+	}
+	isolateDaemonState(t)
 	lock, err := LockPath()
 	require.NoError(t, err)
 
@@ -84,8 +88,9 @@ func TestConcurrentEnsureStartsOneDaemon(t *testing.T) {
 // The lock lives under the user's cache directory, and Ensure creates it rather than failing on a
 // cache.
 func TestLockPathIsCreatedUnderTheCacheDirectory(t *testing.T) {
-	cache := t.TempDir()
-	t.Setenv("XDG_CACHE_HOME", cache)
+	isolateDaemonState(t)
+	cache, err := os.UserCacheDir()
+	require.NoError(t, err)
 
 	lock, err := LockPath()
 	require.NoError(t, err)

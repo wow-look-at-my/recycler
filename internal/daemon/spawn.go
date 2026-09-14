@@ -79,10 +79,18 @@ func Ensure(exe string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	if !free {
-		return false, nil
+	me := selfIdentity(exe)
+	replacing, known := Identity{}, false
+	if free {
+		unlock()
+	} else {
+		// Somebody is sweeping. Only a newer build displaces it, and a daemon
+		// that recorded no build is left alone rather than guessed about.
+		replacing, known = Running()
+		if !known || !Newer(me, replacing) {
+			return false, nil
+		}
 	}
-	unlock()
 
 	cmd := exec.Command(exe, "daemon")
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = nil, nil, nil
@@ -97,30 +105,21 @@ func Ensure(exe string) (bool, error) {
 	// Nothing waits for it.
 	go cmd.Process.Release()
 
+	if known {
+		// The child has to get the lock out of the running daemon before it can
+		// sweep, and that daemon only lets go on its own next tick.
+		if !waitForSuccessor(me, handoverTimeout) {
+			return false, fmt.Errorf("recycler: started %s to replace %s, which did not hand over within %s",
+				me, replacing, handoverTimeout)
+		}
+		return true, nil
+	}
+
 	// Waiting here hands the next caller a lock the child has already taken.
-	waitUntilHeld(lock, spawnHandoffTimeout)
+	lockTakenByAnother(lock, spawnHandoffTimeout)
 	return true, nil
 }
 
 // spawnHandoffTimeout bounds the wait for the child to take the lock. A child that died leaves it
 // free, and the next caller then starts a daemon rather than standing down forever.
 const spawnHandoffTimeout = 5 * time.Second
-
-// waitUntilHeld returns when somebody else holds the lock, or when the timeout runs out.
-func waitUntilHeld(path string, timeout time.Duration) {
-	deadline := time.Now().Add(timeout)
-	for {
-		unlock, free, err := tryLock(path)
-		if err != nil {
-			return
-		}
-		if !free {
-			return
-		}
-		unlock()
-		if time.Now().After(deadline) {
-			return
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
-}
