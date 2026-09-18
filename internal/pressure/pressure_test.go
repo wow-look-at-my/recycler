@@ -8,16 +8,17 @@ import (
 	"github.com/wow-look-at-my/recycler/internal/bin"
 )
 
-// The floor here and the daemon's target are the same number by intent: a
-// single decides when recycling stops deferring anything, the other when a
-// sweep starts. They are spelled again because the daemon imports the
-// backends that call this, so this package cannot import it back.
+// The floor here and the daemon's target are the same number by intent: one
+// decides when recycling stops deferring anything, the other when a sweep
+// starts. They are spelled twice because the daemon imports the backends that
+// call this, so this package cannot import it back.
 func TestTheFloorMatchesTheDaemonsTarget(t *testing.T) {
+	// A filesystem of 10 GiB or more takes the flat gigabyte.
 	assert.Equal(t, uint64(1<<30), Floor(10<<30))
 	assert.Equal(t, uint64(1<<30), Floor(1<<40))
 
-	// A smaller a single keeps the fraction, so small media does not
-	// become a permanent-delete device.
+	// A smaller one keeps the fraction, so small media does not become a
+	// permanent-delete device.
 	assert.Equal(t, uint64(50<<20), Floor(500<<20))
 	assert.Equal(t, uint64(100), Floor(1000))
 }
@@ -45,7 +46,7 @@ func TestAnItemLargerThanTheSpaceLeftIsDeletedOutright(t *testing.T) {
 	assert.Contains(t, d.Reason, "does not fit")
 }
 
-// Both states are separate. An item that fits, on a filesystem with room, is
+// The two states are separate. An item that fits, on a filesystem with room, is
 // recycled however large it is.
 func TestAnItemThatFitsIsRecycled(t *testing.T) {
 	d := decide(8<<30, terabyte, 4<<30)

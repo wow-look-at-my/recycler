@@ -71,9 +71,9 @@ func TestRecoverTargetFreesPastTheTrigger(t *testing.T) {
 	assert.Equal(t, uint64(freeTargetCeiling)*recoverMultiple, RecoverTarget(big))
 
 	// A filesystem small enough to keep the fraction still gets runway. Bounding
-	// recovery by the fraction the trigger uses would make both equal here, so a
-	// sweep would free exactly back to the trigger and fire again on the next
-	// write.
+	// recovery by the fraction the trigger uses would make the two equal here,
+	// so a sweep would free exactly back to the trigger and fire again on the
+	// next write.
 	assert.Equal(t, uint64(100), FreeTarget(1000))
 	assert.Equal(t, uint64(200), RecoverTarget(1000))
 	assert.Greater(t, RecoverTarget(1000), FreeTarget(1000))
