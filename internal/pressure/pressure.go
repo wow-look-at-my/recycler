@@ -2,7 +2,7 @@
 //
 // A bin sits on the filesystem it takes from, so recycling frees nothing: the
 // bytes move sideways. That is the right trade while there is room to defer a
-// deletion into, and the wrong one when there is not.
+// deletion into, and the wrong a single when there is not.
 package pressure
 
 import (
@@ -13,7 +13,7 @@ import (
 	"github.com/wow-look-at-my/recycler/internal/diskfree"
 )
 
-// A Decision is what should happen to one path handed to Recycle.
+// A Decision is what should happen to a single path handed to Recycle.
 type Decision struct {
 	// Permanent is set when recycling cannot free space and the path has to go
 	// for real. Reason says why.
@@ -26,17 +26,14 @@ type Decision struct {
 }
 
 // These mirror internal/daemon, which imports the backends that call this and so
-// cannot be imported back. A test pins the two spellings together.
+// cannot be imported back. A test pins both spellings together.
 const (
 	freeTargetFraction = 10
 	freeTargetCeiling  = 1 << 30
 )
 
-// Floor is the available bytes below which recycling defers nothing: a tenth of
-// the filesystem, capped at 1 GiB, which is where the daemon sweeps. A
-// filesystem of 10 GiB or more therefore uses the flat 1 GiB. A smaller one
-// keeps the fraction, because a flat gigabyte on small media would make every
-// deletion there permanent.
+// A smaller a single keeps the fraction, because a flat gigabyte on small media
+// would make every deletion there permanent.
 func Floor(total uint64) uint64 {
 	if target := total / freeTargetFraction; target < freeTargetCeiling {
 		return target
@@ -56,7 +53,7 @@ func Check(path string, size int64) Decision {
 }
 
 // decide is Check's rules against an already-read filesystem, so the cases can
-// be tested without one that is actually full.
+// be tested without a single that is actually full.
 func decide(avail, total uint64, size int64) Decision {
 	d := Decision{Avail: avail, Target: Floor(total), Size: size}
 	switch {
