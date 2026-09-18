@@ -208,7 +208,7 @@ func TestAnUnreadableFilesystemIsSkipped(t *testing.T) {
 
 // The lock is what makes it a daemon per user.
 func TestASecondDaemonStandsDown(t *testing.T) {
-	t.Setenv("XDG_CACHE_HOME", t.TempDir())
+	isolateDaemonState(t)
 	lock, err := LockPath()
 	require.NoError(t, err)
 

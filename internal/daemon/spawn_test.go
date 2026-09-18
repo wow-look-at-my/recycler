@@ -2,8 +2,10 @@ package daemon
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -15,7 +17,7 @@ func TestEnsureStartsADaemon(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("the stand-in daemon is a shell script")
 	}
-	t.Setenv("XDG_CACHE_HOME", t.TempDir())
+	isolateDaemonState(t)
 
 	exe := filepath.Join(t.TempDir(), "stand-in-recycler")
 	require.NoError(t, os.WriteFile(exe, []byte("#!/bin/sh\nexit 0\n"), 0o700))
@@ -28,7 +30,7 @@ func TestEnsureStartsADaemon(t *testing.T) {
 // A daemon per user is the whole point of the lock: a recycle every few seconds must not start a
 // daemon every.
 func TestEnsureStandsDownWhileADaemonHoldsTheLock(t *testing.T) {
-	t.Setenv("XDG_CACHE_HOME", t.TempDir())
+	isolateDaemonState(t)
 	lock, err := LockPath()
 	require.NoError(t, err)
 
@@ -42,11 +44,53 @@ func TestEnsureStandsDownWhileADaemonHoldsTheLock(t *testing.T) {
 	assert.False(t, started, "a second daemon was started while one held the lock")
 }
 
+// Racing callers must start a single daemon between them. The stand-in holds the daemon lock the
+// way a real one does, so a loser has something to stand down to.
+func TestConcurrentEnsureStartsOneDaemon(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the stand-in daemon is a shell script")
+	}
+	if _, err := exec.LookPath("flock"); err != nil {
+		t.Skip("the stand-in daemon holds the lock with flock(1)")
+	}
+	isolateDaemonState(t)
+	lock, err := LockPath()
+	require.NoError(t, err)
+
+	exe := filepath.Join(t.TempDir(), "stand-in-recycler")
+	script := "#!/bin/sh\nexec flock " + lock + " sleep 5\n"
+	require.NoError(t, os.WriteFile(exe, []byte(script), 0o700))
+
+	const callers = 8
+	started := make(chan bool, callers)
+	var wg sync.WaitGroup
+	for range callers {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			ok, err := Ensure(exe)
+			assert.NoError(t, err)
+			started <- ok
+		}()
+	}
+	wg.Wait()
+	close(started)
+
+	count := 0
+	for ok := range started {
+		if ok {
+			count++
+		}
+	}
+	assert.Equal(t, 1, count, "expected exactly one caller to start a daemon")
+}
+
 // The lock lives under the user's cache directory, and Ensure creates it rather than failing on a
 // cache.
 func TestLockPathIsCreatedUnderTheCacheDirectory(t *testing.T) {
-	cache := t.TempDir()
-	t.Setenv("XDG_CACHE_HOME", cache)
+	isolateDaemonState(t)
+	cache, err := os.UserCacheDir()
+	require.NoError(t, err)
 
 	lock, err := LockPath()
 	require.NoError(t, err)

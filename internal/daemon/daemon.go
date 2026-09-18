@@ -213,19 +213,38 @@ func probePath(dir string) string {
 }
 
 // Run sweeps every interval until ctx is done.
+//
+// Exactly one daemon sweeps, and it is the newest build that has asked to. A
+// daemon that finds an older one holding the lock asks it to stand down and
+// takes over; one that finds a build no older than itself returns
+// [bin.ErrDaemonRunning] naming the build that kept the lock.
 func Run(ctx context.Context, interval time.Duration, report func([]Eviction, []Pressure, error)) error {
+	exe, err := os.Executable()
+	if err != nil {
+		return err
+	}
+	return run(ctx, interval, selfIdentity(exe), report)
+}
+
+// run is Run's body for a stated build, which is what lets a test drive both
+// sides of a handover in one process.
+func run(ctx context.Context, interval time.Duration, me Identity, report func([]Eviction, []Pressure, error)) error {
 	lock, err := LockPath()
 	if err != nil {
 		return err
 	}
-	unlock, free, err := tryLock(lock)
+	unlock, err := takeLock(lock, me)
 	if err != nil {
 		return err
 	}
-	if !free {
-		return bin.ErrDaemonRunning
-	}
-	defer unlock()
+	clearHandover()
+	withdraw := announce(me)
+	defer func() {
+		withdraw()
+		if unlock != nil {
+			unlock()
+		}
+	}()
 
 	raisePriority()
 
@@ -238,6 +257,12 @@ func Run(ctx context.Context, interval time.Duration, report func([]Eviction, []
 		evicted, pressures, err := Sweep()
 		if report != nil {
 			report(evicted, pressures, err)
+		}
+		if challenger, asked := pendingHandover(); asked && Newer(challenger, me) {
+			withdraw()
+			if unlock = standDown(lock, unlock, me); unlock == nil {
+				return nil
+			}
 		}
 		select {
 		case <-ctx.Done():

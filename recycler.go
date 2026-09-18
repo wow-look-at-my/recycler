@@ -118,4 +118,20 @@ func RunDaemon(ctx context.Context, interval time.Duration, report func([]Evicti
 func DaemonLockPath() (string, error) { return daemon.LockPath() }
 
 // EnsureDaemon starts the disk-pressure daemon if none is already.
+//
+// A daemon running an older build than exe is asked to stand down, and exe
+// takes over its lock. One running the same build or a newer one keeps it, and
+// nothing is started.
 func EnsureDaemon(exe string) (bool, error) { return daemon.Ensure(exe) }
+
+// A DaemonIdentity names the build behind a daemon.
+type DaemonIdentity = daemon.Identity
+
+// SetDaemonVersion names the build this program's daemon reports when it takes
+// the lock. Two daemons that both name a version are ordered by it; when either
+// does not, their executables' modification times decide which is newer.
+func SetDaemonVersion(v string) { daemon.Version = v }
+
+// RunningDaemon returns the build of the daemon holding the lock, and whether
+// one recorded a build at all.
+func RunningDaemon() (DaemonIdentity, bool) { return daemon.Running() }
