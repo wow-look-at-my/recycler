@@ -27,7 +27,7 @@ const SizeUnknown = bin.SizeUnknown
 
 type Item = bin.Item
 
-// A Disposal records what a single path handed to [Recycle] actually got.
+// A Disposal records what one path handed to [Recycle] actually got.
 type Disposal = bin.Disposal
 
 // An Eviction records an item.
@@ -47,7 +47,7 @@ func Available() bool {
 	return err == nil
 }
 
-// Recycle moves each path to the recycle bin and reports what each a single got.
+// Recycle moves each path to the recycle bin and reports what each one got.
 //
 // A bin shares the filesystem it takes from, so recycling moves bytes sideways
 // rather than freeing any. Below the daemon's target, or for an item larger than
@@ -105,8 +105,8 @@ func RestoreTo(id, dest string) (string, error) {
 // FreeTarget returns the number of available bytes the daemon keeps.
 func FreeTarget(total uint64) uint64 { return daemon.FreeTarget(total) }
 
-// Sweep reclaims space on every filesystem holding a bin, and reports every a
-// single still under its target afterwards.
+// Sweep reclaims space on every filesystem holding a bin, and reports every one
+// still under its target afterwards.
 func Sweep() ([]Eviction, []Pressure, error) { return daemon.Sweep() }
 
 // RunDaemon sweeps every interval until ctx is done.
