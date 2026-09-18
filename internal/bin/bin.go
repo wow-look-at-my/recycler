@@ -61,7 +61,7 @@ func Sort(items []Item) {
 	})
 }
 
-// A Disposal records what a single path handed to Recycle actually got.
+// A Disposal records what one path handed to Recycle actually got.
 type Disposal struct {
 	Path string
 

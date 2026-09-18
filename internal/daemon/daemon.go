@@ -58,7 +58,8 @@ type Eviction struct {
 // Pressure is a filesystem left under its target after a sweep did what it
 // could. Recycling defers a deletion, so the daemon gives back only what was
 // recycled: a filesystem filling with files nobody recycled leaves it running,
-// correct and powerless.
+// correct and powerless. Saying so is what the type is for, because a sweep that
+// reports nothing is otherwise indistinguishable from a healthy one.
 type Pressure struct {
 	Dir    string // the recycle bin directory whose filesystem this is
 	Avail  uint64 // available bytes after the sweep
@@ -84,7 +85,7 @@ func (p Pressure) String() string {
 }
 
 // Sweep reclaims space on every filesystem holding a recycle bin, and reports
-// every a single still under its target a single time it has given back all it can.
+// every one still under its target once it has given back all it can.
 func Sweep() ([]Eviction, []Pressure, error) {
 	b, err := trash.Backend()
 	if err != nil {
@@ -185,7 +186,7 @@ func groupByFilesystem(items []bin.Item, dirs []string) []filesystemGroup {
 	}
 	for _, dir := range dirs {
 		// An item's ID names the files/ subdirectory, so a bin directory is
-		// spelled the same way here for both to land in a single group.
+		// spelled the same way here for the two to land in one group.
 		add(filepath.Join(dir, "files"))
 	}
 	groups := make([]filesystemGroup, 0, len(order))
@@ -198,7 +199,7 @@ func groupByFilesystem(items []bin.Item, dirs []string) []filesystemGroup {
 // probePath returns the nearest existing ancestor of dir, which is the path a
 // statfs can answer for. A bin directory nothing has been recycled into yet does
 // not exist, and refusing to measure its filesystem leaves the daemon blind
-// until the earliest recycle.
+// until the first recycle.
 func probePath(dir string) string {
 	for {
 		if _, err := os.Stat(dir); err == nil {

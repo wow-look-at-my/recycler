@@ -12,8 +12,8 @@ import (
 )
 
 // A sweep that derives the filesystems it reads from the listing alone makes
-// empty probes on an empty bin, and exits clean and silent while the disk is
-// full. A daemon that says nothing then reads as a single keeping up.
+// zero probes on an empty bin, and exits clean and silent while the disk is
+// full. A daemon that says nothing then reads as one keeping up.
 func TestAFilesystemIsReadEvenWhenItsBinIsEmpty(t *testing.T) {
 	b := &fakeBackend{}
 	probed := 0
@@ -38,7 +38,7 @@ func TestAFilesystemIsReadEvenWhenItsBinIsEmpty(t *testing.T) {
 // only thing it can do about them, and doing it is the point.
 func TestPressureIsReportedWhenNothingRecycledIsLeftToGiveBack(t *testing.T) {
 	b := &fakeBackend{}
-	// A single small item against a filesystem far below its target.
+	// One small item against a filesystem far below its target.
 	items := []bin.Item{item("crumb.txt", 10, 72)}
 
 	evicted, pressures, err := sweepItems(b, items, dirs, freeSpace(0, 20000))
@@ -65,6 +65,7 @@ func TestAFilesystemBroughtBackAboveItsTriggerIsNotReported(t *testing.T) {
 // trouble, so that is what a report is measured against.
 func TestFallingShortOfTheRunwayAloneIsNotPressure(t *testing.T) {
 	b := &fakeBackend{}
+	// Clears FreeTarget(2000)=200 but not RecoverTarget(2000)=400.
 	items := []bin.Item{item("some.bin", 250, 72)}
 
 	_, pressures, err := sweepItems(b, items, dirs, freeSpace(0, 2000))
@@ -88,8 +89,8 @@ func TestPressureCountsWhatWouldNotBeEvicted(t *testing.T) {
 }
 
 // A bin directory nothing has been recycled into yet does not exist. Refusing to
-// measure its filesystem would leave the daemon blind until the earliest
-// recycle, which is the window a machine fills the disk in.
+// measure its filesystem would leave the daemon blind until the first recycle,
+// which is the window a machine fills the disk in.
 func TestAProbeFallsBackToAnExistingAncestor(t *testing.T) {
 	existing := t.TempDir()
 	missing := filepath.Join(existing, "Trash", "files")
