@@ -33,9 +33,9 @@ func isolateTrash(t *testing.T) string {
 	return work
 }
 
-// recycleAll recycles every path and asserts each one was deferred rather than
-// deleted outright. The suite runs on a filesystem with room, so a permanent
-// deletion here means the pressure check read the wrong filesystem.
+// recycleAll recycles every path and asserts each a single was deferred rather
+// than deleted outright. The suite runs on a filesystem with room, so a
+// permanent deletion here means the pressure check read the wrong filesystem.
 func recycleAll(t *testing.T, paths ...string) {
 	t.Helper()
 	disposals, err := Recycle(paths...)
@@ -177,7 +177,7 @@ func TestBackendDestroysOnlyUnderDiskPressure(t *testing.T) {
 	sort.Strings(got)
 	// Evict is the only method here that destroys anything, and only the daemon
 	// calls it. Dirs reports where the bins are so the daemon can read their
-	// filesystems; adding a second destructive method is what this guards against.
+	// filesystems; adding another destructive method is what this guards against.
 	assert.Equal(t, []string{"Dirs", "Evict", "List", "Recycle", "Restore"}, got)
 }
 
