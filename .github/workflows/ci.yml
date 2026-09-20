@@ -28,8 +28,17 @@ jobs:
           name: recycler-ape
           path: build/recycler
 
-  # The only job that compiles darwin.go, and the only one that reads which bin a Mac fills.
+  # The only job that compiles darwin.go. It waits on nothing, so a red linux build still answers for a Mac.
   macos:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: wow-look-at-my/go-toolchain@master
+        with:
+          autorelease: false
+
+  # The APE a Mac downloads, run on a Mac: it picks its bin and its lock there, and nowhere else.
+  macos-ape:
     runs-on: macos-14
     needs: build
     steps:
@@ -38,7 +47,6 @@ jobs:
         with:
           name: recycler-ape
           path: ape
-      # The whole suite on a real Mac, with the shipped-binary tests driving the APE a Mac downloads.
       - uses: wow-look-at-my/go-toolchain@master
         with:
           autorelease: false

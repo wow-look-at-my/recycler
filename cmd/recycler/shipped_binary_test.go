@@ -61,7 +61,7 @@ func TestTheShippedBinaryRecyclesAndRestores(t *testing.T) {
 	assert.FileExists(t, path, "nothing recorded where it came from")
 }
 
-// A bin picked off the build tags is the wrong one on a Mac: Finder cannot see it.
+// Build tags pick the FreeDesktop bin on a Mac, where Finder cannot see it.
 func TestTheShippedBinaryUsesThisHostsBin(t *testing.T) {
 	bin := shippedBinary(t)
 	home := t.TempDir()
