@@ -2,20 +2,8 @@
 
 package putback
 
-// The "Put Back" records macOS keeps for everything in the Trash, and the
-// reading and writing of the .DS_Store file that holds them.
-//
-// Each trashed item has a location record and a name record in its trash
-// directory's .DS_Store, keyed by the name the item has inside the trash. The
-// location record is ptbL and the name record is ptbN.
-//
-// Nothing else records where a trashed file came from, so this is what Finder's
-// Put Back command reads, what other trash tools read, and what this package
-// it reads and writes. Keeping the records here rather than in a private
-// index is what makes Finder and this package interoperate.
-//
-// This file is built on every Unix so that the .DS_Store handling is exercised
-// by the test suite, which runs on Linux.
+// The "Put Back" records macOS keeps in a trash directory's .DS_Store: ptbL and
+// ptbN. Depth: docs/ds-store-format.md. Built on every Unix, so Linux tests it.
 
 import (
 	"io"

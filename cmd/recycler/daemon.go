@@ -57,8 +57,8 @@ a second one exits rather than sweeping alongside the first.`,
 		ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
 		defer stop()
 
-		// The poll is a then so repeating an unchanged complaint every tick
-		// would bury the change that matters in a log nobody can read.
+		// Repeating an unchanged complaint on every tick buries the change
+		// that matters, in a log nobody can then read.
 		seen := map[string]bool{}
 		err := recycler.RunDaemon(ctx, interval, func(evicted []recycler.Eviction, pressures []recycler.Pressure, err error) {
 			reportEvictions(out, evicted, err)

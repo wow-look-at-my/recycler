@@ -1,21 +1,8 @@
 package winbin
 
-// Codec for the "$I" metadata files Windows writes next to every recycled
-// file in <drive>:\$Recycle.Bin\<user SID>\. Each recycled item has:
-// "$R<id><ext>" holds the data, "$I<id><ext>" the metadata below.
-//
-// The layout is fixed little-endian:
-//
-//	offset size meaning The record opens with the format version, then the size
-// of the recycled item in bytes, then the deletion time as a Windows FILETIME,
-// and ends with the original path in Unicode. The older version, which Vista
-// onward wrote, gives the path a fixed-width buffer. The newer version, which
-// Windows a decade later writes, gives it a character count and then that many
-// characters. Each includes the terminating NUL. binMetaVersion below names
-// each, and the constants beside it carry every width.
-//
-// This file deliberately has no build constraint: keeping the codec portable
-// keeps it testable on any platform.
+// Codec for the "$I" metadata Windows writes beside every recycled file.
+// Layout and versions: CLAUDE.md, under Platform notes. No build constraint, so
+// this stays testable anywhere.
 
 import (
 	"encoding/binary"

@@ -65,9 +65,7 @@ func Sort(items []Item) {
 type Disposal struct {
 	Path string
 
-	// Permanent marks a path removed outright rather than recycled, because the
-	// filesystem had no room left to defer the deletion into. Reason says which
-	// measurement decided that.
+	// Permanent marks a path removed outright, with Reason saying why.
 	Permanent bool
 	Reason    string
 }
@@ -81,9 +79,7 @@ type Backend interface {
 	Restore(id, dest string) (string, error)
 	Evict(id string) error
 
-	// Dirs returns this user's recycle bin directories, whether or not any of
-	// them holds anything. The daemon watches the filesystems behind these, so
-	// deriving them from a listing instead would leave it blind to a filesystem
-	// filling up with files nobody recycled.
+	// Dirs answers this user's bin directories, empty ones included. Deriving
+	// them from a listing leaves the daemon blind to a disk nobody recycled to.
 	Dirs() []string
 }

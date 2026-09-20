@@ -10,9 +10,8 @@ import (
 	"github.com/wow-look-at-my/recycler"
 )
 
-// A filesystem the sweep cannot bring back is named once, not on every poll,
-// and named again when it recovers. Reporting it every second buries the one
-// line that says something changed.
+// A filesystem the sweep cannot bring back is named a single time, not on
+// every poll, and named again when it recovers.
 func TestAPressureIsNamedOnceAndAgainOnRecovery(t *testing.T) {
 	seen := map[string]bool{}
 	full := []recycler.Pressure{{Dir: "/bin", Avail: 100, Target: 500}}
@@ -33,8 +32,8 @@ func TestAPressureIsNamedOnceAndAgainOnRecovery(t *testing.T) {
 }
 
 // The line says how short the sweep fell, and whether anything recycled is
-// left. Nothing left to give back is the louder of the two: the disk is full
-// of live data and the bin cannot help.
+// left. Nothing left to give back is the louder of both: the disk is full of
+// live data and the bin cannot help.
 func TestThePressureLineSaysWhetherAnythingIsLeftToGiveBack(t *testing.T) {
 	short := pressureLine(recycler.Pressure{Dir: "/bin", Avail: 100, Target: 500})
 	assert.Contains(t, short, "/bin")
