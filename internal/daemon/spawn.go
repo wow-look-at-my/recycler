@@ -21,7 +21,7 @@ func statePath(name string) (string, error) {
 	}
 	dir := filepath.Join(cache, "recycler")
 	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return "", err
+		return "", fmt.Errorf("recycler: creating %s: %w", dir, err)
 	}
 	return filepath.Join(dir, name), nil
 }

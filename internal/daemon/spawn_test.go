@@ -53,3 +53,20 @@ func TestLockPathIsCreatedUnderTheCacheDirectory(t *testing.T) {
 	assert.Equal(t, filepath.Join(cache, "recycler", "daemon.lock"), lock)
 	assert.DirExists(t, filepath.Dir(lock))
 }
+
+// A failure here reaches the user as a single line under a recycle, so it has
+// to name the call that produced it. A bare errno reads as "function not
+// implemented" and says nothing about which operation is missing, which is what
+// a cosmopolitan build on macOS reports.
+func TestALockFailureNamesTheCallAndThePath(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("this opens a directory as a file")
+	}
+	dir := t.TempDir()
+
+	_, _, err := tryLock(dir)
+	require.Error(t, err, "locking a directory has to fail")
+	assert.Contains(t, err.Error(), dir, "the message names the path")
+	assert.Regexp(t, `opening the daemon lock|flock on`, err.Error(),
+		"the message names the call: %v", err)
+}
