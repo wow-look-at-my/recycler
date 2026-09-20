@@ -61,7 +61,7 @@ Mount points come from `/proc/self/mounts` where it exists, plus globs of the us
 
 ### macOS
 
-Files go to `~/.Trash`, or `<volume>/.Trashes/$uid` for other volumes.
+Files go to `~/.Trash`, or `<volume>/.Trashes/$uid` for other volumes. **The system picks which, through `NSFileManager`'s `trashItemAtURL:`, and answers where the item landed.** A rename into the trash is a different operation: the kernel refuses one whose source the caller may not rename out of even where it may unlink it, which a sandboxed process meets routinely. The bridge is `internal/trash/trashitem_darwin.{go,h,m}`, one Objective-C function behind cgo. `trashitem_nocgo_darwin.go` fails a cgo-less darwin build on purpose, because there is no syscall behind this to call instead.
 
 **Original locations come from Finder's own "Put Back" records. This package keeps no index of its own.** macOS has no API for restoring: `trashItem` and `NSWorkspace.recycle` only put things in. The only record of where a trashed item came from is a pair of records in that trash directory's `.DS_Store`. Both are keyed by the item's name inside the trash:
 
@@ -91,7 +91,9 @@ Only **64-bit Windows** is supported. `SHFILEOPSTRUCTW` is byte-packed on 32-bit
 
 Run `go-toolchain` in the repository root - never bare `go` commands. It tidies, vets, formats, runs the tests with a coverage floor of 80%, and builds.
 
-**It only compiles the host's files.** A type error in `internal/trash/windows.go` or `internal/trash/darwin.go` passes a full local `go-toolchain` run with "Build successful". No job in CI catches that any more, so build every GOOS in this package's constraints yourself after touching a per-platform file.
+**It compiles the cosmo files, not the host's.** Its go command carries a standard library for `cosmo/amd64` and `cosmo/arm64` alone and refuses a `GOOS` naming anything else, so `internal/trash/darwin.go`, `internal/trash/windows.go` and the cgo bridge are compiled by no run of it and by no job in CI. A type error in any of them passes a full `go-toolchain` run with "Build successful", and the coverage number it reports is the cosmo build's.
+
+Build the per-platform files yourself after touching one. On macOS that means a native Go and cgo. `v0.0.0` is a version only go-toolchain resolves, so a native run needs a `replace` per org dependency pointing at its clone, in a copy of the tree rather than in the checked-in `go.mod`.
 
 **Do not build this project as a cosmo fat APE.** gosmopolitan compiles with `GOOS=cosmo`, which matches none of the backends' build constraints. The APE falls through to `internal/trash/unsupported.go`. Every operation then fails with `ErrUnsupported`, verified by building one and running it. That APE is the only native output `go-toolchain matrix` still emits, which is why CI passes `autorelease: false`. This package has nothing it can honestly publish through that path. Recycling is not portable-libc work: it is three unrelated mechanisms, and only the Windows shell API reaches one of them.
 
