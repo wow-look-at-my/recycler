@@ -24,10 +24,8 @@ const (
 	// recoverMultiple is how far past the trigger a sweep frees, for runway.
 	recoverMultiple = 8
 
-	// recoverCeilingFraction bounds a sweep so a small filesystem is not
-	// emptied. It has to be looser than freeTargetFraction: clamping to the
-	// same fraction makes the recovery target equal the trigger on every
-	// filesystem small enough to keep the fraction, which is no runway at all.
+	// recoverCeilingFraction bounds a sweep so a small filesystem is not emptied.
+	// Looser than freeTargetFraction, which would leave no runway.
 	recoverCeilingFraction = 5
 )
 
@@ -65,9 +63,7 @@ type Pressure struct {
 	Target uint64 // available bytes the daemon wanted
 	Total  uint64 // bytes on the filesystem this caller can reach
 
-	// Stranded is what the sweep tried to give back and could not, because the
-	// eviction itself failed.
-	Stranded uint64
+	Stranded uint64 // bytes the sweep tried to give back and could not
 }
 
 // Shortfall is how many bytes the sweep could not reclaim.
@@ -94,9 +90,6 @@ func Sweep() ([]Eviction, []Pressure, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	// A bin directory nothing has been recycled into yet does not exist, so the
-	// nearest existing ancestor is what statfs can answer for. Resolving it here
-	// keeps sweepItems free of the filesystem it is deciding about.
 	return sweepItems(b, items, b.Dirs(), func(dir string) (uint64, uint64, error) {
 		return diskfree.Free(probePath(dir))
 	})
@@ -142,9 +135,7 @@ func sweepItems(b bin.Backend, items []bin.Item, dirs []string,
 			}
 			evicted = append(evicted, ev)
 		}
-		// The trigger is what this reports against, not the recovery target.
-		// Stopping short of the runway is ordinary. Sitting under the trigger
-		// with nothing left to give back is the state nobody hears about today.
+		// Reported against the trigger, not the runway the sweep aimed for.
 		if avail < trigger {
 			pressures = append(pressures, Pressure{
 				Dir:      group.dir,
@@ -158,9 +149,8 @@ func sweepItems(b bin.Backend, items []bin.Item, dirs []string,
 	return evicted, pressures, nil
 }
 
-// filesystemGroup is the set of items sharing a bin directory, with the path a
-// free-space probe reads. A group exists for a bin directory holding nothing,
-// because the filesystem behind it still has to be watched.
+// filesystemGroup is the items sharing a bin directory, and the path a
+// free-space probe reads. An empty bin still gets one.
 type filesystemGroup struct {
 	dir   string
 	probe string
@@ -184,8 +174,7 @@ func groupByFilesystem(items []bin.Item, dirs []string) []filesystemGroup {
 		byDir[dir] = append(byDir[dir], it)
 	}
 	for _, dir := range dirs {
-		// An item's ID names the files/ subdirectory, so a bin directory is
-		// spelled the same way here for both to land in a single group.
+		// An item's ID names the files/ subdirectory, so this spells it the same.
 		add(filepath.Join(dir, "files"))
 	}
 	groups := make([]filesystemGroup, 0, len(order))
@@ -195,10 +184,8 @@ func groupByFilesystem(items []bin.Item, dirs []string) []filesystemGroup {
 	return groups
 }
 
-// probePath returns the nearest existing ancestor of dir, which is the path a
-// statfs can answer for. A bin directory nothing has been recycled into yet does
-// not exist, and refusing to measure its filesystem leaves the daemon blind
-// until the earliest recycle.
+// probePath returns the nearest existing ancestor of dir, which is what statfs
+// can answer for: a bin nothing was recycled into yet does not exist.
 func probePath(dir string) string {
 	for {
 		if _, err := os.Stat(dir); err == nil {
