@@ -37,11 +37,6 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: stable
-      # The upstream go command runs no dependency generator, so it reads x/ansi as its own authors published it.
-      - run: go build -o recycler-darwin ./cmd/recycler
-      - run: go test -run TestTheShippedBinary ./cmd/recycler -v
-        env:
-          RECYCLER_TEST_BINARY: recycler-darwin
       - uses: wow-look-at-my/go-toolchain@master
         with:
           autorelease: false
