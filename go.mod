@@ -6,13 +6,17 @@ require (
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/pflag v1.0.9
 	github.com/stretchr/testify v1.12.1
+<<<<<<< HEAD
 	github.com/wow-look-at-my/go-containers v0.0.0-20260913115023-d3bbbdd0286d // go-toolchain:auto-branch
+=======
+	github.com/wow-look-at-my/go-containers v0.0.0 // go-toolchain:auto-branch
+>>>>>>> c134804c9dc8ccb27397d43bae5b352ed19e8b93
 	golang.org/x/sys v0.47.0
 )
 
 require (
 	charm.land/bubbletea/v2 v2.0.9
-	github.com/wow-look-at-my/tml v0.0.0-20260906010451-55d1cae28f7e // go-toolchain:auto-branch
+	github.com/wow-look-at-my/tml v0.0.0 // go-toolchain:auto-branch
 )
 
 require github.com/charmbracelet/x/ansi v0.11.8
@@ -31,8 +35,8 @@ require (
 	github.com/mattn/go-runewidth v0.0.24 // indirect
 	github.com/muesli/cancelreader v0.2.2 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
-	github.com/wow-look-at-my/xml-validator/reader v0.0.0-20260905064311-b54c8b4b3c13 // indirect; go-toolchain:auto-branch
-	github.com/wow-look-at-my/xml-validator/validator v0.0.0-20260905064311-b54c8b4b3c13 // indirect; go-toolchain:auto-branch
+	github.com/wow-look-at-my/xml-validator/reader v0.0.0 // indirect; go-toolchain:auto-branch
+	github.com/wow-look-at-my/xml-validator/validator v0.0.0 // indirect; go-toolchain:auto-branch
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
 	go.yaml.in/yaml/v3 v3.0.5 // indirect
 	golang.org/x/sync v0.22.0 // indirect
