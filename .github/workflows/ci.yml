@@ -33,6 +33,10 @@ jobs:
     runs-on: macos-14
     steps:
       - uses: actions/checkout@v4
+      # go-toolchain installs a dependency's generators with the host's own go, and this image ships none.
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
       - uses: wow-look-at-my/go-toolchain@master
         with:
           autorelease: false
@@ -43,6 +47,9 @@ jobs:
     needs: build
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
       - uses: wow-look-at-my/actions@cache-download#latest
         with:
           name: recycler-ape
