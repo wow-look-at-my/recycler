@@ -10,13 +10,11 @@ import (
 	"syscall"
 )
 
-// flock is not available everywhere, and a system without it reports "function
-// not implemented" under an ordinary recycle. The lock still has to work there,
-// so a refusal falls through to a pid file, which needs only the atomic create
-// every filesystem has. Depth: docs/disk-pressure.md
+// A system with no flock reports "function not implemented" under an ordinary
+// recycle, so the lock falls through to a pid file here.
 
 // lockUnsupported reports that this system cannot flock, never that the lock is
-// held. EINVAL stays out: that is a bad argument, and this package's own defect.
+// held. EINVAL stays out: a bad argument is this package's own defect.
 func lockUnsupported(err error) bool {
 	return err == syscall.ENOSYS || err == syscall.EOPNOTSUPP
 }

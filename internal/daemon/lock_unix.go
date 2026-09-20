@@ -9,6 +9,10 @@ import (
 	"golang.org/x/sys/unix"
 )
 
+// flockFn is what tryLock locks with. A test swaps it for a single answering
+// ENOSYS, which no host running these tests reproduces.
+var flockFn = unix.Flock
+
 // tryLock takes the daemon's exclusive lock without blocking. Each failure
 // names the call that produced it: a bare errno here reaches the user as
 // "function not implemented" with nothing saying which operation is missing.
@@ -17,7 +21,7 @@ func tryLock(path string) (unlock func(), ok bool, err error) {
 	if err != nil {
 		return nil, false, fmt.Errorf("opening the daemon lock %s: %w", path, err)
 	}
-	if err := unix.Flock(int(f.Fd()), unix.LOCK_EX|unix.LOCK_NB); err != nil {
+	if err := flockFn(int(f.Fd()), unix.LOCK_EX|unix.LOCK_NB); err != nil {
 		f.Close()
 		if err == unix.EWOULDBLOCK {
 			return nil, false, nil
