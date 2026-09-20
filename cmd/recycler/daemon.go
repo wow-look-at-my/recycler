@@ -57,7 +57,7 @@ a second one exits rather than sweeping alongside the first.`,
 		ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
 		defer stop()
 
-		// The poll is a second, so a repeated complaint would bury the change.
+		// The poll is every 1s, so a repeated complaint would bury the change.
 		seen := map[string]bool{}
 		err := recycler.RunDaemon(ctx, interval, func(evicted []recycler.Eviction, pressures []recycler.Pressure, err error) {
 			reportEvictions(out, evicted, err)
