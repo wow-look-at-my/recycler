@@ -13,8 +13,8 @@ func LockPath() (string, error) { return statePath("daemon.lock") }
 
 // LogPath returns the file a detached daemon writes its reports to. A daemon
 // nobody started from a terminal has nowhere else to say what it destroyed or
-// what it could not keep up with, and discarding that leaves the thing account
-// of both with no reader.
+// what it could not keep up with, and discarding that leaves the single
+// account of both with no reader.
 func LogPath() (string, error) { return statePath("daemon.log") }
 
 func statePath(name string) (string, error) {

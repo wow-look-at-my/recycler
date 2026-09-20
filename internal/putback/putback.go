@@ -6,12 +6,11 @@ package putback
 // reading and writing of the .DS_Store file that holds them.
 //
 // Each trashed item has a location record and a name record in its trash
-// directory's .DS_Store, keyed
-// by the name the item has inside the trash:
+// directory's .DS_Store, keyed by the name the item has inside the trash:
 //
-//	ptbL the original parent directory, relative to the volume root ptbN
-//	the original name, which differs from the name in the trash when
-//	something was already called that
+//	ptbL the parent directory it sat in, relative to the volume root
+//	ptbN the name it had there, which differs from the name in the trash
+//	     when something was already called that
 //
 // Nothing else records where a trashed file came from, so this is what Finder's
 // Put Back command reads, what other trash tools read, and what this package
