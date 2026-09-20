@@ -2,8 +2,6 @@
 
 package trash
 
-// FreeDesktop.org Trash implementation, following the Trash specification, revision v1_0:
-// https://specifications.freedesktop.org/trash-spec/latest/
 //
 // Files recycled from the filesystem holding the home directory go to the home
 // trash ($XDG_DATA_HOME/Trash). Files on any other filesystem go to a trash

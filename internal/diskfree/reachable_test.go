@@ -13,8 +13,7 @@ func TestWithNoReserveEveryBlockIsReachable(t *testing.T) {
 }
 
 // These are real numbers off a host that reserves most of the device for another
-// user. Reading total off Blocks makes a tenth of it 25 GiB, on a filesystem
-// this caller can never hold more than 29 GiB of.
+// user.
 func TestAReserveForAnotherUserIsNotPartOfTheTotal(t *testing.T) {
 	const (
 		blocks = int64(66053021)
@@ -33,7 +32,6 @@ func TestAnImpossibleReserveReadsAsNothingReachable(t *testing.T) {
 	assert.Equal(t, uint64(0), reachable(int64(10), int64(100), int64(0)))
 }
 
-// Available above free means no reserve, not a negative one.
 func TestAvailableAboveFreeReadsAsNoReserve(t *testing.T) {
 	assert.Equal(t, uint64(1000), reachable(int64(1000), int64(100), int64(200)))
 }
