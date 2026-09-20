@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>TML inspector</title>
+		<link rel="stylesheet" href="inspector.css" />
+	</head>
+	<body>
+		<header>
+			<h1>TML inspector</h1>
+			<p id="status" role="status">connecting</p>
+			<label class="toggle">
+				<input type="checkbox" id="follow" checked />
+				follow frames
+			</label>
+		</header>
+
+		<main>
+			<section id="preview-pane" aria-label="Terminal preview">
+				<h2>Preview <span id="frame-meta"></span></h2>
+				<div id="preview-wrap">
+					<pre id="preview" tabindex="0"></pre>
+					<div id="highlight" hidden></div>
+				</div>
+				<form id="keys">
+					<label for="key">send key</label>
+					<input id="key" name="key" placeholder="enter, ctrl+c, a" />
+					<button type="submit">send</button>
+				</form>
+			</section>
+
+			<section id="tree-pane" aria-label="Element tree">
+				<h2>Tree</h2>
+				<div id="tree"></div>
+			</section>
+
+			<section id="detail-pane" aria-label="Selected element">
+				<h2>Element <code id="selected-id">none</code></h2>
+				<dl id="detail"></dl>
+
+				<h3>Restyle</h3>
+				<form id="restyle">
+					<div class="row">
+						<input name="attr" placeholder="attribute, e.g. background" />
+						<input name="value" placeholder="value, e.g. #b91c1c" />
+						<button type="submit">apply</button>
+					</div>
+					<button type="button" id="reset">drop all overrides</button>
+				</form>
+
+				<h3>Drawn text</h3>
+				<pre id="element-text"></pre>
+			</section>
+		</main>
+
+		<script type="module" src="inspector.js"></script>
+	</body>
+</html>

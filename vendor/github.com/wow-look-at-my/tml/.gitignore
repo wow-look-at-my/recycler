@@ -1,0 +1,4 @@
+/build/
+node_modules/
+# ts0 is pinned to a branch, and a lockfile would freeze it to whatever commit that branch was on the day it was written.
+pnpm-lock.yaml

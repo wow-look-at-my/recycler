@@ -1,0 +1,191 @@
+<?xml version="1.1" encoding="UTF-8"?>
+<!--
+	The grammar of a .tml file's DECLARATIONS: <Component> and <Theme>, and everything a file says before it says what to
+	draw. The <Template> body is deliberately unchecked, because a template holds arbitrary user component names and this
+	validator allows only processContents="strict", which demands a global declaration for every element it matches. A
+	schema that checked the body would reject every document that imports a component. sema/analyze.go checks the body,
+	and it is the authority on the whole file at run time.
+-->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+	targetNamespace="urn:tml:v1"
+	xmlns="urn:tml:v1"
+	elementFormDefault="qualified">
+
+	<!-- ===== 1. Values ===== -->
+
+	<xs:simpleType name="nonEmpty">
+		<xs:restriction base="xs:token">
+			<xs:minLength value="1"/>
+		</xs:restriction>
+	</xs:simpleType>
+
+	<!-- parseBool takes these two spellings and nothing else. -->
+	<xs:simpleType name="bool">
+		<xs:restriction base="xs:token">
+			<xs:enumeration value="true"/>
+			<xs:enumeration value="false"/>
+		</xs:restriction>
+	</xs:simpleType>
+
+	<xs:simpleType name="trueOnly">
+		<xs:restriction base="xs:token">
+			<xs:enumeration value="true"/>
+		</xs:restriction>
+	</xs:simpleType>
+
+	<!--
+		A property type as ParseType reads it: one of the seven names, or enum(a|b) with at least two members, each
+		optionally carrying the [] list suffix.
+	-->
+	<xs:simpleType name="propertyType">
+		<xs:restriction base="xs:token">
+			<xs:pattern value="(string|int|bool|color|length|thickness|record|enum\([^|]+(\|[^|]+)+\))(\[\])?"/>
+		</xs:restriction>
+	</xs:simpleType>
+
+	<!--
+		A style attribute reads a theme token with {theme.name}, so every vocabulary below admits that form as well as its
+		own literals. What the token resolves to is checked when the sheet resolves, which is the only place it is known.
+	-->
+	<xs:simpleType name="styleBool">
+		<xs:restriction base="xs:token">
+			<xs:pattern value="true|false|.*\{theme\..*"/>
+		</xs:restriction>
+	</xs:simpleType>
+
+	<xs:simpleType name="borderName">
+		<xs:restriction base="xs:token">
+			<xs:pattern value="none|normal|rounded|thick|double|hidden|block|ascii|.*\{theme\..*"/>
+		</xs:restriction>
+	</xs:simpleType>
+
+	<xs:simpleType name="horizontal">
+		<xs:restriction base="xs:token">
+			<xs:pattern value="left|center|right|.*\{theme\..*"/>
+		</xs:restriction>
+	</xs:simpleType>
+
+	<xs:simpleType name="vertical">
+		<xs:restriction base="xs:token">
+			<xs:pattern value="top|middle|bottom|.*\{theme\..*"/>
+		</xs:restriction>
+	</xs:simpleType>
+
+	<!-- The CSS shorthand ParseThickness takes: 1, 2 or 4 whole cell counts. -->
+	<xs:simpleType name="thickness">
+		<xs:restriction base="xs:token">
+			<xs:pattern value="\d+|\d+ \d+|\d+ \d+ \d+ \d+|.*\{theme\..*"/>
+		</xs:restriction>
+	</xs:simpleType>
+
+	<!--
+		A colour is a hex triplet or an ANSI index, and lipgloss accepts the string as written. Nothing rejects a
+		misspelling, here or at run time, so this states only that the attribute carries something.
+	-->
+	<xs:simpleType name="color">
+		<xs:restriction base="xs:token">
+			<xs:minLength value="1"/>
+		</xs:restriction>
+	</xs:simpleType>
+
+	<!-- ===== 2. The component ===== -->
+
+	<xs:complexType name="import">
+		<xs:attribute name="src" type="nonEmpty" use="required"/>
+	</xs:complexType>
+
+	<!--
+		A required property is never defaulted, so the two spellings are separate types and each prohibits the other's
+		attribute. A property that says required="false" is the ordinary one, and keeps its default.
+	-->
+	<xs:complexType name="propertyRequired">
+		<xs:attribute name="name" type="nonEmpty" use="required"/>
+		<xs:attribute name="type" type="propertyType" use="required"/>
+		<xs:attribute name="required" type="trueOnly" use="required"/>
+		<xs:attribute name="default" use="prohibited"/>
+	</xs:complexType>
+
+	<xs:complexType name="propertyOptional">
+		<xs:attribute name="name" type="nonEmpty" use="required"/>
+		<xs:attribute name="type" type="propertyType" use="required"/>
+		<xs:attribute name="required" type="bool"/>
+		<xs:attribute name="default" type="xs:string"/>
+	</xs:complexType>
+
+	<!--
+		The order of the declarations is the author's business, so this is an xs:all. A DataTemplate is written exactly
+		like a component, which is why it takes this same type. A nested <Component> is absent on purpose: one file
+		defines one component, and sharing is <Import>.
+	-->
+	<xs:complexType name="component">
+		<xs:all>
+			<xs:element name="Import" type="import" minOccurs="0" maxOccurs="unbounded"/>
+			<xs:element name="Property" minOccurs="0" maxOccurs="unbounded">
+				<xs:alternative test="@required = 'true'" type="propertyRequired"/>
+				<xs:alternative type="propertyOptional"/>
+			</xs:element>
+			<!--
+				The one open element in this schema. Its content is the template body, which names components this file
+				imported and widgets the host bound, neither of which a schema can enumerate.
+			-->
+			<xs:element name="Template"/>
+			<xs:element name="DataTemplate" type="component" minOccurs="0" maxOccurs="unbounded"/>
+		</xs:all>
+		<xs:attribute name="name" type="nonEmpty" use="required"/>
+	</xs:complexType>
+
+	<xs:element name="Component" type="component"/>
+
+	<!-- ===== 3. The theme ===== -->
+
+	<!-- A token carries one value, or a light and dark pair, and never one half of the pair. -->
+	<xs:complexType name="tokenValue">
+		<xs:attribute name="name" type="nonEmpty" use="required"/>
+		<xs:attribute name="value" type="nonEmpty" use="required"/>
+		<xs:attribute name="light" use="prohibited"/>
+		<xs:attribute name="dark" use="prohibited"/>
+	</xs:complexType>
+
+	<xs:complexType name="tokenPair">
+		<xs:attribute name="name" type="nonEmpty" use="required"/>
+		<xs:attribute name="light" type="nonEmpty" use="required"/>
+		<xs:attribute name="dark" type="nonEmpty" use="required"/>
+		<xs:attribute name="value" use="prohibited"/>
+	</xs:complexType>
+
+	<!--
+		Every attribute a style can carry, which is what style.build reads. An attribute outside this list is an unknown
+		style attribute at run time, so naming them all is what turns a typo into a load error at the line that has it.
+	-->
+	<xs:complexType name="style">
+		<xs:attribute name="name" type="nonEmpty" use="required"/>
+		<xs:attribute name="extends" type="nonEmpty"/>
+		<xs:attribute name="fg" type="color"/>
+		<xs:attribute name="bg" type="color"/>
+		<xs:attribute name="bold" type="styleBool"/>
+		<xs:attribute name="italic" type="styleBool"/>
+		<xs:attribute name="underline" type="styleBool"/>
+		<xs:attribute name="strikethrough" type="styleBool"/>
+		<xs:attribute name="faint" type="styleBool"/>
+		<xs:attribute name="reverse" type="styleBool"/>
+		<xs:attribute name="padding" type="thickness"/>
+		<xs:attribute name="margin" type="thickness"/>
+		<xs:attribute name="border" type="borderName"/>
+		<xs:attribute name="borderColor" type="color"/>
+		<xs:attribute name="align" type="horizontal"/>
+		<xs:attribute name="valign" type="vertical"/>
+	</xs:complexType>
+
+	<xs:complexType name="theme">
+		<xs:all>
+			<xs:element name="Token" minOccurs="0" maxOccurs="unbounded">
+				<xs:alternative test="@value" type="tokenValue"/>
+				<xs:alternative type="tokenPair"/>
+			</xs:element>
+			<xs:element name="Style" type="style" minOccurs="0" maxOccurs="unbounded"/>
+		</xs:all>
+		<xs:attribute name="name" type="nonEmpty" use="required"/>
+	</xs:complexType>
+
+	<xs:element name="Theme" type="theme"/>
+</xs:schema>
