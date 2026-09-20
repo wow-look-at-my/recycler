@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+	"github.com/wow-look-at-my/go-containers/set"
 	"github.com/wow-look-at-my/recycler"
 	"github.com/wow-look-at-my/recycler/internal/pressure"
 )
@@ -56,7 +57,7 @@ a second one exits rather than sweeping alongside the first.`,
 		ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
 		defer stop()
 
-		// The poll is a second, so repeating an unchanged complaint every tick
+		// The poll is a then so repeating an unchanged complaint every tick
 		// would bury the change that matters in a log nobody can read.
 		seen := map[string]bool{}
 		err := recycler.RunDaemon(ctx, interval, func(evicted []recycler.Eviction, pressures []recycler.Pressure, err error) {
@@ -86,7 +87,7 @@ func reportEvictions(out io.Writer, evicted []recycler.Eviction, err error) {
 	}
 }
 
-// reportSweep is one sweep's whole account, for a run that ends after it.
+// reportSweep is a single sweep's whole account, for a run that ends after it.
 func reportSweep(out io.Writer, evicted []recycler.Eviction, pressures []recycler.Pressure, err error) {
 	reportEvictions(out, evicted, err)
 	for _, p := range pressures {
@@ -96,24 +97,24 @@ func reportSweep(out io.Writer, evicted []recycler.Eviction, pressures []recycle
 
 // reportPressureChanges names a filesystem the sweep could not bring back up to
 // its target, and names it again when it recovers. A daemon that stays silent
-// here is indistinguishable from one keeping up, which is the state to report
-// loudest: everything filling the disk is live, and nothing recycled is left to
-// give back.
+// here is indistinguishable from a single keeping up, which is the state to
+// report loudest: everything filling the disk is live, and nothing recycled is
+// left to give back.
 func reportPressureChanges(out io.Writer, pressures []recycler.Pressure, seen map[string]bool) {
-	now := make(map[string]bool, len(pressures))
+	now := set.New[string]()
 	for _, p := range pressures {
-		now[p.Dir] = true
+		now.Add(p.Dir)
 		if !seen[p.Dir] {
 			fmt.Fprintln(out, pressureLine(p))
 		}
 	}
 	for dir := range seen {
-		if !now[dir] {
+		if !now.Contains(dir) {
 			fmt.Fprintf(out, "%s is back above its target\n", dir)
 			delete(seen, dir)
 		}
 	}
-	for dir := range now {
+	for dir := range now.All() {
 		seen[dir] = true
 	}
 }

@@ -1,3 +1,5 @@
+//go:build linux || freebsd || netbsd || openbsd || dragonfly || solaris
+
 package trash
 
 import (

@@ -115,6 +115,25 @@ func TestSizeIsRecordedWhenRecycled(t *testing.T) {
 	assert.Contains(t, string(raw), "Size=4096")
 }
 
+// A recycle reports what it did with each path. With room to defer into, the
+// report says deferred: the entry is in the bin and nothing was destroyed.
+// Only pressure sets Permanent, and no test can fill a real filesystem to ask
+// for it, so the arm covered here is the thing a caller meets.
+func TestARecycleWithRoomReportsADeferral(t *testing.T) {
+	work := isolateTrash(t)
+	path := writeFile(t, filepath.Join(work, "kept.txt"), "kept")
+
+	disposals, err := dispose(path)
+	require.NoError(t, err)
+	require.Len(t, disposals, 1)
+	assert.Equal(t, path, disposals[0].Path)
+	assert.False(t, disposals[0].Permanent, "reason: %s", disposals[0].Reason)
+
+	items, err := list()
+	require.NoError(t, err)
+	assert.Len(t, items, 1, "the file is in the bin rather than destroyed")
+}
+
 // TestAForeignEntryIsSizedOnceAndRecorded covers an entry another trash implementation wrote, which
 // carries no size.
 func TestAForeignEntryIsSizedOnceAndRecorded(t *testing.T) {

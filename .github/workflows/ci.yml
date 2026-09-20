@@ -18,4 +18,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      # The matrix's one native output is a cosmo APE, which recycles nothing.
       - uses: wow-look-at-my/go-toolchain@master
+        with:
+          autorelease: false
