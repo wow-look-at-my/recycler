@@ -8,10 +8,8 @@ import (
 	"github.com/wow-look-at-my/recycler/internal/bin"
 )
 
-// GOOS reads "cosmo" on every host, so the bin is chosen here, not at build
-// time. Choosing wrong fills the other platform's bin.
-
-// macOSHost names a directory every Mac has and no other host does.
+// macOSHost names a directory every Mac has and no other host does. GOOS reads
+// "cosmo" on every host, so this is what picks the bin.
 const macOSHost = "/System/Library/CoreServices"
 
 // Backend picks the bin for the host this binary is running on.

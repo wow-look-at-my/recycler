@@ -13,8 +13,8 @@ import (
 // A system with no flock reports "function not implemented" under an ordinary
 // recycle, so the lock falls through to a pid file here.
 
-// lockUnsupported reports that this system cannot flock, never that the lock is
-// held. EINVAL stays out: a bad argument is this package's own defect.
+// lockUnsupported reports that this system cannot flock. EINVAL stays out: a
+// bad argument is this package's own defect.
 func lockUnsupported(err error) bool {
 	return err == syscall.ENOSYS || err == syscall.EOPNOTSUPP
 }

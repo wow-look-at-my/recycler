@@ -11,10 +11,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// Everything else here drives the package. This drives a BUILT binary, named
-// by RECYCLER_TEST_BINARY, on whatever host is running the tests. It is what
-// puts a Mac's answer in a CI log: the cosmo APE picks its bin at run time and
-// locks without flock, and neither is visible from a Linux run of it.
+// This drives a BUILT binary, named by RECYCLER_TEST_BINARY. The APE picks
+// its bin and its lock at run time, so only a Mac answers for a Mac.
 
 // shippedBinary answers the binary to drive, or skips.
 func shippedBinary(t *testing.T) string {
@@ -63,8 +61,7 @@ func TestTheShippedBinaryRecyclesAndRestores(t *testing.T) {
 	assert.FileExists(t, path, "nothing recorded where it came from")
 }
 
-// A binary that reads its bin off the build tags fills the wrong one. On a
-// Mac that bin is invisible to Finder and carries no put back record.
+// A bin picked off the build tags is the wrong one on a Mac: Finder cannot see it.
 func TestTheShippedBinaryUsesThisHostsBin(t *testing.T) {
 	bin := shippedBinary(t)
 	home := t.TempDir()
