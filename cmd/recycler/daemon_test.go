@@ -30,7 +30,7 @@ func TestAFilesystemIsNamedWhenItGoesUnderAndWhenItRecovers(t *testing.T) {
 	assert.Empty(t, seen)
 }
 
-// The two endings say different things: bytes the sweep tried to give back and
+// Both endings say different things: bytes the sweep tried to give back and
 // could not, against a bin that has nothing left to give.
 func TestAPressureLineSaysWhetherAnythingRecycledIsLeft(t *testing.T) {
 	stranded := pressureLine(recycler.Pressure{Dir: "/bin", Avail: 100, Target: 400, Stranded: 50})
