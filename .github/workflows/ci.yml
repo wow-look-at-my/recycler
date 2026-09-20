@@ -22,3 +22,25 @@ jobs:
       - uses: wow-look-at-my/go-toolchain@master
         with:
           autorelease: false
+      # Artifact storage is a quota deletion cannot give back, so the APE rides the cache to the Mac.
+      - uses: wow-look-at-my/actions@cache-upload#latest
+        with:
+          name: recycler-ape
+          path: build/recycler
+
+  # The only job that compiles darwin.go, and the only one that reads which bin a Mac fills.
+  macos:
+    runs-on: macos-14
+    needs: build
+    steps:
+      - uses: actions/checkout@v4
+      - uses: wow-look-at-my/actions@cache-download#latest
+        with:
+          name: recycler-ape
+          path: ape
+      # The whole suite on a real Mac, with the shipped-binary tests driving the APE a Mac downloads.
+      - uses: wow-look-at-my/go-toolchain@master
+        with:
+          autorelease: false
+        env:
+          RECYCLER_TEST_BINARY: ${{ github.workspace }}/ape/recycler
