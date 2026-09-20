@@ -24,8 +24,7 @@ const (
 	// recoverMultiple is how far past the trigger a sweep frees, for runway.
 	recoverMultiple = 8
 
-	// recoverCeilingFraction bounds a sweep so a small filesystem is not emptied.
-	// Looser than freeTargetFraction, which would leave no runway.
+	// recoverCeilingFraction keeps a sweep from emptying a small filesystem.
 	recoverCeilingFraction = 5
 )
 
@@ -150,7 +149,7 @@ func sweepItems(b bin.Backend, items []bin.Item, dirs []string,
 }
 
 // filesystemGroup is the items sharing a bin directory, and the path a
-// free-space probe reads. An empty bin still gets one.
+// free-space probe reads.
 type filesystemGroup struct {
 	dir   string
 	probe string

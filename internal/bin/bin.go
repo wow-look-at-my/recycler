@@ -77,7 +77,6 @@ type Backend interface {
 	Restore(id, dest string) (string, error)
 	Evict(id string) error
 
-	// Dirs returns this user's bin directories, empty ones included: the daemon
-	// watches the filesystems behind them.
+	// Dirs returns this user's bin directories, the empty ones included.
 	Dirs() []string
 }
