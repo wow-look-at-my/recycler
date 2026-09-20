@@ -23,7 +23,7 @@ func Move(src, dst string) error {
 	}
 	if err := os.Rename(src, dst); err == nil {
 		return nil
-	} else if !needsCopy(err) {
+	} else if !IsCrossDevice(err) {
 		return err
 	}
 	if err := CopyTree(src, dst); err != nil {
@@ -31,19 +31,6 @@ func Move(src, dst string) error {
 		return err
 	}
 	return os.RemoveAll(src)
-}
-
-// needsCopy reports whether a rename failure is one a copy-and-delete can
-// still satisfy.
-//
-// A cross-device rename is the obvious one. A refusal to unlink the source is
-// the other: macOS answers EPERM rather than EXDEV for a rename out of some
-// directories, /tmp among them, and a bare `rm` of a file there then failed
-// outright instead of recycling it. Both mean the same thing here, which is
-// that the bytes have to be written rather than relinked. A copy that is
-// genuinely not permitted fails on its own and reports why.
-func needsCopy(err error) bool {
-	return IsCrossDevice(err) || errors.Is(err, fs.ErrPermission)
 }
 
 // IsCrossDevice reports whether err is a rename failure caused by src and dst

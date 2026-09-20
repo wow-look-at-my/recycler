@@ -6,11 +6,7 @@ require (
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/pflag v1.0.9
 	github.com/stretchr/testify v1.12.1
-<<<<<<< HEAD
-	github.com/wow-look-at-my/go-containers v0.0.0-20260913115023-d3bbbdd0286d // go-toolchain:auto-branch
-=======
 	github.com/wow-look-at-my/go-containers v0.0.0 // go-toolchain:auto-branch
->>>>>>> c134804c9dc8ccb27397d43bae5b352ed19e8b93
 	golang.org/x/sys v0.47.0
 )
 
