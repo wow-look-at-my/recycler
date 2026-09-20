@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+	"github.com/wow-look-at-my/go-containers/set"
 	"github.com/wow-look-at-my/recycler"
 	"github.com/wow-look-at-my/recycler/internal/pressure"
 )
@@ -100,20 +101,20 @@ func reportSweep(out io.Writer, evicted []recycler.Eviction, pressures []recycle
 // report loudest: everything filling the disk is live, and nothing recycled is
 // left to give back.
 func reportPressureChanges(out io.Writer, pressures []recycler.Pressure, seen map[string]bool) {
-	now := make(map[string]bool, len(pressures))
+	now := set.New[string]()
 	for _, p := range pressures {
-		now[p.Dir] = true
+		now.Add(p.Dir)
 		if !seen[p.Dir] {
 			fmt.Fprintln(out, pressureLine(p))
 		}
 	}
 	for dir := range seen {
-		if !now[dir] {
+		if !now.Contains(dir) {
 			fmt.Fprintf(out, "%s is back above its target\n", dir)
 			delete(seen, dir)
 		}
 	}
-	for dir := range now {
+	for dir := range now.All() {
 		seen[dir] = true
 	}
 }
