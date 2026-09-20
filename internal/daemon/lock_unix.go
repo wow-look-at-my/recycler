@@ -22,6 +22,9 @@ func tryLock(path string) (unlock func(), ok bool, err error) {
 		if err == unix.EWOULDBLOCK {
 			return nil, false, nil
 		}
+		if lockUnsupported(err) {
+			return tryPidLock(path + ".pid")
+		}
 		return nil, false, fmt.Errorf("flock on %s: %w", path, err)
 	}
 	return func() {
