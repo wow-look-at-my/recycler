@@ -1,17 +1,14 @@
-//go:build darwin
+//go:build darwin || cosmo
 
 package trash
 
 // macOS Trash implementation.
 //
-// Finder moves deleted files into ~/.Trash (or .Trashes/$uid on other volumes)
-// and records where each item came from in that trash directory's own .DS_Store,
-// as the "ptbL" and "ptbN" records behind its Put Back command. Apple documents
-// neither the file nor an API for reading it, but it is the only place the
-// original location exists, so this reads and writes those same records
-// (internal/putback over internal/dsstore) instead of keeping an index of its
-// own. Items recycled here can therefore be put back from Finder, and items
-// Finder trashed can be restored here.
+// Finder moves deleted files into ~/.Trash, and .Trashes/$uid on other volumes.
+// Where each came from lives in that directory's .DS_Store, as the ptbL and
+// ptbN records behind Put Back. Apple documents neither, and nothing else
+// records it, so this reads and writes the same records rather than keeping an
+// index. Finder and this package therefore restore each other's items.
 
 import (
 	"errors"
@@ -24,6 +21,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/wow-look-at-my/go-containers/set"
 	"github.com/wow-look-at-my/recycler/internal/bin"
 	"github.com/wow-look-at-my/recycler/internal/dsstore"
 	"github.com/wow-look-at-my/recycler/internal/fsutil"
@@ -36,7 +34,7 @@ type macTrash struct {
 	uid  int
 }
 
-func Backend() (bin.Backend, error) {
+func macBackend() (bin.Backend, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return nil, fmt.Errorf("recycler: locating home directory: %w", err)
@@ -216,18 +214,18 @@ func (t *macTrash) Dirs() []string { return t.trashDirs() }
 // trashDirs returns every trash directory belonging to this user.
 func (t *macTrash) trashDirs() []string {
 	dirs := []string{t.home}
-	seen := map[string]bool{t.home: true}
+	seen := set.Of[string](t.home)
 	volumes, err := filepath.Glob("/Volumes/*")
 	if err != nil {
 		return dirs
 	}
 	for _, volume := range volumes {
 		candidate := filepath.Join(volume, ".Trashes", strconv.Itoa(t.uid))
-		if seen[candidate] {
+		if seen.Contains(candidate) {
 			continue
 		}
 		if fi, err := os.Stat(candidate); err == nil && fi.IsDir() {
-			seen[candidate] = true
+			seen.Add(candidate)
 			dirs = append(dirs, candidate)
 		}
 	}
@@ -255,10 +253,11 @@ func dataVolumePath(path string) string {
 	return short
 }
 
-// deletedAt reports when an item was moved to the trash.
+// deletedAt reports when an item reached the trash. macOS records no deletion
+// time, so this takes the inode change time the rename updated.
 func deletedAt(info fs.FileInfo) time.Time {
 	if st, ok := info.Sys().(*syscall.Stat_t); ok {
-		return time.Unix(st.Ctimespec.Unix())
+		return ctime(st)
 	}
 	return info.ModTime()
 }

@@ -9,8 +9,7 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-// flockFn is what tryLock locks with. A test swaps it for a single answering
-// ENOSYS, which no host running these tests reproduces.
+// flockFn is what tryLock locks with, so a test can answer ENOSYS from it.
 var flockFn = unix.Flock
 
 // tryLock takes the daemon's exclusive lock without blocking. Each failure

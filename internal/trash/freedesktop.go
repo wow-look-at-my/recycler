@@ -40,7 +40,7 @@ type fdoTrash struct {
 	uid  int
 }
 
-func Backend() (bin.Backend, error) {
+func fdoBackend() (bin.Backend, error) {
 	dataHome := os.Getenv("XDG_DATA_HOME")
 	if dataHome == "" || !filepath.IsAbs(dataHome) {
 		home, err := os.UserHomeDir()
