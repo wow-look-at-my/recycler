@@ -184,31 +184,6 @@ func (t *macTrash) resolveID(id string) (string, error) {
 	return clean, nil
 }
 
-// trashDirFor returns the trash directory a path should be recycled into.
-func (t *macTrash) trashDirFor(path string) (string, error) {
-	if err := os.MkdirAll(t.home, 0o700); err != nil {
-		return "", err
-	}
-	homeDev, err := fsutil.DeviceOf(t.home)
-	if err != nil {
-		return "", err
-	}
-	srcDev, err := fsutil.DeviceOf(filepath.Dir(path))
-	if err != nil {
-		return "", err
-	}
-	if srcDev == homeDev {
-		return t.home, nil
-	}
-
-	top := fsutil.TopDirOf(filepath.Dir(path), srcDev)
-	dir := filepath.Join(top, ".Trashes", strconv.Itoa(t.uid))
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return "", fmt.Errorf("recycler: no usable trash directory on %s: %w", top, err)
-	}
-	return dir, nil
-}
-
 // Dirs reports the trash directories the daemon watches the filesystems of.
 func (t *macTrash) Dirs() []string { return t.trashDirs() }
 
