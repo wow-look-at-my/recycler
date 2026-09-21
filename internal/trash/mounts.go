@@ -69,6 +69,11 @@ func systemMountPoints() []string {
 		}
 		points = append(points, unescapeMountPoint(fields[1]))
 	}
+	if scanner.Err() != nil {
+		// A truncated read names fewer filesystems than the host has, and the
+		// daemon then watches none of the ones it never saw.
+		return nil
+	}
 	return points
 }
 

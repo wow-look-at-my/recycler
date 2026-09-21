@@ -72,8 +72,7 @@ type Disposal struct {
 
 // A Backend is the per-platform implementation of the package API.
 type Backend interface {
-	// Recycle reports what happened to every path it was given, including the
-	// ones it failed on. A caller must say when a deletion was permanent.
+	// Recycle reports every path it was given, the ones it failed on included.
 	Recycle(paths []string) ([]Disposal, error)
 	List() ([]Item, error)
 	Restore(id, dest string) (string, error)
