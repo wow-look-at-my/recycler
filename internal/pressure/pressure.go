@@ -15,18 +15,15 @@ import (
 
 // A Decision is what should happen to a single path handed to Recycle.
 type Decision struct {
-	// Permanent is set when recycling cannot free space and the path has to go
-	// for real. Reason says why.
-	Permanent bool
-	Reason    string
+	Permanent bool   // recycling frees nothing, so the path has to go for real
+	Reason    string // why
 
 	Avail  uint64 // available bytes on the filesystem holding the path
 	Target uint64 // the floor below which recycling stops being deferral
 	Size   int64  // the path's measured size, or [bin.SizeUnknown]
 }
 
-// These mirror internal/daemon, which imports the backends that call this and so
-// cannot be imported back. A test pins both spellings together.
+// These mirror internal/daemon, which cannot be imported back. A test pins them.
 const (
 	freeTargetFraction = 10
 	freeTargetCeiling  = 1 << 30
@@ -42,8 +39,7 @@ func Floor(total uint64) uint64 {
 }
 
 // Check decides what to do with path, whose measured size is size. A filesystem
-// it cannot read is reported as ordinary recycling: guessing "permanent" from a
-// failed probe would destroy a file over a missing answer.
+// it cannot read reads as ordinary recycling, never as a permanent deletion.
 func Check(path string, size int64) Decision {
 	avail, total, err := diskfree.Free(filepath.Dir(path))
 	if err != nil {
