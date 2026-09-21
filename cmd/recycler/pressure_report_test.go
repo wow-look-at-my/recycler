@@ -25,8 +25,7 @@ func TestPressureIsNamedOnceAndAgainWhenItRecovers(t *testing.T) {
 		t.Fatal("a reported filesystem was not remembered")
 	}
 
-	// Still under its target, and already reported: the daemon polls, so saying
-	// so every tick would bury the transition nobody wants to miss.
+	// Already reported, and the daemon polls: saying so every tick buries it.
 	out.Reset()
 	reportPressureChanges(&out, []recycler.Pressure{under("/bin", 0)}, seen)
 	if out.Len() != 0 {
