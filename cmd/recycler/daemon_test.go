@@ -40,3 +40,14 @@ func TestAPressureLineSaysWhetherAnythingRecycledIsLeft(t *testing.T) {
 	empty := pressureLine(recycler.Pressure{Dir: "/bin", Avail: 100, Target: 400})
 	assert.Contains(t, empty, "nothing recycled is left to give back")
 }
+
+// String carries every number a filesystem was judged on, which is what lets a
+// log line be answered without the daemon still running to be asked.
+func TestAPressureSpellsOutTheNumbersItJudgedOn(t *testing.T) {
+	said := recycler.Pressure{Dir: "/bin", Avail: 100, Target: 400, Total: 4000}.String()
+	assert.Contains(t, said, "/bin")
+	assert.Contains(t, said, "100 bytes available")
+	assert.Contains(t, said, "300 short", "the shortfall is what the reader acts on")
+	assert.Contains(t, said, "400 byte target")
+	assert.Contains(t, said, "4000 byte filesystem")
+}
