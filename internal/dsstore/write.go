@@ -87,7 +87,10 @@ func dsBuildLevels(records []Record) ([][][]Record, error) {
 			total = size
 			node = append(node, r)
 		}
-		if len(node) > 0 {
+		// A pivot stands between children, so the last promoted record needs a
+		// node to its right even when nothing followed it. An empty node is
+		// what the file already spells for a store holding nothing.
+		if len(node) > 0 || len(next) > 0 {
 			nodes = append(nodes, node)
 		}
 		levels = append(levels, nodes)
