@@ -34,6 +34,28 @@ func TestPressureIsNamedOnceAndItsRecoveryOnce(t *testing.T) {
 	assert.Empty(t, out.String(), "a recovery was reported twice")
 }
 
+// A daemon that repeats an unchanged complaint on every poll buries the change
+// that matters, so a filesystem is named when it goes under and when it comes
+// back, and not in between.
+func TestAFilesystemIsNamedWhenItGoesUnderAndWhenItRecovers(t *testing.T) {
+	p := recycler.Pressure{Dir: "/bin", Avail: 100, Target: 400, Total: 4000}
+	seen := map[string]bool{}
+
+	var first bytes.Buffer
+	reportPressureChanges(&first, []recycler.Pressure{p}, seen)
+	assert.Contains(t, first.String(), "cannot keep /bin above its target")
+	assert.True(t, seen["/bin"])
+
+	var again bytes.Buffer
+	reportPressureChanges(&again, []recycler.Pressure{p}, seen)
+	assert.Empty(t, again.String())
+
+	var recovered bytes.Buffer
+	reportPressureChanges(&recovered, nil, seen)
+	assert.Equal(t, "/bin is back above its target\n", recovered.String())
+	assert.Empty(t, seen)
+}
+
 // What a sweep could not give back decides how the line ends: bytes that failed
 // to go are a different problem from a bin with nothing left in it.
 func TestThePressureLineSaysWhyTheSweepFellShort(t *testing.T) {
@@ -49,6 +71,17 @@ func TestThePressureLineSaysWhyTheSweepFellShort(t *testing.T) {
 	assert.NotContains(t, line, "nothing recycled is left")
 }
 
+// Both endings say different things: bytes the sweep tried to give back and
+// could not, against a bin that has nothing left to give.
+func TestAPressureLineSaysWhetherAnythingRecycledIsLeft(t *testing.T) {
+	stranded := pressureLine(recycler.Pressure{Dir: "/bin", Avail: 100, Target: 400, Stranded: 50})
+	assert.Contains(t, stranded, "300 B short")
+	assert.Contains(t, stranded, "50 B of recycled items would not go")
+
+	empty := pressureLine(recycler.Pressure{Dir: "/bin", Avail: 100, Target: 400})
+	assert.Contains(t, empty, "nothing recycled is left to give back")
+}
+
 // The daemon's own summary of a filesystem carries every number it judged on,
 // which is what makes a log line answerable without the daemon to hand.
 func TestAPressureSpellsOutEveryNumberItJudgedOn(t *testing.T) {
@@ -59,4 +92,15 @@ func TestAPressureSpellsOutEveryNumberItJudgedOn(t *testing.T) {
 	assert.Contains(t, said, "2097152", "the shortfall is what the reader acts on")
 	assert.Contains(t, said, "3145728")
 	assert.Contains(t, said, "104857600")
+}
+
+// String carries every number a filesystem was judged on, which is what lets a
+// log line be answered without the daemon still running to be asked.
+func TestAPressureSpellsOutTheNumbersItJudgedOn(t *testing.T) {
+	said := recycler.Pressure{Dir: "/bin", Avail: 100, Target: 400, Total: 4000}.String()
+	assert.Contains(t, said, "/bin")
+	assert.Contains(t, said, "100 bytes available")
+	assert.Contains(t, said, "300 short", "the shortfall is what the reader acts on")
+	assert.Contains(t, said, "400 byte target")
+	assert.Contains(t, said, "4000 byte filesystem")
 }
