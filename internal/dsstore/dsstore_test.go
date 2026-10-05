@@ -165,6 +165,42 @@ func TestEveryRecordCountBuildsAReadableTree(t *testing.T) {
 	}
 }
 
+// A record count that fills the last node exactly promotes a pivot with no
+// node after it. The level above then has a single child fewer than it has
+// keys, which the encoder reads past the end of. Every count in a range
+// holding several such boundaries has to round-trip.
+func TestBuildsATreeWhateverTheLastNodeHolds(t *testing.T) {
+	for count := 1; count <= 600; count++ {
+		records := make([]Record, 0, count)
+		for i := range count {
+			name := fmt.Sprintf("item-%04d.txt", i)
+			records = append(records, Ustr(name, "ptbL", fmt.Sprintf("Users/ada/Documents/some/reasonably/long/path/%04d", i)))
+		}
+
+		levels, err := dsBuildLevels(records)
+		require.NoError(t, err, "%d records", count)
+		for level := 1; level < len(levels); level++ {
+			pivots := 0
+			for _, node := range levels[level] {
+				pivots += len(node)
+			}
+			assert.Equal(t, pivots+len(levels[level]), len(levels[level-1]),
+				"%d records: level %d needs a child on each side of every pivot", count, level)
+		}
+
+		// A full round-trip is what proves the encoder reads no further than
+		// the children are, and it costs enough to run on a sample.
+		if count%13 != 0 {
+			continue
+		}
+		data, err := Build(records)
+		require.NoError(t, err, "%d records", count)
+		parsed, err := Parse(data)
+		require.NoError(t, err, "%d records", count)
+		assert.ElementsMatch(t, records, parsed, "%d records", count)
+	}
+}
+
 func TestRejectsRecordsItCannotStore(t *testing.T) {
 	_, err := Build([]Record{{Name: "f", Code: "ptb", Type: "ustr", Data: []byte{0, 0, 0, 0}}})
 	assert.ErrorIs(t, err, errBadDSStore, "a structure id that is not four characters was accepted")
