@@ -9,11 +9,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-
-	"github.com/wow-look-at-my/recycler/internal/bin"
 )
 
-// recycle, list and restore are what the recycler package's own functions do, so a backend test.
 // isolateTrash points the recycle bin at a temporary directory so tests never touch.
 func isolateTrash(t *testing.T) string {
 	t.Helper()
