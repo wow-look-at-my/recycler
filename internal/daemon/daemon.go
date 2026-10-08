@@ -58,7 +58,7 @@ type Eviction struct {
 // recycled: a filesystem filling with files nobody recycled leaves it running,
 // correct and powerless.
 type Pressure struct {
-	Dir    string // the recycle bin directory whose filesystem this is
+	Dir    string
 	Avail  uint64 // available bytes after the sweep
 	Target uint64 // available bytes the daemon wanted
 	Total  uint64 // bytes on the filesystem this caller can reach

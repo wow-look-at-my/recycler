@@ -189,8 +189,8 @@ func standDown(lock string, unlock func(), me Identity) func() {
 // successor that gave up and withdrew its own request.
 //
 // Watching the request rather than the lock keeps this out of the successor's
-// way: two processes polling one lock can take turns holding it and neither
-// gets on with sweeping.
+// way. The lock processes polling one lock can take turns holding it and
+// neither gets on with sweeping.
 func successorArrived(lock string, timeout time.Duration) bool {
 	path, err := handoverPath()
 	if err != nil {

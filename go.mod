@@ -1,6 +1,6 @@
 module github.com/wow-look-at-my/recycler
 
-go 1.26
+go 1.26.0
 
 require (
 	github.com/spf13/cobra v1.10.2
@@ -16,6 +16,8 @@ require (
 )
 
 require github.com/charmbracelet/x/ansi v0.11.8
+
+require github.com/wow-look-at-my/ansi-optimizer v0.0.0 // indirect
 
 require (
 	charm.land/lipgloss/v2 v2.0.6 // indirect

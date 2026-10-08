@@ -42,16 +42,15 @@ func selfIdentity(exe string) Identity {
 	return id
 }
 
-// sameBuild reports whether two records name the same build. The times come
-// back from a file, so they are compared as instants rather than as structs.
+// sameBuild reports whether records name the same build.
 func sameBuild(a, b Identity) bool {
 	return a.Version == b.Version && a.Exe == b.Exe && a.ModTime.Equal(b.ModTime)
 }
 
 // Newer reports whether a is a newer build than b.
 //
-// Two builds that both name a version are ordered by that version. When either
-// one does not, the version says nothing about which came first, and the
+// Builds that both name a version are ordered by that version. When either one
+// does not, the version says nothing about which came first. The executable's
 // executable's modification time is the only fact both of them carry.
 func Newer(a, b Identity) bool {
 	if versioned(a.Version) && versioned(b.Version) {
@@ -70,8 +69,6 @@ func versioned(s string) bool {
 	return true
 }
 
-// compareVersions orders two dotted version numbers as -1, 0 or 1. A field
-// missing from one side counts as zero, so 1.2 and 1.2.0 are the same build.
 func compareVersions(a, b string) int {
 	aCore, aPre := splitPrerelease(a)
 	bCore, bPre := splitPrerelease(b)
@@ -102,9 +99,7 @@ func field(fields []string, i int) string {
 	return "0"
 }
 
-// compareFields orders one dotted field. Two numbers compare as numbers, so 10
-// beats 9; anything else compares as text, which is all that is left to do with
-// it.
+// compareFields orders one dotted field.
 func compareFields(a, b string) int {
 	an, aErr := strconv.ParseUint(a, 10, 64)
 	bn, bErr := strconv.ParseUint(b, 10, 64)

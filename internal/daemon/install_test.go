@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"unicode/utf16"
@@ -18,12 +19,12 @@ import (
 type fakeManager struct {
 	calls  []string
 	loaded bool   // launchctl print succeeds while this holds
-	refuse string // a subcommand that fails
+	refuse string // an argument that makes a command fail
 }
 
 func (f *fakeManager) run(name string, args ...string) error {
 	f.calls = append(f.calls, strings.Join(append([]string{name}, args...), " "))
-	if args[0] == f.refuse {
+	if slices.Contains(args, f.refuse) {
 		return errors.New("refused")
 	}
 	if name != "launchctl" {

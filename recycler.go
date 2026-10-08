@@ -137,7 +137,7 @@ func EnsureDaemon(exe string) (bool, error) { return daemon.Ensure(exe) }
 type DaemonIdentity = daemon.Identity
 
 // SetDaemonVersion names the build this program's daemon reports when it takes
-// the lock. Two daemons that both name a version are ordered by it; when either
+// the lock. Daemons that both name a version are ordered by it; when either
 // does not, their executables' modification times decide which is newer.
 func SetDaemonVersion(v string) { daemon.Version = v }
 

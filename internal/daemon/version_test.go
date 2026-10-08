@@ -7,7 +7,6 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// A version is a number, not a string: 1.10 is what comes after 1.9.
 func TestVersionsCompareAsNumbers(t *testing.T) {
 	cases := []struct {
 		a, b string
@@ -37,8 +36,8 @@ func TestPlaceholderVersionsAreNotVersions(t *testing.T) {
 	assert.True(t, versioned("0.0.1"))
 }
 
-// Two versions decide between themselves. Without one on both sides, the
-// executable's modification time is the only fact left.
+// A couple of versions decide between themselves. Without one on both
+// sides, the executable's modification time is the only fact left.
 func TestNewerFallsBackToTheExecutablesModTime(t *testing.T) {
 	now := time.Now().UTC()
 	old := Identity{Exe: "/old", ModTime: now.Add(-time.Hour)}
@@ -60,7 +59,7 @@ func TestNewerFallsBackToTheExecutablesModTime(t *testing.T) {
 	))
 }
 
-// The description is what a person reads to tell two daemons apart.
+// The description is what a person reads to tell daemons apart.
 func TestAnIdentityDescribesItself(t *testing.T) {
 	at := time.Date(2026, 9, 13, 10, 30, 0, 0, time.UTC)
 	assert.Contains(t, Identity{Version: "1.2.3", Exe: "/usr/bin/recycler", ModTime: at}.String(), "1.2.3")
