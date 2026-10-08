@@ -3,12 +3,6 @@
 package trash
 
 // macOS Trash implementation.
-//
-// Finder moves deleted files into ~/.Trash, and .Trashes/$uid on other volumes.
-// Where each came from lives in that directory's .DS_Store, as the ptbL and
-// ptbN records behind Put Back. Apple documents neither, and nothing else
-// records it, so this reads and writes the same records rather than keeping an
-// index. Finder and this package therefore restore each other's items.
 
 import (
 	"errors"

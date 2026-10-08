@@ -20,7 +20,11 @@ func homeTrash(t *testing.T) string {
 	t.Helper()
 	b, err := Backend()
 	require.NoError(t, err)
-	return b.(*fdoTrash).home
+	fdo, ok := b.(*fdoTrash)
+	if !ok {
+		t.Skipf("this host's recycle bin is %T, not the FreeDesktop trash", b)
+	}
+	return fdo.home
 }
 
 // TestTrashInfoIsSpecCompliant checks the metadata this package writes against the FreeDesktop trash.
