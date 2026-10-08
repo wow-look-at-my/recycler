@@ -98,7 +98,11 @@ func TestRoundTripsEveryValueType(t *testing.T) {
 	require.NoError(t, err)
 	assert.ElementsMatch(t, records, parsed)
 
+<<<<<<< HEAD
 	// The Finder's own order: by name, case insensitively, then structure id.
+=======
+	// Records come back in the order the Finder stores them: by name, case insensitively, then by structure id.
+>>>>>>> list-restore-all-volume-trashes
 	require.Len(t, parsed, len(records))
 	assert.Equal(t, Record{Name: ".", Code: "vSrn", Type: "long", Data: []byte{0, 0, 0, 1}}, parsed[0])
 	assert.Equal(t, "ptbL", parsed[len(parsed)-2].Code)

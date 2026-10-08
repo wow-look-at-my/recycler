@@ -65,8 +65,12 @@ func Sort(items []Item) {
 type Disposal struct {
 	Path string
 
+<<<<<<< HEAD
 	// Permanent marks a path removed outright, with Reason saying why.
 	Permanent bool
+=======
+	Permanent bool // removed outright: no room left to defer.
+>>>>>>> list-restore-all-volume-trashes
 	Reason    string
 }
 
