@@ -199,7 +199,8 @@ func TestCancellingTheAskLeavesTheItemInTheBin(t *testing.T) {
 	assert.Len(t, m.shown, 1)
 }
 
-// Nothing is overwritten: a file that took the original location back is reported rather than clobbered.
+// Nothing is overwritten: a file that took the location back is reported
+// rather than clobbered.
 func TestRestoreRefusesToOverwriteWhatTookThePlaceBack(t *testing.T) {
 	m, work := binWith(t, "notes.md")
 	original := writeFile(t, filepath.Join(work, "notes.md"), "something else entirely")

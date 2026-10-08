@@ -8,16 +8,14 @@ import (
 	"github.com/wow-look-at-my/recycler/internal/bin"
 )
 
-// The floor here and the daemon's target are the same number by intent: a
+// The floor here and the daemon's target are the same number by intent. A
 // single decides when recycling stops deferring anything, the other when a
-// sweep starts. They are spelled again because the daemon imports the
-// backends that call this, so this package cannot import it back.
+// sweep starts.
 func TestTheFloorMatchesTheDaemonsTarget(t *testing.T) {
 	assert.Equal(t, uint64(1<<30), Floor(10<<30))
 	assert.Equal(t, uint64(1<<30), Floor(1<<40))
 
-	// A smaller a single keeps the fraction, so small media does not
-	// become a permanent-delete device.
+	// A smaller a single keeps the fraction, so small media does not become a permanent-delete device.
 	assert.Equal(t, uint64(50<<20), Floor(500<<20))
 	assert.Equal(t, uint64(100), Floor(1000))
 }
@@ -30,7 +28,7 @@ func TestRoomToDeferMeansOrdinaryRecycling(t *testing.T) {
 	assert.Empty(t, d.Reason)
 }
 
-// Below the floor the bin cannot help: it is on the same filesystem, so the move
+// Below the floor the bin cannot help: it is on the same filesystem. The move
 // frees nothing and the record of the move costs a little more.
 func TestBelowTheFloorADeletionIsPermanent(t *testing.T) {
 	d := decide(512<<20, terabyte, 1<<20)

@@ -2,6 +2,7 @@ package daemon
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -53,11 +54,9 @@ type Eviction struct {
 }
 
 // Pressure is a filesystem left under its target after a sweep did what it
-// could. Recycling defers a deletion, so the daemon gives back only what was
-// recycled: a filesystem filling with files nobody recycled leaves it running,
-// correct and powerless.
+// could.
 type Pressure struct {
-	Dir    string // the recycle bin directory whose filesystem this is
+	Dir    string
 	Avail  uint64 // available bytes after the sweep
 	Target uint64 // available bytes the daemon wanted
 	Total  uint64 // bytes on the filesystem this caller can reach
@@ -78,7 +77,7 @@ func (p Pressure) String() string {
 		p.Dir, p.Avail, p.Shortfall(), p.Target, p.Total)
 }
 
-// Sweep reclaims space on every filesystem holding a recycle bin, and reports
+// Sweep reclaims space on every filesystem holding a recycle bin. Sweep reports
 // every a single still under its target a single time it has given back all it can.
 func Sweep() ([]Eviction, []Pressure, error) {
 	b, err := trash.Backend()
@@ -199,25 +198,39 @@ func probePath(dir string) string {
 }
 
 // Run sweeps every interval until ctx is done.
-func Run(ctx context.Context, interval time.Duration, report func([]Eviction, []Pressure, error)) error {
+func Run(ctx context.Context, interval time.Duration, standby bool, report func([]Eviction, []Pressure, error)) error {
+	exe, err := os.Executable()
+	if err != nil {
+		return err
+	}
+	return run(ctx, interval, selfIdentity(exe), standby, report)
+}
+
+// run is Run's body for a stated build, which is what lets a test drive both
+// sides of a handover in one process.
+func run(ctx context.Context, interval time.Duration, me Identity, standby bool, report func([]Eviction, []Pressure, error)) error {
+	if interval <= 0 {
+		interval = DefaultPollInterval
+	}
 	lock, err := LockPath()
 	if err != nil {
 		return err
 	}
-	unlock, free, err := tryLock(lock)
+	unlock, held, err := acquire(ctx, lock, me, standby, interval)
 	if err != nil {
 		return err
 	}
-	if !free {
-		return bin.ErrDaemonRunning
-	}
-	defer unlock()
+	clearHandover()
+	withdraw := announce(me)
+	defer func() {
+		withdraw()
+		if unlock != nil {
+			unlock()
+		}
+	}()
 
 	raisePriority()
 
-	if interval <= 0 {
-		interval = DefaultPollInterval
-	}
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 	for {
@@ -225,10 +238,59 @@ func Run(ctx context.Context, interval time.Duration, report func([]Eviction, []
 		if report != nil {
 			report(evicted, pressures, err)
 		}
+		if challenger, asked := pendingHandover(); asked && Newer(challenger, me) {
+			withdraw()
+			if unlock = standDown(lock, unlock, me); unlock == nil {
+				return nil
+			}
+		}
+		if lockMoved(lock, held) {
+			// The lock this daemon holds no longer keeps a second one out.
+			withdraw()
+			withdraw = func() {}
+			unlock()
+			if unlock, held, err = acquire(ctx, lock, me, standby, interval); err != nil {
+				return err
+			}
+			clearHandover()
+			withdraw = announce(me)
+		}
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
 		case <-ticker.C:
 		}
 	}
+}
+
+// acquire takes the daemon lock and returns it with the file it locked. In
+// standby, a daemon no newer than the one holding the lock polls until it can
+// take it, where it would otherwise return [bin.ErrDaemonRunning].
+func acquire(ctx context.Context, lock string, me Identity, standby bool, poll time.Duration) (func(), os.FileInfo, error) {
+	for {
+		unlock, err := takeLock(lock, me)
+		if err == nil {
+			held, err := os.Stat(lock)
+			if err != nil {
+				unlock()
+				return nil, nil, err
+			}
+			return unlock, held, nil
+		}
+		if !standby || !errors.Is(err, bin.ErrDaemonRunning) {
+			return nil, nil, err
+		}
+		select {
+		case <-ctx.Done():
+			return nil, nil, ctx.Err()
+		case <-time.After(poll):
+		}
+	}
+}
+
+// lockMoved reports whether the lock path names a different file from held,
+// or none.
+func lockMoved(lock string, held os.FileInfo) bool {
+	now, err := os.Stat(lock)
+	return err != nil || !os.SameFile(now, held)
 }
