@@ -20,11 +20,7 @@ github.com/charmbracelet/x/term v0.2.2/go.mod h1:kF8CY5RddLWrsgVwpw4kAa6TESp6EB5
 github.com/charmbracelet/x/termios v0.1.1 h1:o3Q2bT8eqzGnGPOYheoYS8eEleT5ZVNYNy8JawjaNZY=
 github.com/charmbracelet/x/termios v0.1.1/go.mod h1:rB7fnv1TgOPOyyKRJ9o+AsTU/vK5WHJ2ivHeut/Pcwo=
 github.com/charmbracelet/x/vt v0.0.0-20261004011457-ad85c59fdf4e git:ad85c59fdf4ebe61d54a4d316d84bf16838beb55
-<<<<<<< HEAD
 github.com/charmbracelet/x/vt v0.0.0-20261004011457-ad85c59fdf4e/go.mod h1:u1LOIABor9JqY54oZdktK3TCRrgzP6tzHrDYx1nd3wY=
-=======
-github.com/charmbracelet/x/vt v0.0.0-20261004011457-ad85c59fdf4e/go.mod git:ad85c59fdf4ebe61d54a4d316d84bf16838beb55
->>>>>>> list-restore-all-volume-trashes
 github.com/charmbracelet/x/windows v0.2.2 h1:IofanmuvaxnKHuV04sC0eBy/smG6kIKrWG2/jYn2GuM=
 github.com/charmbracelet/x/windows v0.2.2/go.mod h1:/8XtdKZzedat74NQFn0NGlGL4soHB0YQZrETF96h75k=
 github.com/clipperhouse/displaywidth v0.11.0 h1:lBc6kY44VFw+TDx4I8opi/EtL9m20WSEFgwIwO+UVM8=

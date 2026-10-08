@@ -1,12 +1,7 @@
 package winbin
 
-<<<<<<< HEAD
 // Codec for the "$I" metadata Windows writes beside every recycled file.
 // Layout and versions: AGENTS.md, under Platform notes.
-=======
-// Codec for the "$I" metadata files Windows writes next to every recycled
-// file in <drive>:\$Recycle.Bin\<user SID>\.
->>>>>>> list-restore-all-volume-trashes
 
 import (
 	"encoding/binary"
