@@ -91,6 +91,8 @@ Only **64-bit Windows** is supported. `SHFILEOPSTRUCTW` is byte-packed on 32-bit
 
 Run `go-toolchain` in the repository root - never bare `go` commands. It tidies, vets, formats, runs the tests with a coverage floor of 80%, and builds.
 
+Commit and push a fix as soon as it is ready. Never hold a commit until a local run finishes: the local run checks the pushed commit afterward. Vet fails on any unused function, so remove the callers of a helper and the helper together.
+
 **It only compiles the host's files.** A type error in `internal/trash/windows.go` or `internal/trash/darwin.go` passes a full local `go-toolchain` run with "Build successful". No job in CI catches that any more, so build every GOOS in this package's constraints yourself after touching a per-platform file.
 
 **Do not publish this project as a cosmo fat APE.** That APE is the only native output `go-toolchain matrix` emits, which is why CI passes `autorelease: false`. Without it, buildhost answers a `?os=darwin` request with the `linux/amd64` artifact, because no darwin build exists to serve instead. A Mac then downloads the APE.
