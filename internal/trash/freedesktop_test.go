@@ -158,7 +158,7 @@ func TestAForeignEntryIsSizedOnceAndRecorded(t *testing.T) {
 	assert.Contains(t, string(raw), "Size=512", "the size was not written back: %q", raw)
 }
 
-// A measurement that cannot be written back is a walk the next poll repeats, so an entry whose
+// A measurement that cannot be written back is a walk the next poll repeats. An entry whose
 // record is read-only is left unsized instead.
 func TestAnUnwritableForeignEntryIsNotWalked(t *testing.T) {
 	if os.Geteuid() == 0 {

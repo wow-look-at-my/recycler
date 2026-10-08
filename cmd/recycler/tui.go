@@ -388,7 +388,8 @@ func (m *model) rows() []string {
 	return rows
 }
 
-// originDir is the directory an item was recycled from, or a note that nothing recorded it.
+// originDir is the directory an item was recycled from, or a nothing recorded
+// it.
 func originDir(item recycler.Item) string {
 	if item.OriginalPath == "" {
 		return "(not recorded)"

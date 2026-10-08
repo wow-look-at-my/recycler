@@ -3,11 +3,6 @@
 package trash
 
 // Windows Recycle Bin implementation.
-//
-// Recycling goes through the shell (SHFileOperation with FOF_ALLOWUNDO), so it
-// behaves exactly like deleting from Explorer. Listing and restoring read the
-// bin's own on-disk layout directly: every recycled item is a "$R" data file
-// with a matching "$I" metadata file in <drive>:\$Recycle.Bin\<user SID>\.
 
 import (
 	"errors"
