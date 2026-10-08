@@ -14,14 +14,6 @@ import (
 )
 
 // recycle, list and restore are what the recycler package's own functions do, so a backend test.
-func list() ([]bin.Item, error) {
-	b, err := Backend()
-	if err != nil {
-		return nil, err
-	}
-	return b.List()
-}
-
 // isolateTrash points the recycle bin at a temporary directory so tests never touch.
 func isolateTrash(t *testing.T) string {
 	t.Helper()
@@ -45,4 +37,3 @@ func writeFile(t *testing.T, path, content string) string {
 	require.NoError(t, os.WriteFile(path, []byte(content), 0o644))
 	return path
 }
-
