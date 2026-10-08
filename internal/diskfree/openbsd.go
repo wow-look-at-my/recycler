@@ -7,7 +7,7 @@ import "golang.org/x/sys/unix"
 // Free reports the available and total bytes of the filesystem holding path.
 // Total counts only blocks this caller can reach; see [reachable]. OpenBSD
 // spells the available count signed and lets it go negative a single time the
-// reserve is eaten into, which reads here as nothing available and no reserve.
+// reserve is eaten into. This reads here as nothing available and no reserve.
 func Free(path string) (avail, total uint64, err error) {
 	var st unix.Statfs_t
 	if err := unix.Statfs(path, &st); err != nil {

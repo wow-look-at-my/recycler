@@ -9,7 +9,7 @@ import (
 )
 
 // A daemon that repeats an unchanged complaint on every poll buries the change
-// that matters, so a filesystem is named when it goes under and when it comes
+// that matters. A filesystem is named when it goes under and when it comes
 // back, and not in between.
 func TestAFilesystemIsNamedWhenItGoesUnderAndWhenItRecovers(t *testing.T) {
 	p := recycler.Pressure{Dir: "/bin", Avail: 100, Target: 400, Total: 4000}
@@ -42,7 +42,7 @@ func TestAPressureLineSaysWhetherAnythingRecycledIsLeft(t *testing.T) {
 }
 
 // String carries every number a filesystem was judged on, which is what lets a
-// log line be answered without the daemon still running to be asked.
+// log. Line be answered without the daemon still running to be asked.
 func TestAPressureSpellsOutTheNumbersItJudgedOn(t *testing.T) {
 	said := recycler.Pressure{Dir: "/bin", Avail: 100, Target: 400, Total: 4000}.String()
 	assert.Contains(t, said, "/bin")

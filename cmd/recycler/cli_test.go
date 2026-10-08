@@ -81,7 +81,7 @@ func TestTrashListRestore(t *testing.T) {
 	assert.Contains(t, out, path)
 	assert.Contains(t, out, "7 B")
 
-	// The original path is enough to name the item.
+	// The path is enough to name the item.
 	out, err = run(t, "", "restore", path)
 	require.NoError(t, err)
 	assert.Contains(t, out, "restored "+path)

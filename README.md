@@ -20,7 +20,7 @@ recycler daemon                     # watch free space (started for you)
 
 No command of yours deletes anything: an item leaves the bin by being restored, and emptying the bin is left to the desktop environment.
 
-Disk pressure is the exception, because a bin nobody empties fills the disk and the recycled copy is what holds the space. Recycling something starts a daemon that reads free space every 30 seconds. It gives back the oldest items when a filesystem drops under a tenth free, or 1 GiB, whichever is smaller. It uses the size recorded when each item was recycled, so it never walks the bin to measure it. Set `RECYCLER_NO_DAEMON=1` to run it yourself instead, or not at all.
+Disk pressure is the exception, because a bin nobody empties fills the disk and the recycled copy is what holds the space. Recycling something starts a daemon that reads free space every few seconds. It gives back the oldest items when a filesystem drops under a tenth free, or 1 GiB, whichever is smaller. It uses the size recorded when each item was recycled, so it never walks the bin to measure it. Set `RECYCLER_NO_DAEMON=1` to run it yourself instead, or not at all.
 
 Run on a terminal with no arguments, `recycler` opens the bin in a browser: arrows move, `/` filters, `enter` restores what is selected. Redirected, it prints the help instead, and `recycler tui` opens the browser either way.
 
@@ -36,7 +36,7 @@ items, _ := recycler.List()              // newest first
 path, _ := recycler.Restore(items[0].ID) // back to where it came from
 ```
 
-The API is those three operations and nothing else. Recycling is reversible, and the package offers no operation that makes it permanent.
+The API is those operations and nothing else. Recycling is reversible, and the package offers no operation that makes it permanent.
 
 ## Platform notes
 
