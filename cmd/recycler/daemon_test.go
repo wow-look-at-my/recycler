@@ -41,8 +41,8 @@ func TestAPressureLineSaysWhetherAnythingRecycledIsLeft(t *testing.T) {
 	assert.Contains(t, empty, "nothing recycled is left to give back")
 }
 
-// String carries every number a filesystem was judged on, which is what lets a
-// log. Line be answered without the daemon still running to be asked.
+// String carries every number a filesystem was judged on. A reader of the log
+// line can act on it with no daemon left to ask.
 func TestAPressureSpellsOutTheNumbersItJudgedOn(t *testing.T) {
 	said := recycler.Pressure{Dir: "/bin", Avail: 100, Target: 400, Total: 4000}.String()
 	assert.Contains(t, said, "/bin")
