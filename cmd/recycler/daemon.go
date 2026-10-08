@@ -40,12 +40,15 @@ Sizes are the ones recorded when each item was recycled, so a sweep does not
 walk the bin to measure it. An item whose size is unknown is left alone.
 
 The tool starts this by itself the first time it recycles something.
-"recycler daemon up" starts it up front. Run it by hand to watch what it does;
-a second one exits rather than sweeping alongside the first.`,
+"recycler daemon up" starts it up front, and "recycler daemon install" has the
+service manager start it at login and restart it when it exits. Run it by hand
+to watch what it does; a second one exits rather than sweeping alongside the
+first, or with --standby waits for the first to stop and then takes over.`,
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		interval, _ := cmd.Flags().GetDuration("interval")
 		once, _ := cmd.Flags().GetBool("once")
+		standby, _ := cmd.Flags().GetBool("standby")
 		out := cmd.OutOrStdout()
 
 		if once {
@@ -59,7 +62,11 @@ a second one exits rather than sweeping alongside the first.`,
 
 		// The poll is every 1s, so a repeated complaint would bury the change.
 		seen := map[string]bool{}
-		err := recycler.RunDaemon(ctx, interval, func(evicted []recycler.Eviction, pressures []recycler.Pressure, err error) {
+		run := recycler.RunDaemon
+		if standby {
+			run = recycler.RunDaemonStandby
+		}
+		err := run(ctx, interval, func(evicted []recycler.Eviction, pressures []recycler.Pressure, err error) {
 			reportEvictions(out, evicted, err)
 			reportPressureChanges(out, pressures, seen)
 		})
@@ -97,7 +104,7 @@ func reportSweep(out io.Writer, evicted []recycler.Eviction, pressures []recycle
 // reportPressureChanges names a filesystem the sweep could not bring back up to
 // its target, and names it again when it recovers. A daemon that stays silent
 // here is indistinguishable from a single keeping up, which is the state to
-// report loudest: everything filling the disk is live, and nothing recycled is
+// report loudest. Everything filling the disk is live, and nothing recycled is
 // left to give back.
 func reportPressureChanges(out io.Writer, pressures []recycler.Pressure, seen map[string]bool) {
 	now := set.New[string]()
@@ -149,9 +156,42 @@ returns rather than sweeping alongside the first.`,
 		}
 		if started {
 			fmt.Fprintln(cmd.OutOrStdout(), "started the disk-pressure daemon")
-		} else {
-			fmt.Fprintln(cmd.OutOrStdout(), "the disk-pressure daemon is already running")
+			return nil
 		}
+		if running, ok := recycler.RunningDaemon(); ok {
+			fmt.Fprintf(cmd.OutOrStdout(), "the disk-pressure daemon is already running: %s, which this build does not replace\n", running)
+			return nil
+		}
+		fmt.Fprintln(cmd.OutOrStdout(), "the disk-pressure daemon is already running")
+		return nil
+	},
+}
+
+var daemonInstallCmd = &cobra.Command{
+	Use:   "install",
+	Short: "Have the service manager start the daemon at login and restart it when it exits",
+	Long: `Register this executable's daemon with the platform's service manager.
+
+On macOS this writes a LaunchAgent and loads it. On Linux it writes a systemd
+user unit, enables it and starts it. On Windows it registers a scheduled task
+that runs at logon. Each one starts "recycler daemon --standby" and starts it
+again whenever it exits, so a crash or a reboot does not leave the disk
+unwatched.
+
+Running it again replaces what an earlier install wrote, which is how a moved
+executable is picked up. The XDG_CACHE_HOME and XDG_DATA_HOME this runs with are
+written into the service, so the daemon uses the same lock and recycle bin.`,
+	Args: cobra.NoArgs,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		exe, err := os.Executable()
+		if err != nil {
+			return err
+		}
+		path, err := recycler.InstallDaemon(exe)
+		if err != nil {
+			return err
+		}
+		fmt.Fprintf(cmd.OutOrStdout(), "installed the disk-pressure daemon: %s\n", path)
 		return nil
 	},
 }
@@ -173,8 +213,12 @@ func startDaemon(stderr io.Writer) {
 }
 
 func init() {
+	// The daemon is ordered against other daemons by the version printed here.
+	recycler.SetDaemonVersion(version)
 	daemonCmd.Flags().Duration("interval", recycler.DefaultPollInterval, "how often to read free space")
 	daemonCmd.Flags().Bool("once", false, "sweep once and exit")
+	daemonCmd.Flags().Bool("standby", false, "wait for a running daemon to stop instead of exiting")
 	daemonCmd.AddCommand(daemonUpCmd)
+	daemonCmd.AddCommand(daemonInstallCmd)
 	rootCmd.AddCommand(daemonCmd)
 }
