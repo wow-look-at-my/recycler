@@ -53,11 +53,9 @@ type Eviction struct {
 }
 
 // Pressure is a filesystem left under its target after a sweep did what it
-// could. Recycling defers a deletion, so the daemon gives back only what was
-// recycled: a filesystem filling with files nobody recycled leaves it running,
-// correct and powerless.
+// could.
 type Pressure struct {
-	Dir    string // the recycle bin directory whose filesystem this is
+	Dir    string
 	Avail  uint64 // available bytes after the sweep
 	Target uint64 // available bytes the daemon wanted
 	Total  uint64 // bytes on the filesystem this caller can reach
@@ -78,7 +76,7 @@ func (p Pressure) String() string {
 		p.Dir, p.Avail, p.Shortfall(), p.Target, p.Total)
 }
 
-// Sweep reclaims space on every filesystem holding a recycle bin, and reports
+// Sweep reclaims space on every filesystem holding a recycle bin. Sweep reports
 // every a single still under its target a single time it has given back all it can.
 func Sweep() ([]Eviction, []Pressure, error) {
 	b, err := trash.Backend()

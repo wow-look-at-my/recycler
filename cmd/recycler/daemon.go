@@ -97,7 +97,7 @@ func reportSweep(out io.Writer, evicted []recycler.Eviction, pressures []recycle
 // reportPressureChanges names a filesystem the sweep could not bring back up to
 // its target, and names it again when it recovers. A daemon that stays silent
 // here is indistinguishable from a single keeping up, which is the state to
-// report loudest: everything filling the disk is live, and nothing recycled is
+// report loudest. Everything filling the disk is live, and nothing recycled is
 // left to give back.
 func reportPressureChanges(out io.Writer, pressures []recycler.Pressure, seen map[string]bool) {
 	now := set.New[string]()

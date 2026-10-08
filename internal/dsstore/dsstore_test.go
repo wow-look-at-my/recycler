@@ -98,8 +98,7 @@ func TestRoundTripsEveryValueType(t *testing.T) {
 	require.NoError(t, err)
 	assert.ElementsMatch(t, records, parsed)
 
-	// Records come back in the order the Finder stores them: by name, case
-	// insensitively, then by structure id.
+	// Records come back in the order the Finder stores them: by name, case insensitively, then by structure id.
 	require.Len(t, parsed, len(records))
 	assert.Equal(t, Record{Name: ".", Code: "vSrn", Type: "long", Data: []byte{0, 0, 0, 1}}, parsed[0])
 	assert.Equal(t, "ptbL", parsed[len(parsed)-2].Code)
@@ -279,7 +278,7 @@ func TestValueLengths(t *testing.T) {
 }
 
 // treeStats reads the B-tree master block of a .DS_Store, so a test can tell
-// what shape of tree was actually written.
+// what shape of tree was written.
 func treeStats(t *testing.T, data []byte) (levels, records, nodes int) {
 	t.Helper()
 	book, err := dsSlice(data, binary.BigEndian.Uint32(data[8:12]), binary.BigEndian.Uint32(data[12:16]))
