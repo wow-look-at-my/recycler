@@ -14,38 +14,12 @@ import (
 )
 
 // recycle, list and restore are what the recycler package's own functions do, so a backend test.
-func recycle(paths ...string) error {
-	b, err := Backend()
-	if err != nil {
-		return err
-	}
-	_, err = b.Recycle(paths)
-	return err
-}
-
-// dispose recycles the paths and returns what the backend reported for each.
-func dispose(paths ...string) ([]bin.Disposal, error) {
-	b, err := Backend()
-	if err != nil {
-		return nil, err
-	}
-	return b.Recycle(paths)
-}
-
 func list() ([]bin.Item, error) {
 	b, err := Backend()
 	if err != nil {
 		return nil, err
 	}
 	return b.List()
-}
-
-func restore(id string) (string, error) {
-	b, err := Backend()
-	if err != nil {
-		return "", err
-	}
-	return b.Restore(id, "")
 }
 
 // isolateTrash points the recycle bin at a temporary directory so tests never touch.
@@ -72,9 +46,3 @@ func writeFile(t *testing.T, path, content string) string {
 	return path
 }
 
-func mustList(t *testing.T) []bin.Item {
-	t.Helper()
-	items, err := list()
-	require.NoError(t, err)
-	return items
-}
