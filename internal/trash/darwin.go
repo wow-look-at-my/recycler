@@ -34,6 +34,9 @@ import (
 type macTrash struct {
 	home string // ~/.Trash
 	uid  int
+
+	// mounts replaces the kernel's mount table when set.
+	mounts func() []string
 }
 
 func Backend() (bin.Backend, error) {
@@ -216,22 +219,20 @@ func (t *macTrash) Dirs() []string { return t.trashDirs() }
 // trashDirs returns every trash directory belonging to this user.
 func (t *macTrash) trashDirs() []string {
 	dirs := []string{t.home}
-	seen := map[string]bool{t.home: true}
-	volumes, err := filepath.Glob("/Volumes/*")
-	if err != nil {
-		return dirs
-	}
-	for _, volume := range volumes {
-		candidate := filepath.Join(volume, ".Trashes", strconv.Itoa(t.uid))
-		if seen[candidate] {
-			continue
-		}
-		if fi, err := os.Stat(candidate); err == nil && fi.IsDir() {
-			seen[candidate] = true
-			dirs = append(dirs, candidate)
+	for _, dir := range volumeTrashes(t.mountPoints(), t.uid) {
+		if dir != t.home {
+			dirs = append(dirs, dir)
 		}
 	}
 	return dirs
+}
+
+// mountPoints lists the mount points to look for a volume trash under.
+func (t *macTrash) mountPoints() []string {
+	if t.mounts != nil {
+		return t.mounts()
+	}
+	return mountPoints()
 }
 
 // volumeRoot returns the mount point a trash directory's put back locations sit under.
