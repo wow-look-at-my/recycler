@@ -49,7 +49,7 @@ func tryPidLock(path string) (unlock func(), ok bool, err error) {
 }
 
 // holderAlive reports whether the process named in path still answers. An
-// unreadable or unparseable file reads as a live holder: refusing to start
+// unreadable or unparseable file reads as a live holder. Refusing to start
 // costs a poll, and a surplus daemon costs sweeps racing over the same items.
 func holderAlive(path string) bool {
 	raw, err := os.ReadFile(path)

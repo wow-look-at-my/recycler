@@ -1,12 +1,7 @@
 package dsstore
 
-<<<<<<< HEAD
 // Writing .DS_Store files, WHOLE and never in place: that is what lets the
 // buddy allocator skip freeing. Depth: docs/ds-store-format.md
-=======
-// Writing .DS_Store files: packing records into B-tree nodes, and the buddy
-// allocator that decides where those nodes land in the file.
->>>>>>> origin/master
 
 import (
 	"encoding/binary"

@@ -150,8 +150,7 @@ func sweepItems(b bin.Backend, items []bin.Item, dirs []string,
 	return evicted, pressures, nil
 }
 
-// filesystemGroup is the items sharing a bin directory, plus the probe path. An
-// empty bin still gets a group: its filesystem is watched either way.
+// filesystemGroup is the items sharing a bin directory, plus the probe path.
 type filesystemGroup struct {
 	dir   string
 	probe string
@@ -185,9 +184,8 @@ func groupByFilesystem(items []bin.Item, dirs []string) []filesystemGroup {
 	return groups
 }
 
-// probePath answers the nearest existing ancestor of dir, which is what statfs
-// can read. An unused bin has no directory yet, and refusing to measure its
-// filesystem leaves the daemon blind until something is recycled.
+// probePath answers the nearest existing ancestor of dir, which is what
+// statfs can read.
 func probePath(dir string) string {
 	for {
 		if _, err := os.Stat(dir); err == nil {

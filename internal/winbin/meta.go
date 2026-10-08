@@ -1,13 +1,7 @@
 package winbin
 
-<<<<<<< HEAD
 // Codec for the "$I" metadata Windows writes beside every recycled file.
-// Layout and versions: CLAUDE.md, under Platform notes. No build constraint, so
-// this stays testable anywhere.
-=======
-// Codec for the "$I" metadata files Windows writes next to every recycled
-// file in <drive>:\$Recycle.Bin\<user SID>\.
->>>>>>> origin/master
+// Layout and versions: AGENTS.md, under Platform notes.
 
 import (
 	"encoding/binary"

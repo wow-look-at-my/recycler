@@ -158,11 +158,7 @@ func TestReadsPutBacksFromAForeignStore(t *testing.T) {
 }
 
 func TestReadsPutBacksAnotherImplementationWrote(t *testing.T) {
-<<<<<<< HEAD
 	// The Finder rewrites that .DS_Store whenever it wants, so this reads back.
-=======
-	// Finder rewrites the trash's .DS_Store whenever it feels like it, so a file this package wrote comes back.
->>>>>>> origin/master
 	dir := t.TempDir()
 	data, err := os.ReadFile(editedElsewhereStore)
 	require.NoError(t, err)

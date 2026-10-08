@@ -31,9 +31,8 @@ const (
 	freeTargetCeiling  = 1 << 30
 )
 
-// Floor is the available bytes under which recycling stops deferring, and where
-// the daemon sweeps. A fraction of the filesystem, capped: small media keep the
-// fraction, because a flat cap there makes every deletion permanent.
+// Floor is the available bytes under which recycling stops deferring, and
+// where the daemon sweeps.
 func Floor(total uint64) uint64 {
 	if target := total / freeTargetFraction; target < freeTargetCeiling {
 		return target
@@ -41,9 +40,7 @@ func Floor(total uint64) uint64 {
 	return freeTargetCeiling
 }
 
-// Check decides what to do with path, whose measured size is size. An unreadable
-// filesystem reads as ordinary recycling: guessing "permanent" off a failed
-// probe destroys a file over a missing answer.
+// Check decides what to do with path, whose measured size is size.
 func Check(path string, size int64) Decision {
 	avail, total, err := diskfree.Free(filepath.Dir(path))
 	if err != nil {

@@ -65,12 +65,8 @@ func Sort(items []Item) {
 type Disposal struct {
 	Path string
 
-<<<<<<< HEAD
 	// Permanent marks a path removed outright, with Reason saying why.
 	Permanent bool
-=======
-	Permanent bool // removed outright: no room left to defer.
->>>>>>> origin/master
 	Reason    string
 }
 
@@ -82,7 +78,6 @@ type Backend interface {
 	Restore(id, dest string) (string, error)
 	Evict(id string) error
 
-	// Dirs answers this user's bin directories, empty ones included. Deriving
-	// them from a listing leaves the daemon blind to a disk nobody recycled to.
+	// Dirs answers this user's bin directories, empty ones included.
 	Dirs() []string
 }
