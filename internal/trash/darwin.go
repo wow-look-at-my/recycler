@@ -21,7 +21,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/wow-look-at-my/go-containers/set"
 	"github.com/wow-look-at-my/recycler/internal/bin"
 	"github.com/wow-look-at-my/recycler/internal/dsstore"
 	"github.com/wow-look-at-my/recycler/internal/fsutil"

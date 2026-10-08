@@ -297,6 +297,16 @@ func TestUnescapeMountPoint(t *testing.T) {
 	}
 }
 
+func TestParseMountOutputReadsMacMountLines(t *testing.T) {
+	out := "/dev/disk3s1s1 on / (apfs, sealed, local, read-only, journaled)\n" +
+		"devfs on /dev (devfs, local, nobrowse)\n" +
+		"map auto_home on /System/Volumes/Data/home (autofs, automounted, nobrowse)\n" +
+		"/dev/disk5s1 on /Users/me/repos (apfs, local, journaled)\n" +
+		"/dev/disk6s1 on /Volumes/My Disk (msdos, local, nodev)\n" +
+		"not a mount line\n"
+	assert.Equal(t, []string{"/", "/dev", "/Users/me/repos", "/Volumes/My Disk"}, parseMountOutput(out))
+}
+
 func TestTopDirOfTrash(t *testing.T) {
 	cases := map[string]string{
 		"/media/usb/.Trash-1000":  "/media/usb",
