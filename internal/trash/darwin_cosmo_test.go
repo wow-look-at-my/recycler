@@ -77,7 +77,7 @@ func TestTheMacBinRejectsAnIDOutsideIt(t *testing.T) {
 }
 
 // The daemon watches the filesystems behind these, so the home bin is named
-// whether or not anything has been recycled into it yet.
+// whether anything has been recycled into it yet.
 func TestTheMacBinNamesItsDirectories(t *testing.T) {
 	b, _ := isolateMac(t)
 	dirs := b.Dirs()

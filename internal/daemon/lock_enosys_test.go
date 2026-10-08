@@ -12,8 +12,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// withoutFlock makes every lock attempt report that this system has no flock,
-// which is what a macOS user reported and what no host running these tests
+// withoutFlock makes every lock attempt report that this system has no flock.
+// Which is what a macOS user reported and what no host running these tests
 // does.
 func withoutFlock(t *testing.T, errno syscall.Errno) {
 	t.Helper()
@@ -23,7 +23,7 @@ func withoutFlock(t *testing.T, errno syscall.Errno) {
 }
 
 // The reported failure, end to end: a recycle asks for the lock, flock says it
-// is not implemented, and the caller gets a lock anyway rather than the error.
+// is not implemented. And the caller gets a lock anyway rather than the error.
 func TestALockIsStillTakenWhereFlockIsNotImplemented(t *testing.T) {
 	withoutFlock(t, syscall.ENOSYS)
 	path := filepath.Join(t.TempDir(), "daemon.lock")

@@ -8,8 +8,7 @@ import (
 	"github.com/wow-look-at-my/recycler/internal/bin"
 )
 
-// macOSHost names a directory every Mac has and no other host does. GOOS reads
-// "cosmo" on every host, so this is what picks the bin.
+// macOSHost names a directory every Mac has and no other host does.
 const macOSHost = "/System/Library/CoreServices"
 
 // Backend picks the bin for the host this binary is running on.

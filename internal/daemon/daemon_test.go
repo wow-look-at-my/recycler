@@ -49,8 +49,7 @@ func freeSpace(avail, total uint64) func(string) (uint64, uint64, error) {
 	return func(string) (uint64, uint64, error) { return avail, total, nil }
 }
 
-// dirs is the bin the tests' items sit in. A sweep takes the directories as
-// well as the listing, so an empty bin's filesystem is still read.
+// dirs is the bin the tests' items sit in.
 var dirs = []string{"/trash"}
 
 func TestFreeTargetIsATenthCappedAtAGigabyte(t *testing.T) {
@@ -70,8 +69,7 @@ func TestRecoverTargetFreesPastTheTrigger(t *testing.T) {
 	assert.Greater(t, RecoverTarget(big), FreeTarget(big))
 	assert.Equal(t, uint64(freeTargetCeiling)*recoverMultiple, RecoverTarget(big))
 
-	// Small media still get runway. Bounding recovery by the trigger's own
-	// fraction makes both equal, and the next write fires the sweep again.
+	// Small media still get runway.
 	assert.Equal(t, uint64(100), FreeTarget(1000))
 	assert.Equal(t, uint64(200), RecoverTarget(1000))
 	assert.Greater(t, RecoverTarget(1000), FreeTarget(1000))

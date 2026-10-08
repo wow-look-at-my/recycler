@@ -27,8 +27,7 @@ func statePath(name string) (string, error) {
 	return filepath.Join(dir, name), nil
 }
 
-// maxLogBytes keeps the log from being what fills the disk. Truncated, never
-// rotated: a rotation keeps another copy of what nobody read.
+// maxLogBytes keeps the log from being what fills the disk.
 const maxLogBytes = 1 << 20
 
 // openLog returns the detached daemon's log, truncated if it has grown past its

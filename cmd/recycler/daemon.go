@@ -60,8 +60,7 @@ first, or with --standby waits for the first to stop and then takes over.`,
 		ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
 		defer stop()
 
-		// Repeating an unchanged complaint on every tick buries the change
-		// that matters, in a log nobody can then read.
+		// Repeating an unchanged complaint on every tick buries the change that matters, in a log nobody can then read.
 		seen := map[string]bool{}
 		run := recycler.RunDaemon
 		if standby {

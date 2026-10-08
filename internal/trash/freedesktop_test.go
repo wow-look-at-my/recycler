@@ -117,8 +117,8 @@ func TestSizeIsRecordedWhenRecycled(t *testing.T) {
 
 // A recycle reports what it did with each path. With room to defer into, the
 // report says deferred: the entry is in the bin and nothing was destroyed.
-// Only pressure sets Permanent, and no test can fill a real filesystem to ask
-// for it, so the arm covered here is the thing a caller meets.
+// Only pressure sets Permanent. No test can fill a real filesystem to ask for
+// it, so the arm covered here is the thing a caller meets.
 func TestARecycleWithRoomReportsADeferral(t *testing.T) {
 	work := isolateTrash(t)
 	path := writeFile(t, filepath.Join(work, "kept.txt"), "kept")

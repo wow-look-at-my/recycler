@@ -78,7 +78,6 @@ type Backend interface {
 	Restore(id, dest string) (string, error)
 	Evict(id string) error
 
-	// Dirs answers this user's bin directories, empty ones included. Deriving
-	// them from a listing leaves the daemon blind to a disk nobody recycled to.
+	// Dirs answers this user's bin directories, empty ones included.
 	Dirs() []string
 }

@@ -1,8 +1,7 @@
 package winbin
 
 // Codec for the "$I" metadata Windows writes beside every recycled file.
-// Layout and versions: CLAUDE.md, under Platform notes. No build constraint, so
-// this stays testable anywhere.
+// Layout and versions: AGENTS.md, under Platform notes.
 
 import (
 	"encoding/binary"
