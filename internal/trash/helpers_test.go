@@ -23,12 +23,7 @@ func recycle(paths ...string) error {
 	return err
 }
 
-<<<<<<< HEAD
 // dispose recycles the paths and returns what the backend reported for each.
-=======
-// dispose is recycle for a test that has to see whether a path was deferred or
-// deleted outright.
->>>>>>> 51b720875711b411b12536aa6dbde1510dc2dbf4
 func dispose(paths ...string) ([]bin.Disposal, error) {
 	b, err := Backend()
 	if err != nil {
