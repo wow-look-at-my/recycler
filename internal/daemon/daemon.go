@@ -54,9 +54,7 @@ type Eviction struct {
 }
 
 // Pressure is a filesystem left under its target after a sweep did what it
-// could. Recycling defers a deletion, so the daemon gives back only what was
-// recycled: a filesystem filling with files nobody recycled leaves it running,
-// correct and powerless.
+// could.
 type Pressure struct {
 	Dir    string
 	Avail  uint64 // available bytes after the sweep
@@ -79,7 +77,7 @@ func (p Pressure) String() string {
 		p.Dir, p.Avail, p.Shortfall(), p.Target, p.Total)
 }
 
-// Sweep reclaims space on every filesystem holding a recycle bin, and reports
+// Sweep reclaims space on every filesystem holding a recycle bin. Sweep reports
 // every a single still under its target a single time it has given back all it can.
 func Sweep() ([]Eviction, []Pressure, error) {
 	b, err := trash.Backend()
@@ -200,12 +198,6 @@ func probePath(dir string) string {
 }
 
 // Run sweeps every interval until ctx is done.
-//
-// Exactly one daemon sweeps, and it is the newest build that has asked to. A
-// daemon that finds an older one holding the lock asks it to stand down and
-// takes over. One that finds a build no older than itself returns
-// [bin.ErrDaemonRunning] naming the build that kept the lock. In standby, it
-// waits for that daemon to stop and then takes over.
 func Run(ctx context.Context, interval time.Duration, standby bool, report func([]Eviction, []Pressure, error)) error {
 	exe, err := os.Executable()
 	if err != nil {

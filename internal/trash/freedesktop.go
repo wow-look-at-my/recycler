@@ -85,9 +85,7 @@ func (t *fdoTrash) recycleOne(path string) (bin.Disposal, error) {
 		return bin.Disposal{}, errors.New("refusing to recycle the filesystem root")
 	}
 
-	// The size is measured here, while the item is still at its original
-	// location. It decides whether the item fits in what is left as well as
-	// what gets recorded, so it is read before anything is written.
+	// The size is measured here, while the item is still at its original location.
 	size := fsutil.TreeSize(abs)
 
 	// A bin is on the filesystem it takes from, so recycling frees nothing here.

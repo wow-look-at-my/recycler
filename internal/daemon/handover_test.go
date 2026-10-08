@@ -15,7 +15,7 @@ import (
 )
 
 // isolateDaemonState puts the lock, the identity record and the recycle bin
-// itself under a temporary home, so a test never reaches the daemon or the bin
+// itself under a temporary home. A test never reaches the daemon or the bin
 // the person running it has.
 func isolateDaemonState(t *testing.T) {
 	t.Helper()
@@ -162,7 +162,7 @@ func TestAnEqualBuildStandsDown(t *testing.T) {
 }
 
 // Without a version on both sides there is nothing to order but the
-// executables, so the one written last is the newer build.
+// executables, so the written last is the newer build.
 func TestUnversionedDaemonsAreOrderedByTheirExecutables(t *testing.T) {
 	isolateDaemonState(t)
 	oldCtx, cancelOld := context.WithCancel(t.Context())
@@ -186,7 +186,7 @@ func TestUnversionedDaemonsAreOrderedByTheirExecutables(t *testing.T) {
 	requireRunning(t, newer)
 	requireSweeping(t, newSweeps)
 
-	// And the one written first cannot take it back.
+	// And the written first cannot take it back.
 	err := run(t.Context(), time.Millisecond, older, false, nil)
 	require.ErrorIs(t, err, bin.ErrDaemonRunning)
 	requireRunning(t, newer)
@@ -210,8 +210,7 @@ func TestADaemonResumesWhenTheSuccessorNeverArrives(t *testing.T) {
 
 	require.NoError(t, requestHandover(buildID("5.0.0", 0)))
 
-	// The request going away is the daemon having offered the lock, waited out
-	// the successor that never came, and taken it back.
+	// The request going away is the daemon having offered the lock, waited out the successor that never came.
 	path, err := handoverPath()
 	require.NoError(t, err)
 	require.Eventually(t, func() bool {
@@ -266,7 +265,7 @@ func TestEnsureLeavesANewerDaemonAlone(t *testing.T) {
 }
 
 // The record outlives nothing: it is written when the lock is taken and gone
-// when it is released, so a reader never takes it for a daemon that is not
+// when it is released. A reader never takes it for a daemon that is not
 // there.
 func TestTheIdentityRecordIsWithdrawnWhenTheDaemonStops(t *testing.T) {
 	isolateDaemonState(t)

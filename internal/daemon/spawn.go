@@ -79,8 +79,7 @@ func Ensure(exe string) (bool, error) {
 	if free {
 		unlock()
 	} else {
-		// Somebody is sweeping. Only a newer build displaces it, and a daemon
-		// that recorded no build is left alone rather than guessed about.
+		// Somebody is sweeping.
 		replacing, known = Running()
 		if !known || !Newer(me, replacing) {
 			return false, nil
@@ -102,7 +101,8 @@ func Ensure(exe string) (bool, error) {
 
 	if known {
 		// The child has to get the lock out of the running daemon before it can
-		// sweep, and that daemon only lets go on its own next tick.
+		// sweep. The child has to also get that daemon only lets go on its own
+		// next tick.
 		if !waitForSuccessor(me, handoverTimeout) {
 			return false, fmt.Errorf("recycler: started %s to replace %s, which did not hand over within %s",
 				me, replacing, handoverTimeout)
@@ -115,6 +115,5 @@ func Ensure(exe string) (bool, error) {
 	return true, nil
 }
 
-// spawnHandoffTimeout bounds the wait for the child to take the lock. A child that died leaves it
-// free, and the next caller then starts a daemon rather than standing down forever.
+// spawnHandoffTimeout bounds the wait for the child to take the lock.
 const spawnHandoffTimeout = 5 * time.Second

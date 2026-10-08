@@ -27,15 +27,13 @@ const SizeUnknown = bin.SizeUnknown
 
 type Item = bin.Item
 
-// A Disposal records what a single path handed to [Recycle] actually got.
+// A Disposal records what a single path handed to [Recycle] got.
 type Disposal = bin.Disposal
 
 // An Eviction records an item.
 type Eviction = daemon.Eviction
 
-// Pressure is a filesystem the daemon left under its target because everything
-// filling it is live. Recycling defers a deletion; it cannot give back what was
-// never recycled.
+// Pressure is a filesystem the daemon left under its target because everything filling it is live.
 type Pressure = daemon.Pressure
 
 // DefaultPollInterval is how often the daemon reads.
@@ -48,12 +46,6 @@ func Available() bool {
 }
 
 // Recycle moves each path to the recycle bin and reports what each a single got.
-//
-// A bin shares the filesystem it takes from, so recycling moves bytes sideways
-// rather than freeing any. Below the daemon's target, or for an item larger than
-// the space left, that cannot help and the path is removed outright instead. The
-// [Disposal] for such a path is marked Permanent, with the measurement that
-// decided it. A caller that reports a recycle has to report these too.
 func Recycle(paths ...string) ([]Disposal, error) {
 	if len(paths) == 0 {
 		return nil, nil
@@ -65,7 +57,7 @@ func Recycle(paths ...string) ([]Disposal, error) {
 	return b.Recycle(paths)
 }
 
-// List returns everything currently in the recycle bin, newest at the front.
+// List returns everything in the recycle bin, newest at the front.
 func List() ([]Item, error) {
 	b, err := trash.Backend()
 	if err != nil {
@@ -105,8 +97,7 @@ func RestoreTo(id, dest string) (string, error) {
 // FreeTarget returns the number of available bytes the daemon keeps.
 func FreeTarget(total uint64) uint64 { return daemon.FreeTarget(total) }
 
-// Sweep reclaims space on every filesystem holding a bin, and reports every a
-// single still under its target afterwards.
+// Sweep reclaims space on every filesystem holding a bin, and reports every a single still under its target afterwards.
 func Sweep() ([]Eviction, []Pressure, error) { return daemon.Sweep() }
 
 // RunDaemon sweeps every interval until ctx is done.
@@ -127,20 +118,13 @@ func InstallDaemon(exe string) (string, error) { return daemon.Install(exe) }
 func DaemonLockPath() (string, error) { return daemon.LockPath() }
 
 // EnsureDaemon starts the disk-pressure daemon if none is already.
-//
-// A daemon running an older build than exe is asked to stand down, and exe
-// takes over its lock. One running the same build or a newer one keeps it, and
-// nothing is started.
 func EnsureDaemon(exe string) (bool, error) { return daemon.Ensure(exe) }
 
 // A DaemonIdentity names the build behind a daemon.
 type DaemonIdentity = daemon.Identity
 
-// SetDaemonVersion names the build this program's daemon reports when it takes
-// the lock. Daemons that both name a version are ordered by it; when either
-// does not, their executables' modification times decide which is newer.
+// SetDaemonVersion names the build this program's daemon reports when it takes the lock.
 func SetDaemonVersion(v string) { daemon.Version = v }
 
-// RunningDaemon returns the build of the daemon holding the lock, and whether
-// one recorded a build at all.
+// RunningDaemon returns the build of the daemon holding the lock, and whether one recorded a build at all.
 func RunningDaemon() (DaemonIdentity, bool) { return daemon.Running() }

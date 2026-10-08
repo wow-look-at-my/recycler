@@ -105,6 +105,22 @@ func TestAStandbyDaemonTakesOverWhenTheRunningOneStops(t *testing.T) {
 	assert.ErrorIs(t, <-secondDone, context.Canceled)
 }
 
+// A completed handover is the recorded build being no older than the one that
+// asked for it.
+func TestWaitForSuccessorWatchesTheRecordedBuild(t *testing.T) {
+	isolateDaemonState(t)
+	me := buildID("2.0.0", time.Hour)
+	assert.False(t, waitForSuccessor(me, 20*time.Millisecond), "nothing is recorded, so nothing took over")
+
+	withdraw := announce(buildID("1.0.0", 0))
+	assert.False(t, waitForSuccessor(me, 20*time.Millisecond), "an older build is not a successor")
+	withdraw()
+
+	withdraw = announce(buildID("2.0.0", 0))
+	defer withdraw()
+	assert.True(t, waitForSuccessor(me, time.Second))
+}
+
 // A standby daemon still waiting for the lock stops when its context does.
 func TestAStandbyDaemonStopsWhileWaiting(t *testing.T) {
 	isolateDaemonState(t)

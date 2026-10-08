@@ -49,8 +49,7 @@ func freeSpace(avail, total uint64) func(string) (uint64, uint64, error) {
 	return func(string) (uint64, uint64, error) { return avail, total, nil }
 }
 
-// dirs is the bin the tests' items sit in. A sweep is handed the bin directories
-// as well as the listing, so it reads a filesystem whose bin turned out empty.
+// dirs is the bin the tests' items sit in.
 var dirs = []string{"/trash"}
 
 func TestFreeTargetIsATenthCappedAtAGigabyte(t *testing.T) {
@@ -70,10 +69,7 @@ func TestRecoverTargetFreesPastTheTrigger(t *testing.T) {
 	assert.Greater(t, RecoverTarget(big), FreeTarget(big))
 	assert.Equal(t, uint64(freeTargetCeiling)*recoverMultiple, RecoverTarget(big))
 
-	// A filesystem small enough to keep the fraction still gets runway. Bounding
-	// recovery by the fraction the trigger uses would make both equal here, so a
-	// sweep would free exactly back to the trigger and fire again on the next
-	// write.
+	// A filesystem small enough to keep the fraction still gets runway.
 	assert.Equal(t, uint64(100), FreeTarget(1000))
 	assert.Equal(t, uint64(200), RecoverTarget(1000))
 	assert.Greater(t, RecoverTarget(1000), FreeTarget(1000))
@@ -93,7 +89,7 @@ func TestASweepKeepsEvictingPastTheTrigger(t *testing.T) {
 		item("newest.bin", int64(gib), 1),
 	}
 
-	// Just under the trigger, where recovering has to evict further than it.
+	// Under the trigger, where recovering has to evict further than it.
 	_, _, err := sweepItems(b, items, dirs, freeSpace(gib-1, total))
 	require.NoError(t, err)
 	assert.Greater(t, len(b.evicted), 1, "stopping at the trigger leaves no runway")
@@ -206,7 +202,7 @@ func TestAnUnreadableFilesystemIsSkipped(t *testing.T) {
 	assert.Empty(t, b.evicted)
 }
 
-// The lock is what makes it a daemon per user.
+// The lock is what makes it a daemon.
 func TestASecondDaemonStandsDown(t *testing.T) {
 	isolateDaemonState(t)
 	lock, err := LockPath()

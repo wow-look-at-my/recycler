@@ -86,7 +86,7 @@ func TestPutBackReplacesAStaleRecord(t *testing.T) {
 
 func TestNothingRecycledTakesTheDSStoreName(t *testing.T) {
 	dir := t.TempDir()
-	// A file really can be called .DS_Store, and recycling it must not put.
+	// A file can be called .DS_Store, and recycling it must not put.
 	name := TrashName(dsstore.FileName, dir)
 	assert.NotEqual(t, dsstore.FileName, name)
 
@@ -158,8 +158,7 @@ func TestReadsPutBacksFromAForeignStore(t *testing.T) {
 }
 
 func TestReadsPutBacksAnotherImplementationWrote(t *testing.T) {
-	// Finder rewrites the trash's .DS_Store whenever it feels like it, so a file this package wrote comes
-	// back.
+	// Finder rewrites the trash's .DS_Store whenever it feels like it, so a file this package wrote comes back.
 	dir := t.TempDir()
 	data, err := os.ReadFile(editedElsewhereStore)
 	require.NoError(t, err)

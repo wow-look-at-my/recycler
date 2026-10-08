@@ -12,7 +12,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// Ensure has to actually start something, so this hands it a program that exits together.
+// Ensure has to start something, so this hands it a program that exits
+// together.
 func TestEnsureStartsADaemon(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("the stand-in daemon is a shell script")
@@ -27,8 +28,8 @@ func TestEnsureStartsADaemon(t *testing.T) {
 	assert.True(t, started, "no daemon was started")
 }
 
-// A daemon per user is the whole point of the lock: a recycle every few seconds must not start a
-// daemon every.
+// A daemon is the whole point of the lock: a recycle every few seconds must
+// not start a daemon every.
 func TestEnsureStandsDownWhileADaemonHoldsTheLock(t *testing.T) {
 	isolateDaemonState(t)
 	lock, err := LockPath()

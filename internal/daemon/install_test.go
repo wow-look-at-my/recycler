@@ -237,6 +237,14 @@ func TestAFailedCommandCarriesItsOutput(t *testing.T) {
 	assert.ErrorContains(t, err, "launchd says no")
 }
 
+// Install asks the kernel which service manager to use, and refuses an
+// executable that is not there before asking that manager anything.
+func TestInstallRefusesAMissingExecutable(t *testing.T) {
+	isolateDaemonState(t)
+	_, err := Install(filepath.Join(t.TempDir(), "gone"))
+	assert.ErrorIs(t, err, os.ErrNotExist)
+}
+
 // newService fills in the user running this.
 func TestNewServiceDescribesTheCurrentUser(t *testing.T) {
 	isolateDaemonState(t)

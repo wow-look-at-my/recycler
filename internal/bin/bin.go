@@ -61,12 +61,12 @@ func Sort(items []Item) {
 	})
 }
 
-// A Disposal records what a single path handed to Recycle actually got.
+// A Disposal records what a single path handed to Recycle got.
 type Disposal struct {
 	Path string
 
-	Permanent bool   // removed outright: no room left to defer into
-	Reason    string // which measurement decided that
+	Permanent bool // removed outright: no room left to defer.
+	Reason    string
 }
 
 // A Backend is the per-platform implementation of the package API.

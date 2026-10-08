@@ -8,14 +8,11 @@ import (
 	"time"
 )
 
-// Version is the build this daemon calls itself. The CLI sets it to the same
-// string it prints for --version. A build that leaves it unset is ordered by its
-// executable's modification time instead.
+// Version is the build this daemon calls itself. The CLI sets it to the same string it prints for --version.
 var Version string
 
 // An Identity names the build behind a daemon: what it calls itself, the
-// executable it runs from, and when that executable was written. It is what one
-// daemon reads to decide whether another is newer than it.
+// executable it runs from, and when that executable was written.
 type Identity struct {
 	Version string    `json:"version"`
 	Exe     string    `json:"exe"`
@@ -31,9 +28,7 @@ func (id Identity) String() string {
 	return fmt.Sprintf("%s at %s, written %s", name, id.Exe, id.ModTime.Format(time.RFC3339))
 }
 
-// selfIdentity describes the build in exe. The version is this program's,
-// because exe is the program asking: the daemon passes its own executable and
-// Ensure passes the one it is about to start.
+// selfIdentity describes the build in exe.
 func selfIdentity(exe string) Identity {
 	id := Identity{Version: Version, Exe: exe}
 	if st, err := os.Stat(exe); err == nil {
@@ -48,10 +43,6 @@ func sameBuild(a, b Identity) bool {
 }
 
 // Newer reports whether a is a newer build than b.
-//
-// Builds that both name a version are ordered by that version. When either one
-// does not, the version says nothing about which came first. The executable's
-// executable's modification time is the only fact both of them carry.
 func Newer(a, b Identity) bool {
 	if versioned(a.Version) && versioned(b.Version) {
 		return compareVersions(a.Version, b.Version) > 0
