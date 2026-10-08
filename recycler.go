@@ -111,8 +111,17 @@ func Sweep() ([]Eviction, []Pressure, error) { return daemon.Sweep() }
 
 // RunDaemon sweeps every interval until ctx is done.
 func RunDaemon(ctx context.Context, interval time.Duration, report func([]Eviction, []Pressure, error)) error {
-	return daemon.Run(ctx, interval, report)
+	return daemon.Run(ctx, interval, false, report)
 }
+
+// RunDaemonStandby is [RunDaemon] for a daemon a service manager keeps alive:
+// where another daemon of the same build or a newer one is sweeping.
+func RunDaemonStandby(ctx context.Context, interval time.Duration, report func([]Eviction, []Pressure, error)) error {
+	return daemon.Run(ctx, interval, true, report)
+}
+
+// InstallDaemon registers exe's daemon with the platform's service manager.
+func InstallDaemon(exe string) (string, error) { return daemon.Install(exe) }
 
 // DaemonLockPath returns the file whose lock names the running.
 func DaemonLockPath() (string, error) { return daemon.LockPath() }

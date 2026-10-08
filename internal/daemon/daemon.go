@@ -2,6 +2,7 @@ package daemon
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -202,24 +203,28 @@ func probePath(dir string) string {
 //
 // Exactly one daemon sweeps, and it is the newest build that has asked to. A
 // daemon that finds an older one holding the lock asks it to stand down and
-// takes over; one that finds a build no older than itself returns
-// [bin.ErrDaemonRunning] naming the build that kept the lock.
-func Run(ctx context.Context, interval time.Duration, report func([]Eviction, []Pressure, error)) error {
+// takes over. One that finds a build no older than itself returns
+// [bin.ErrDaemonRunning] naming the build that kept the lock. In standby, it
+// waits for that daemon to stop and then takes over.
+func Run(ctx context.Context, interval time.Duration, standby bool, report func([]Eviction, []Pressure, error)) error {
 	exe, err := os.Executable()
 	if err != nil {
 		return err
 	}
-	return run(ctx, interval, selfIdentity(exe), report)
+	return run(ctx, interval, selfIdentity(exe), standby, report)
 }
 
 // run is Run's body for a stated build, which is what lets a test drive both
 // sides of a handover in one process.
-func run(ctx context.Context, interval time.Duration, me Identity, report func([]Eviction, []Pressure, error)) error {
+func run(ctx context.Context, interval time.Duration, me Identity, standby bool, report func([]Eviction, []Pressure, error)) error {
+	if interval <= 0 {
+		interval = DefaultPollInterval
+	}
 	lock, err := LockPath()
 	if err != nil {
 		return err
 	}
-	unlock, err := takeLock(lock, me)
+	unlock, held, err := acquire(ctx, lock, me, standby, interval)
 	if err != nil {
 		return err
 	}
@@ -234,9 +239,6 @@ func run(ctx context.Context, interval time.Duration, me Identity, report func([
 
 	raisePriority()
 
-	if interval <= 0 {
-		interval = DefaultPollInterval
-	}
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 	for {
@@ -250,10 +252,53 @@ func run(ctx context.Context, interval time.Duration, me Identity, report func([
 				return nil
 			}
 		}
+		if lockMoved(lock, held) {
+			// The lock this daemon holds no longer keeps a second one out.
+			withdraw()
+			withdraw = func() {}
+			unlock()
+			if unlock, held, err = acquire(ctx, lock, me, standby, interval); err != nil {
+				return err
+			}
+			clearHandover()
+			withdraw = announce(me)
+		}
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
 		case <-ticker.C:
 		}
 	}
+}
+
+// acquire takes the daemon lock and returns it with the file it locked. In
+// standby, a daemon no newer than the one holding the lock polls until it can
+// take it, where it would otherwise return [bin.ErrDaemonRunning].
+func acquire(ctx context.Context, lock string, me Identity, standby bool, poll time.Duration) (func(), os.FileInfo, error) {
+	for {
+		unlock, err := takeLock(lock, me)
+		if err == nil {
+			held, err := os.Stat(lock)
+			if err != nil {
+				unlock()
+				return nil, nil, err
+			}
+			return unlock, held, nil
+		}
+		if !standby || !errors.Is(err, bin.ErrDaemonRunning) {
+			return nil, nil, err
+		}
+		select {
+		case <-ctx.Done():
+			return nil, nil, ctx.Err()
+		case <-time.After(poll):
+		}
+	}
+}
+
+// lockMoved reports whether the lock path names a different file from held,
+// or none.
+func lockMoved(lock string, held os.FileInfo) bool {
+	now, err := os.Stat(lock)
+	return err != nil || !os.SameFile(now, held)
 }

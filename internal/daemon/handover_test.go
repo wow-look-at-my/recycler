@@ -37,10 +37,15 @@ func buildID(version string, age time.Duration) Identity {
 
 // startDaemon runs one build and reports how many times it has swept.
 func startDaemon(ctx context.Context, id Identity) (*atomic.Int64, <-chan error) {
+	return startDaemonIn(ctx, id, false)
+}
+
+// startDaemonIn is startDaemon with the choice of standby.
+func startDaemonIn(ctx context.Context, id Identity, standby bool) (*atomic.Int64, <-chan error) {
 	var sweeps atomic.Int64
 	done := make(chan error, 1)
 	go func() {
-		done <- run(ctx, time.Millisecond, id, func([]Eviction, []Pressure, error) {
+		done <- run(ctx, time.Millisecond, id, standby, func([]Eviction, []Pressure, error) {
 			sweeps.Add(1)
 		})
 	}()
@@ -89,7 +94,7 @@ func TestAnOlderDaemonWillNotDisplaceANewerOne(t *testing.T) {
 	sweeps, done := startDaemon(ctx, newer)
 	requireRunning(t, newer)
 
-	err := run(t.Context(), time.Millisecond, older, nil)
+	err := run(t.Context(), time.Millisecond, older, false, nil)
 	require.ErrorIs(t, err, bin.ErrDaemonRunning)
 	assert.Contains(t, err.Error(), "is not newer")
 
@@ -145,7 +150,7 @@ func TestAnEqualBuildStandsDown(t *testing.T) {
 	requireRunning(t, running)
 
 	same := buildID("1.4.2", 0)
-	err := run(t.Context(), time.Millisecond, same, nil)
+	err := run(t.Context(), time.Millisecond, same, false, nil)
 	require.ErrorIs(t, err, bin.ErrDaemonRunning)
 	assert.Contains(t, err.Error(), "is not newer")
 
@@ -182,7 +187,7 @@ func TestUnversionedDaemonsAreOrderedByTheirExecutables(t *testing.T) {
 	requireSweeping(t, newSweeps)
 
 	// And the one written first cannot take it back.
-	err := run(t.Context(), time.Millisecond, older, nil)
+	err := run(t.Context(), time.Millisecond, older, false, nil)
 	require.ErrorIs(t, err, bin.ErrDaemonRunning)
 	requireRunning(t, newer)
 
@@ -232,7 +237,7 @@ func TestADaemonThatRecordedNoBuildIsLeftAlone(t *testing.T) {
 	require.True(t, held)
 	defer unlock()
 
-	err = run(t.Context(), time.Millisecond, buildID("9.9.9", 0), nil)
+	err = run(t.Context(), time.Millisecond, buildID("9.9.9", 0), false, nil)
 	require.ErrorIs(t, err, bin.ErrDaemonRunning)
 	assert.Contains(t, err.Error(), "recorded no build")
 }
