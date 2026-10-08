@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # recycler
 
 A Go library and CLI that expose the operating system's recycle bin through one uniform API on Linux (and the BSDs), macOS and Windows.
@@ -102,3 +103,6 @@ The test suite runs against a real recycle bin redirected into a temporary direc
 An independent implementation of the format wrote the `.DS_Store` fixtures in `internal/dsstore/testdata/`. That implementation is the `ds_store` Python package behind `dmgbuild`, which is what keeps the codec honest. `finder_trash.DS_Store` is a single-node file. `finder_trash_many.DS_Store` is a tree with internal nodes. `edited_elsewhere.DS_Store` is a file this package wrote that the other implementation then edited. That case comes up every time Finder touches a trash directory this package wrote to. Regenerate them with that package if the fixtures ever need to change. Do not hand-edit them.
 
 CI (`.github/workflows/ci.yml`) runs the same toolchain on the host's files alone. A per-platform file that stops compiling reaches master without failing anything. No job may be named `all-builds`. The org's required-builds-manager app posts that status, and the go-toolchain action fails any workflow that shadows it.
+=======
+@AGENTS.md
+>>>>>>> origin/master

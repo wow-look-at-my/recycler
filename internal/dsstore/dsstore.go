@@ -1,7 +1,11 @@
 package dsstore
 
+<<<<<<< HEAD
 // Codec for the Finder's undocumented ".DS_Store" files, which hold the Trash's
 // "Put Back" records. Depth: docs/ds-store-format.md. No build constraint.
+=======
+// Codec for the Finder's ".DS_Store" files.
+>>>>>>> origin/master
 
 import (
 	"encoding/binary"

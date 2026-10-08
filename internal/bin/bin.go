@@ -61,12 +61,16 @@ func Sort(items []Item) {
 	})
 }
 
-// A Disposal records what a single path handed to Recycle actually got.
+// A Disposal records what a single path handed to Recycle got.
 type Disposal struct {
 	Path string
 
+<<<<<<< HEAD
 	// Permanent marks a path removed outright, with Reason saying why.
 	Permanent bool
+=======
+	Permanent bool // removed outright: no room left to defer.
+>>>>>>> origin/master
 	Reason    string
 }
 

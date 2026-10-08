@@ -2,8 +2,13 @@
 
 package putback
 
+<<<<<<< HEAD
 // The "Put Back" records macOS keeps in a trash directory's .DS_Store: ptbL and
 // ptbN. Depth: docs/ds-store-format.md. Built on every Unix, so Linux tests it.
+=======
+// The "Put Back" records macOS keeps for everything in the Trash, and the
+// reading and writing of the .DS_Store file that holds them.
+>>>>>>> origin/master
 
 import (
 	"io"

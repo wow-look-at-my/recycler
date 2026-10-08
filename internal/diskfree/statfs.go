@@ -5,9 +5,12 @@ package diskfree
 import "golang.org/x/sys/unix"
 
 // Free reports the available and total bytes of the filesystem holding path.
+<<<<<<< HEAD
 //
 // Total counts only what this caller can reach: a reserve sits in Blocks and
 // Bfree but not Bavail, so a target read off Blocks never arrives.
+=======
+>>>>>>> origin/master
 func Free(path string) (avail, total uint64, err error) {
 	var st unix.Statfs_t
 	if err := unix.Statfs(path, &st); err != nil {
