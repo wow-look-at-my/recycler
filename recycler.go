@@ -45,7 +45,7 @@ func Available() bool {
 	return err == nil
 }
 
-// Recycle moves each path to the recycle bin and reports what each a single got.
+// Recycle moves each path to the recycle bin and reports what each got.
 func Recycle(paths ...string) ([]Disposal, error) {
 	if len(paths) == 0 {
 		return nil, nil
@@ -102,11 +102,29 @@ func Sweep() ([]Eviction, []Pressure, error) { return daemon.Sweep() }
 
 // RunDaemon sweeps every interval until ctx is done.
 func RunDaemon(ctx context.Context, interval time.Duration, report func([]Eviction, []Pressure, error)) error {
-	return daemon.Run(ctx, interval, report)
+	return daemon.Run(ctx, interval, false, report)
 }
+
+// RunDaemonStandby is [RunDaemon] for a daemon a service manager keeps alive:
+// where another daemon of the same build or a newer one is sweeping.
+func RunDaemonStandby(ctx context.Context, interval time.Duration, report func([]Eviction, []Pressure, error)) error {
+	return daemon.Run(ctx, interval, true, report)
+}
+
+// InstallDaemon registers exe's daemon with the platform's service manager.
+func InstallDaemon(exe string) (string, error) { return daemon.Install(exe) }
 
 // DaemonLockPath returns the file whose lock names the running.
 func DaemonLockPath() (string, error) { return daemon.LockPath() }
 
 // EnsureDaemon starts the disk-pressure daemon if none is already.
 func EnsureDaemon(exe string) (bool, error) { return daemon.Ensure(exe) }
+
+// A DaemonIdentity names the build behind a daemon.
+type DaemonIdentity = daemon.Identity
+
+// SetDaemonVersion names the build this program's daemon reports when it takes the lock.
+func SetDaemonVersion(v string) { daemon.Version = v }
+
+// RunningDaemon returns the build of the daemon holding the lock, and whether one recorded a build at all.
+func RunningDaemon() (DaemonIdentity, bool) { return daemon.Running() }

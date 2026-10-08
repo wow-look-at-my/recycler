@@ -6,12 +6,13 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 // LockPath returns the file whose lock names the running daemon.
 func LockPath() (string, error) { return statePath("daemon.lock") }
 
-// LogPath returns the file a detached daemon writes its reports to.
+// LogPath is a detached daemon's only way to say what it destroyed.
 func LogPath() (string, error) { return statePath("daemon.log") }
 
 func statePath(name string) (string, error) {
@@ -21,12 +22,12 @@ func statePath(name string) (string, error) {
 	}
 	dir := filepath.Join(cache, "recycler")
 	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return "", err
+		return "", fmt.Errorf("recycler: creating %s: %w", dir, err)
 	}
 	return filepath.Join(dir, name), nil
 }
 
-// maxLogBytes keeps the log from becoming the thing that fills the disk.
+// maxLogBytes keeps the log from being what fills the disk.
 const maxLogBytes = 1 << 20
 
 // openLog returns the detached daemon's log, truncated if it has grown past its
@@ -57,15 +58,33 @@ func Ensure(exe string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
+
+	// The test below frees the daemon lock, because the child takes it. This guards that gap.
+	endSpawn, alone, err := tryLock(lock + ".spawn")
+	if err != nil {
+		return false, err
+	}
+	if !alone {
+		return false, nil
+	}
+	defer endSpawn()
+
 	// Holding the lock means nobody else does, so no daemon is running.
 	unlock, free, err := tryLock(lock)
 	if err != nil {
 		return false, err
 	}
-	if !free {
-		return false, nil
+	me := selfIdentity(exe)
+	replacing, known := Identity{}, false
+	if free {
+		unlock()
+	} else {
+		// Somebody is sweeping.
+		replacing, known = Running()
+		if !known || !Newer(me, replacing) {
+			return false, nil
+		}
 	}
-	unlock()
 
 	cmd := exec.Command(exe, "daemon")
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = nil, nil, nil
@@ -79,5 +98,22 @@ func Ensure(exe string) (bool, error) {
 	}
 	// Nothing waits for it.
 	go cmd.Process.Release()
+
+	if known {
+		// The child has to get the lock out of the running daemon before it can
+		// sweep. The child has to also get that daemon only lets go on its own
+		// next tick.
+		if !waitForSuccessor(me, handoverTimeout) {
+			return false, fmt.Errorf("recycler: started %s to replace %s, which did not hand over within %s",
+				me, replacing, handoverTimeout)
+		}
+		return true, nil
+	}
+
+	// Waiting here hands the next caller a lock the child has already taken.
+	lockTakenByAnother(lock, spawnHandoffTimeout)
 	return true, nil
 }
+
+// spawnHandoffTimeout bounds the wait for the child to take the lock.
+const spawnHandoffTimeout = 5 * time.Second

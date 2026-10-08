@@ -1,4 +1,4 @@
-//go:build darwin
+//go:build darwin || cosmo
 
 package trash
 
@@ -30,7 +30,7 @@ type macTrash struct {
 	mounts func() []string
 }
 
-func Backend() (bin.Backend, error) {
+func macBackend() (bin.Backend, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return nil, fmt.Errorf("recycler: locating home directory: %w", err)
@@ -247,10 +247,11 @@ func dataVolumePath(path string) string {
 	return short
 }
 
-// deletedAt reports when an item was moved to the trash.
+// deletedAt reports when an item reached the trash. macOS records no deletion
+// time, so this takes the inode change time the rename updated.
 func deletedAt(info fs.FileInfo) time.Time {
 	if st, ok := info.Sys().(*syscall.Stat_t); ok {
-		return time.Unix(st.Ctimespec.Unix())
+		return ctime(st)
 	}
 	return info.ModTime()
 }

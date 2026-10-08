@@ -15,19 +15,33 @@ import (
 	"github.com/wow-look-at-my/recycler/internal/bin"
 )
 
+// testFdo is the FreeDesktop backend over the isolated test environment.
+func testFdo() *fdoTrash {
+	return &fdoTrash{home: filepath.Join(os.Getenv("XDG_DATA_HOME"), "Trash"), uid: os.Getuid()}
+}
+
 // homeTrash returns the trash directory the isolated test environment uses.
 func homeTrash(t *testing.T) string {
 	t.Helper()
-	b, err := Backend()
-	require.NoError(t, err)
-	return b.(*fdoTrash).home
+	return testFdo().home
 }
+
+func fdoRecycle(paths ...string) error {
+	_, err := testFdo().Recycle(paths)
+	return err
+}
+
+func fdoList() ([]bin.Item, error) { return testFdo().List() }
+
+func fdoRestore(id string) (string, error) { return testFdo().Restore(id, "") }
+
+func fdoDispose(paths ...string) ([]bin.Disposal, error) { return testFdo().Recycle(paths) }
 
 // TestTrashInfoIsSpecCompliant checks the metadata this package writes against the FreeDesktop trash.
 func TestTrashInfoIsSpecCompliant(t *testing.T) {
 	work := isolateTrash(t)
 	path := writeFile(t, filepath.Join(work, "a file with spaces & symbols.txt"), "x")
-	require.NoError(t, recycle(path))
+	require.NoError(t, fdoRecycle(path))
 
 	infoDir := filepath.Join(homeTrash(t), trashInfoDir)
 	entries, err := os.ReadDir(infoDir)
@@ -61,10 +75,9 @@ func TestTrashInfoIsSpecCompliant(t *testing.T) {
 // TestEvictDestroysAnEntryAndItsMetadata covers the only operation here that destroys anything.
 func TestEvictDestroysAnEntryAndItsMetadata(t *testing.T) {
 	work := isolateTrash(t)
-	require.NoError(t, recycle(writeFile(t, filepath.Join(work, "doomed.txt"), "bytes")))
+	require.NoError(t, fdoRecycle(writeFile(t, filepath.Join(work, "doomed.txt"), "bytes")))
 
-	b, err := Backend()
-	require.NoError(t, err)
+	b := testFdo()
 	items, err := b.List()
 	require.NoError(t, err)
 	require.Len(t, items, 1)
@@ -85,10 +98,9 @@ func TestEvictDestroysAnEntryAndItsMetadata(t *testing.T) {
 func TestEvictRejectsAnIDOutsideTheBin(t *testing.T) {
 	work := isolateTrash(t)
 	outsider := writeFile(t, filepath.Join(work, "innocent.txt"), "do not touch")
-	require.NoError(t, recycle(writeFile(t, filepath.Join(work, "decoy.txt"), "decoy")))
+	require.NoError(t, fdoRecycle(writeFile(t, filepath.Join(work, "decoy.txt"), "decoy")))
 
-	b, err := Backend()
-	require.NoError(t, err)
+	b := testFdo()
 	for _, id := range []string{"", "not-an-id", outsider, filepath.Join(work, "nope", "files", "x")} {
 		assert.ErrorIs(t, b.Evict(id), bin.ErrNotFound, "evict(%q)", id)
 	}
@@ -99,9 +111,9 @@ func TestEvictRejectsAnIDOutsideTheBin(t *testing.T) {
 func TestSizeIsRecordedWhenRecycled(t *testing.T) {
 	work := isolateTrash(t)
 	path := writeFile(t, filepath.Join(work, "sized.txt"), strings.Repeat("x", 4096))
-	require.NoError(t, recycle(path))
+	require.NoError(t, fdoRecycle(path))
 
-	items, err := list()
+	items, err := fdoList()
 	require.NoError(t, err)
 	require.Len(t, items, 1)
 	assert.Equal(t, int64(4096), items[0].Size)
@@ -113,6 +125,25 @@ func TestSizeIsRecordedWhenRecycled(t *testing.T) {
 	raw, err := os.ReadFile(filepath.Join(infoDir, entries[0].Name()))
 	require.NoError(t, err)
 	assert.Contains(t, string(raw), "Size=4096")
+}
+
+// A recycle reports what it did with each path. With room to defer into, the
+// report says deferred: the entry is in the bin and nothing was destroyed.
+// Only pressure sets Permanent. No test can fill a real filesystem to ask for
+// it, so the arm covered here is the thing a caller meets.
+func TestARecycleWithRoomReportsADeferral(t *testing.T) {
+	work := isolateTrash(t)
+	path := writeFile(t, filepath.Join(work, "kept.txt"), "kept")
+
+	disposals, err := fdoDispose(path)
+	require.NoError(t, err)
+	require.Len(t, disposals, 1)
+	assert.Equal(t, path, disposals[0].Path)
+	assert.False(t, disposals[0].Permanent, "reason: %s", disposals[0].Reason)
+
+	items, err := fdoList()
+	require.NoError(t, err)
+	assert.Len(t, items, 1, "the file is in the bin rather than destroyed")
 }
 
 // TestAForeignEntryIsSizedOnceAndRecorded covers an entry another trash implementation wrote, which
@@ -129,7 +160,7 @@ func TestAForeignEntryIsSizedOnceAndRecorded(t *testing.T) {
 	require.NoError(t, os.WriteFile(infoPath, []byte(
 		"[Trash Info]\nPath=/home/ada/foreign.txt\nDeletionDate=2026-01-02T03:04:05\n"), 0o600))
 
-	items, err := list()
+	items, err := fdoList()
 	require.NoError(t, err)
 	require.Len(t, items, 1)
 	assert.Equal(t, int64(512), items[0].Size)
@@ -156,7 +187,7 @@ func TestAnUnwritableForeignEntryIsNotWalked(t *testing.T) {
 	require.NoError(t, os.WriteFile(infoPath, []byte(
 		"[Trash Info]\nPath=/home/ada/readonly.txt\nDeletionDate=2026-01-02T03:04:05\n"), 0o400))
 
-	items, err := list()
+	items, err := fdoList()
 	require.NoError(t, err)
 	require.Len(t, items, 1)
 	assert.Equal(t, int64(bin.SizeUnknown), items[0].Size,
@@ -178,13 +209,14 @@ func TestReadsForeignTrashEntries(t *testing.T) {
 	info := "[Trash Info]\nPath=" + escapePath(original) + "\nDeletionDate=2026-07-26T11:24:09\n"
 	infoPath := writeFile(t, filepath.Join(trash, trashInfoDir, "from another tool.txt"+trashInfoExt), info)
 
-	items := mustList(t)
+	items, err := fdoList()
+	require.NoError(t, err)
 	require.Len(t, items, 1)
 	assert.Equal(t, original, items[0].OriginalPath)
 	assert.True(t, items[0].DeletedAt.Equal(time.Date(2026, 7, 26, 11, 24, 9, 0, time.Local)),
 		"DeletedAt = %s", items[0].DeletedAt)
 
-	restored, err := restore(items[0].ID)
+	restored, err := fdoRestore(items[0].ID)
 	require.NoError(t, err)
 	assert.Equal(t, original, restored)
 
@@ -270,6 +302,16 @@ func TestUnescapeMountPoint(t *testing.T) {
 	for in, want := range cases {
 		assert.Equal(t, want, unescapeMountPoint(in), "unescapeMountPoint(%q)", in)
 	}
+}
+
+func TestParseMountOutputReadsMacMountLines(t *testing.T) {
+	out := "/dev/disk3s1s1 on / (apfs, sealed, local, read-only, journaled)\n" +
+		"devfs on /dev (devfs, local, nobrowse)\n" +
+		"map auto_home on /System/Volumes/Data/home (autofs, automounted, nobrowse)\n" +
+		"/dev/disk5s1 on /Users/me/repos (apfs, local, journaled)\n" +
+		"/dev/disk6s1 on /Volumes/My Disk (msdos, local, nodev)\n" +
+		"not a mount line\n"
+	assert.Equal(t, []string{"/", "/dev", "/Users/me/repos", "/Volumes/My Disk"}, parseMountOutput(out))
 }
 
 func TestTopDirOfTrash(t *testing.T) {

@@ -69,7 +69,7 @@ func TestRecoverTargetFreesPastTheTrigger(t *testing.T) {
 	assert.Greater(t, RecoverTarget(big), FreeTarget(big))
 	assert.Equal(t, uint64(freeTargetCeiling)*recoverMultiple, RecoverTarget(big))
 
-	// A filesystem small enough to keep the fraction still gets runway.
+	// Small media still get runway.
 	assert.Equal(t, uint64(100), FreeTarget(1000))
 	assert.Equal(t, uint64(200), RecoverTarget(1000))
 	assert.Greater(t, RecoverTarget(1000), FreeTarget(1000))
@@ -204,7 +204,7 @@ func TestAnUnreadableFilesystemIsSkipped(t *testing.T) {
 
 // The lock is what makes it a daemon.
 func TestASecondDaemonStandsDown(t *testing.T) {
-	t.Setenv("XDG_CACHE_HOME", t.TempDir())
+	isolateDaemonState(t)
 	lock, err := LockPath()
 	require.NoError(t, err)
 
@@ -217,7 +217,7 @@ func TestASecondDaemonStandsDown(t *testing.T) {
 	require.NoError(t, err)
 	assert.False(t, held2, "two daemons took the same lock")
 
-	assert.ErrorIs(t, Run(t.Context(), time.Second, nil), bin.ErrDaemonRunning)
+	assert.ErrorIs(t, Run(t.Context(), time.Second, false, nil), bin.ErrDaemonRunning)
 }
 
 // The loop is what makes it a daemon: it sweeps, reports, waits for the tick and sweeps again.
@@ -231,7 +231,7 @@ func TestTheDaemonSweepsUntilItsContextIsDone(t *testing.T) {
 	defer cancel()
 
 	sweeps := 0
-	err := Run(ctx, time.Millisecond, func(evicted []Eviction, _ []Pressure, err error) {
+	err := Run(ctx, time.Millisecond, false, func(evicted []Eviction, _ []Pressure, err error) {
 		assert.NoError(t, err)
 		assert.Empty(t, evicted, "an empty bin has nothing to give back")
 		if sweeps++; sweeps == 2 {
@@ -253,7 +253,7 @@ func TestAZeroIntervalTakesTheDefault(t *testing.T) {
 	defer cancel()
 
 	// A sweep runs before any tick, so cancelling from it returns without ever waiting out.
-	err := Run(ctx, 0, func([]Eviction, []Pressure, error) { cancel() })
+	err := Run(ctx, 0, false, func([]Eviction, []Pressure, error) { cancel() })
 	assert.ErrorIs(t, err, context.Canceled)
 }
 

@@ -33,9 +33,9 @@ func isolateTrash(t *testing.T) string {
 	return work
 }
 
-// recycleAll recycles every path and asserts each a single was deferred rather
-// than deleted outright. The suite runs on a filesystem with room, so a
-// permanent deletion here means the pressure check read the wrong filesystem.
+// recycleAll recycles every path and asserts each was deferred rather than
+// deleted outright. The suite runs on a filesystem with room, so a permanent
+// deletion here means the pressure check read the wrong filesystem.
 func recycleAll(t *testing.T, paths ...string) {
 	t.Helper()
 	disposals, err := Recycle(paths...)
@@ -260,6 +260,14 @@ func TestTheDaemonIsReachableFromHere(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	assert.ErrorIs(t, RunDaemon(ctx, time.Millisecond, func([]Eviction, []Pressure, error) { cancel() }), context.Canceled)
+
+	standbyCtx, cancelStandby := context.WithCancel(t.Context())
+	defer cancelStandby()
+	assert.ErrorIs(t, RunDaemonStandby(standbyCtx, time.Millisecond, func([]Eviction, []Pressure, error) { cancelStandby() }), context.Canceled)
+
+	// An executable that is not there is refused before any service manager is asked.
+	_, err = InstallDaemon(filepath.Join(t.TempDir(), "gone"))
+	assert.ErrorIs(t, err, os.ErrNotExist)
 }
 
 func TestAvailable(t *testing.T) {
