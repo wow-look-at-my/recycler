@@ -25,7 +25,7 @@ const (
 	// recoverMultiple is how far past the trigger a sweep frees, for runway.
 	recoverMultiple = 8
 
-	// recoverCeilingFraction keeps a sweep from emptying a small filesystem.
+	// Looser than freeTargetFraction: the same fraction leaves no runway.
 	recoverCeilingFraction = 5
 )
 
@@ -61,7 +61,8 @@ type Pressure struct {
 	Target uint64 // available bytes the daemon wanted
 	Total  uint64 // bytes on the filesystem this caller can reach
 
-	Stranded uint64 // bytes the sweep tried to give back and could not
+	// Stranded is what the sweep tried to give back, and could not.
+	Stranded uint64
 }
 
 // Shortfall is how many bytes the sweep could not reclaim.
@@ -88,6 +89,7 @@ func Sweep() ([]Eviction, []Pressure, error) {
 	if err != nil {
 		return nil, nil, err
 	}
+	// Resolving the probe here keeps sweepItems off the filesystem it decides about.
 	return sweepItems(b, items, b.Dirs(), func(dir string) (uint64, uint64, error) {
 		return diskfree.Free(probePath(dir))
 	})
@@ -133,7 +135,8 @@ func sweepItems(b bin.Backend, items []bin.Item, dirs []string,
 			}
 			evicted = append(evicted, ev)
 		}
-		// Reported against the trigger, not the runway the sweep aimed for.
+		// Reported against the trigger, not the recovery target: stopping short
+		// of the runway is ordinary, sitting under the trigger is not.
 		if avail < trigger {
 			pressures = append(pressures, Pressure{
 				Dir:      group.dir,
@@ -147,8 +150,7 @@ func sweepItems(b bin.Backend, items []bin.Item, dirs []string,
 	return evicted, pressures, nil
 }
 
-// filesystemGroup is the items sharing a bin directory, and the path a
-// free-space probe reads.
+// filesystemGroup is the items sharing a bin directory, plus the probe path.
 type filesystemGroup struct {
 	dir   string
 	probe string
@@ -172,7 +174,7 @@ func groupByFilesystem(items []bin.Item, dirs []string) []filesystemGroup {
 		byDir[dir] = append(byDir[dir], it)
 	}
 	for _, dir := range dirs {
-		// An item's ID names the files/ subdirectory, so this spells it the same.
+		// An ID names the files/ subdirectory, so spell a bin the same way here.
 		add(filepath.Join(dir, "files"))
 	}
 	groups := make([]filesystemGroup, 0, len(order))
@@ -182,8 +184,8 @@ func groupByFilesystem(items []bin.Item, dirs []string) []filesystemGroup {
 	return groups
 }
 
-// probePath returns the nearest existing ancestor of dir, which is what statfs
-// can answer for: a bin nothing was recycled into yet does not exist.
+// probePath answers the nearest existing ancestor of dir, which is what
+// statfs can read.
 func probePath(dir string) string {
 	for {
 		if _, err := os.Stat(dir); err == nil {
