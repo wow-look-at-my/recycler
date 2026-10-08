@@ -23,6 +23,15 @@ func recycle(paths ...string) error {
 	return err
 }
 
+// dispose recycles the paths and returns what the backend reported for each.
+func dispose(paths ...string) ([]bin.Disposal, error) {
+	b, err := Backend()
+	if err != nil {
+		return nil, err
+	}
+	return b.Recycle(paths)
+}
+
 func list() ([]bin.Item, error) {
 	b, err := Backend()
 	if err != nil {
