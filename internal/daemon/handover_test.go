@@ -193,6 +193,7 @@ func TestUnversionedDaemonsAreOrderedByTheirExecutables(t *testing.T) {
 // A handover nobody completes leaves the disk watched: the daemon that offered
 // the lock takes it back rather than exiting into a gap.
 func TestADaemonResumesWhenTheSuccessorNeverArrives(t *testing.T) {
+	t.Serial()
 	isolateDaemonState(t)
 	shortenHandover(t, 200*time.Millisecond)
 	ctx, cancel := context.WithCancel(t.Context())
@@ -239,6 +240,7 @@ func TestADaemonThatRecordedNoBuildIsLeftAlone(t *testing.T) {
 // Ensure makes the same decision the daemon does, without starting anything it
 // would have to stop again.
 func TestEnsureLeavesANewerDaemonAlone(t *testing.T) {
+	t.Serial()
 	isolateDaemonState(t)
 	was := Version
 	Version = "1.0.0"
