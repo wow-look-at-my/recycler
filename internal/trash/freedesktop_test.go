@@ -25,6 +25,12 @@ func homeTrash(t *testing.T) string {
 
 // TestTrashInfoIsSpecCompliant checks the metadata this package writes against the FreeDesktop trash.
 func TestTrashInfoIsSpecCompliant(t *testing.T) {
+	b, err := Backend()
+	require.NoError(t, err)
+	if _, ok := b.(*fdoTrash); !ok {
+		t.Skipf("this host's recycle bin is %T, not the FreeDesktop trash", b)
+	}
+
 	work := isolateTrash(t)
 	path := writeFile(t, filepath.Join(work, "a file with spaces & symbols.txt"), "x")
 	require.NoError(t, recycle(path))
