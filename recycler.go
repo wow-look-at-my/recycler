@@ -27,15 +27,13 @@ const SizeUnknown = bin.SizeUnknown
 
 type Item = bin.Item
 
-// A Disposal records what a single path handed to [Recycle] actually got.
+// A Disposal records what a single path handed to [Recycle] got.
 type Disposal = bin.Disposal
 
 // An Eviction records an item.
 type Eviction = daemon.Eviction
 
-// Pressure is a filesystem the daemon left under its target because everything
-// filling it is live. Recycling defers a deletion; it cannot give back what was
-// never recycled.
+// Pressure is a filesystem the daemon left under its target because everything filling it is live.
 type Pressure = daemon.Pressure
 
 // DefaultPollInterval is how often the daemon reads.
@@ -65,7 +63,7 @@ func Recycle(paths ...string) ([]Disposal, error) {
 	return b.Recycle(paths)
 }
 
-// List returns everything currently in the recycle bin, newest at the front.
+// List returns everything in the recycle bin, newest at the front.
 func List() ([]Item, error) {
 	b, err := trash.Backend()
 	if err != nil {
@@ -105,17 +103,34 @@ func RestoreTo(id, dest string) (string, error) {
 // FreeTarget returns the number of available bytes the daemon keeps.
 func FreeTarget(total uint64) uint64 { return daemon.FreeTarget(total) }
 
-// Sweep reclaims space on every filesystem holding a bin, and reports every a
-// single still under its target afterwards.
+// Sweep reclaims space on every filesystem holding a bin, and reports every a single still under its target afterwards.
 func Sweep() ([]Eviction, []Pressure, error) { return daemon.Sweep() }
 
 // RunDaemon sweeps every interval until ctx is done.
 func RunDaemon(ctx context.Context, interval time.Duration, report func([]Eviction, []Pressure, error)) error {
-	return daemon.Run(ctx, interval, report)
+	return daemon.Run(ctx, interval, false, report)
 }
+
+// RunDaemonStandby is [RunDaemon] for a daemon a service manager keeps alive:
+// where another daemon of the same build or a newer one is sweeping.
+func RunDaemonStandby(ctx context.Context, interval time.Duration, report func([]Eviction, []Pressure, error)) error {
+	return daemon.Run(ctx, interval, true, report)
+}
+
+// InstallDaemon registers exe's daemon with the platform's service manager.
+func InstallDaemon(exe string) (string, error) { return daemon.Install(exe) }
 
 // DaemonLockPath returns the file whose lock names the running.
 func DaemonLockPath() (string, error) { return daemon.LockPath() }
 
 // EnsureDaemon starts the disk-pressure daemon if none is already.
 func EnsureDaemon(exe string) (bool, error) { return daemon.Ensure(exe) }
+
+// A DaemonIdentity names the build behind a daemon.
+type DaemonIdentity = daemon.Identity
+
+// SetDaemonVersion names the build this program's daemon reports when it takes the lock.
+func SetDaemonVersion(v string) { daemon.Version = v }
+
+// RunningDaemon returns the build of the daemon holding the lock, and whether one recorded a build at all.
+func RunningDaemon() (DaemonIdentity, bool) { return daemon.Running() }

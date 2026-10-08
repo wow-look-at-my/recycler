@@ -278,7 +278,7 @@ func TestValueLengths(t *testing.T) {
 }
 
 // treeStats reads the B-tree master block of a .DS_Store, so a test can tell
-// what shape of tree was actually written.
+// what shape of tree was written.
 func treeStats(t *testing.T, data []byte) (levels, records, nodes int) {
 	t.Helper()
 	book, err := dsSlice(data, binary.BigEndian.Uint32(data[8:12]), binary.BigEndian.Uint32(data[12:16]))

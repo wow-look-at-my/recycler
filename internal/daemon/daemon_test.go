@@ -91,7 +91,7 @@ func TestASweepKeepsEvictingPastTheTrigger(t *testing.T) {
 		item("newest.bin", int64(gib), 1),
 	}
 
-	// Just under the trigger, where recovering has to evict further than it.
+	// Under the trigger, where recovering has to evict further than it.
 	_, _, err := sweepItems(b, items, dirs, freeSpace(gib-1, total))
 	require.NoError(t, err)
 	assert.Greater(t, len(b.evicted), 1, "stopping at the trigger leaves no runway")
@@ -204,9 +204,9 @@ func TestAnUnreadableFilesystemIsSkipped(t *testing.T) {
 	assert.Empty(t, b.evicted)
 }
 
-// The lock is what makes it a daemon per user.
+// The lock is what makes it a daemon.
 func TestASecondDaemonStandsDown(t *testing.T) {
-	t.Setenv("XDG_CACHE_HOME", t.TempDir())
+	isolateDaemonState(t)
 	lock, err := LockPath()
 	require.NoError(t, err)
 
@@ -219,7 +219,7 @@ func TestASecondDaemonStandsDown(t *testing.T) {
 	require.NoError(t, err)
 	assert.False(t, held2, "two daemons took the same lock")
 
-	assert.ErrorIs(t, Run(t.Context(), time.Second, nil), bin.ErrDaemonRunning)
+	assert.ErrorIs(t, Run(t.Context(), time.Second, false, nil), bin.ErrDaemonRunning)
 }
 
 // The loop is what makes it a daemon: it sweeps, reports, waits for the tick and sweeps again.
@@ -233,7 +233,7 @@ func TestTheDaemonSweepsUntilItsContextIsDone(t *testing.T) {
 	defer cancel()
 
 	sweeps := 0
-	err := Run(ctx, time.Millisecond, func(evicted []Eviction, _ []Pressure, err error) {
+	err := Run(ctx, time.Millisecond, false, func(evicted []Eviction, _ []Pressure, err error) {
 		assert.NoError(t, err)
 		assert.Empty(t, evicted, "an empty bin has nothing to give back")
 		if sweeps++; sweeps == 2 {
@@ -255,7 +255,7 @@ func TestAZeroIntervalTakesTheDefault(t *testing.T) {
 	defer cancel()
 
 	// A sweep runs before any tick, so cancelling from it returns without ever waiting out.
-	err := Run(ctx, 0, func([]Eviction, []Pressure, error) { cancel() })
+	err := Run(ctx, 0, false, func([]Eviction, []Pressure, error) { cancel() })
 	assert.ErrorIs(t, err, context.Canceled)
 }
 

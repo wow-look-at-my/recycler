@@ -86,7 +86,7 @@ func TestPutBackReplacesAStaleRecord(t *testing.T) {
 
 func TestNothingRecycledTakesTheDSStoreName(t *testing.T) {
 	dir := t.TempDir()
-	// A file really can be called .DS_Store, and recycling it must not put.
+	// A file can be called .DS_Store, and recycling it must not put.
 	name := TrashName(dsstore.FileName, dir)
 	assert.NotEqual(t, dsstore.FileName, name)
 
