@@ -33,9 +33,9 @@ func isolateTrash(t *testing.T) string {
 	return work
 }
 
-// recycleAll recycles every path and asserts each a single was deferred rather
-// than deleted outright. The suite runs on a filesystem with room, so a
-// permanent deletion here means the pressure check read the wrong filesystem.
+// recycleAll recycles every path and asserts each was deferred rather than
+// deleted outright. The suite runs on a filesystem with room, so a permanent
+// deletion here means the pressure check read the wrong filesystem.
 func recycleAll(t *testing.T, paths ...string) {
 	t.Helper()
 	disposals, err := Recycle(paths...)

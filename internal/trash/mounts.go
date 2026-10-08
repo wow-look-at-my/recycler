@@ -6,6 +6,7 @@ import (
 	"bufio"
 	"github.com/wow-look-at-my/go-containers/set"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 )
@@ -52,11 +53,17 @@ func mountPoints() []string {
 	return points
 }
 
-// systemMountPoints reads the kernel's mount table where it exists.
+// systemMountPoints reads the kernel's mount table where it exists, and asks
+// mount(8) on a host with no /proc, such as a Mac. That Mac is running the
+// cosmo build.
 func systemMountPoints() []string {
 	f, err := os.Open("/proc/self/mounts")
 	if err != nil {
-		return nil
+		out, err := exec.Command("/sbin/mount").Output()
+		if err != nil {
+			return nil
+		}
+		return parseMountOutput(string(out))
 	}
 	defer f.Close()
 
@@ -72,6 +79,28 @@ func systemMountPoints() []string {
 	if scanner.Err() != nil {
 		// A truncated read names fewer filesystems than the host has.
 		return nil
+	}
+	return points
+}
+
+// parseMountOutput reads the mount points from BSD mount(8) lines, which read
+// "device on /mount/point (type, options)".
+func parseMountOutput(out string) []string {
+	var points []string
+	for _, line := range strings.Split(out, "\n") {
+		_, rest, ok := strings.Cut(line, " on ")
+		if !ok {
+			continue
+		}
+		open := strings.LastIndex(rest, " (")
+		if open < 0 {
+			continue
+		}
+		fsType, _, _ := strings.Cut(rest[open+2:], ",")
+		if pseudoFilesystems.Contains(strings.TrimSuffix(fsType, ")")) {
+			continue
+		}
+		points = append(points, rest[:open])
 	}
 	return points
 }

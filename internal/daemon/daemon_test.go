@@ -69,7 +69,7 @@ func TestRecoverTargetFreesPastTheTrigger(t *testing.T) {
 	assert.Greater(t, RecoverTarget(big), FreeTarget(big))
 	assert.Equal(t, uint64(freeTargetCeiling)*recoverMultiple, RecoverTarget(big))
 
-	// A filesystem small enough to keep the fraction still gets runway.
+	// Small media still get runway.
 	assert.Equal(t, uint64(100), FreeTarget(1000))
 	assert.Equal(t, uint64(200), RecoverTarget(1000))
 	assert.Greater(t, RecoverTarget(1000), FreeTarget(1000))

@@ -15,7 +15,7 @@ func TestTheFloorMatchesTheDaemonsTarget(t *testing.T) {
 	assert.Equal(t, uint64(1<<30), Floor(10<<30))
 	assert.Equal(t, uint64(1<<30), Floor(1<<40))
 
-	// A smaller a single keeps the fraction, so small media does not become a permanent-delete device.
+	// Small media keep the fraction, so they do not become a delete device.
 	assert.Equal(t, uint64(50<<20), Floor(500<<20))
 	assert.Equal(t, uint64(100), Floor(1000))
 }

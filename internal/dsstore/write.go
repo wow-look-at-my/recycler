@@ -1,7 +1,7 @@
 package dsstore
 
-// Writing .DS_Store files: packing records into B-tree nodes, and the buddy
-// allocator that decides where those nodes land in the file.
+// Writing .DS_Store files, WHOLE and never in place: that is what lets the
+// buddy allocator skip freeing. Depth: docs/ds-store-format.md
 
 import (
 	"encoding/binary"
@@ -73,7 +73,7 @@ func dsBuildLevels(records []Record) ([][][]Record, error) {
 				if len(node) == 0 {
 					return nil, fmt.Errorf("%w: the record for %q does not fit in a %d-byte node", errBadDSStore, r.Name, dsPageSize)
 				}
-				// The record that did not fit becomes the pivot, a level up.
+				// The record that did not fit is the pivot, a level up.
 				nodes = append(nodes, node)
 				next = append(next, r)
 				node, total = nil, 8

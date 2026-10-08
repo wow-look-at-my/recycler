@@ -45,7 +45,7 @@ func Available() bool {
 	return err == nil
 }
 
-// Recycle moves each path to the recycle bin and reports what each a single got.
+// Recycle moves each path to the recycle bin and reports what each got.
 func Recycle(paths ...string) ([]Disposal, error) {
 	if len(paths) == 0 {
 		return nil, nil

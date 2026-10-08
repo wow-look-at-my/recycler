@@ -12,7 +12,7 @@ import (
 // LockPath returns the file whose lock names the running daemon.
 func LockPath() (string, error) { return statePath("daemon.lock") }
 
-// LogPath returns the file a detached daemon writes its reports to.
+// LogPath is a detached daemon's only way to say what it destroyed.
 func LogPath() (string, error) { return statePath("daemon.log") }
 
 func statePath(name string) (string, error) {
@@ -22,12 +22,12 @@ func statePath(name string) (string, error) {
 	}
 	dir := filepath.Join(cache, "recycler")
 	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return "", err
+		return "", fmt.Errorf("recycler: creating %s: %w", dir, err)
 	}
 	return filepath.Join(dir, name), nil
 }
 
-// maxLogBytes keeps the log from becoming the thing that fills the disk.
+// maxLogBytes keeps the log from being what fills the disk.
 const maxLogBytes = 1 << 20
 
 // openLog returns the detached daemon's log, truncated if it has grown past its
