@@ -9,6 +9,7 @@ import (
 	"sort"
 	"time"
 
+	"github.com/wow-look-at-my/go-containers/set"
 	"github.com/wow-look-at-my/recycler/internal/bin"
 	"github.com/wow-look-at-my/recycler/internal/cargotarget"
 	"github.com/wow-look-at-my/recycler/internal/diskfree"
@@ -106,20 +107,20 @@ func settleBuildOutput(b bin.Backend, items []bin.Item, budget int64) ([]Evictio
 	if len(over) == 0 {
 		return nil, items
 	}
-	gone := map[string]bool{}
+	gone := set.New[string]()
 	evicted := make([]Eviction, 0, len(over))
 	for _, it := range over {
 		ev := Eviction{Item: it}
 		if err := b.Evict(it.ID); err != nil {
 			ev.Error = fmt.Errorf("evicting %s: %w", it.ID, err)
 		} else {
-			gone[it.ID] = true
+			gone.Add(it.ID)
 		}
 		evicted = append(evicted, ev)
 	}
-	kept := make([]bin.Item, 0, len(items)-len(gone))
+	kept := make([]bin.Item, 0, len(items)-gone.Len())
 	for _, it := range items {
-		if !gone[it.ID] {
+		if !gone.Contains(it.ID) {
 			kept = append(kept, it)
 		}
 	}
