@@ -19,7 +19,7 @@ permissions:
 
 jobs:
   build:
-    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
+    runs-on: ${{ github.event.repository.visibility == 'public' && 'ubuntu-latest' || vars.CI_RUNNER || 'ubuntu-latest' }}
     steps:
       - uses: actions/checkout@v4
       # The matrix's one native output is a cosmo APE, which recycles nothing.
@@ -34,6 +34,7 @@ jobs:
 
   # The only job that compiles darwin.go. It waits on nothing, so a red linux build still answers for a Mac.
   macos:
+    if: github.event.repository.visibility == 'public'
     runs-on: macos-14
     steps:
       - uses: actions/checkout@v4
@@ -43,6 +44,7 @@ jobs:
 
   # The APE a Mac downloads, run on a Mac: it picks its bin and its lock there, and nowhere else.
   macos-ape:
+    if: github.event.repository.visibility == 'public'
     runs-on: macos-14
     needs: build
     steps:
