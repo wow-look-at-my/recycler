@@ -1,0 +1,22 @@
+name: go-toolchain CLI
+description: Tidy, vet, test and build with the go-toolchain binary the org action wraps, which publishes nothing.
+
+runs:
+  using: composite
+  steps:
+    - id: download
+      uses: wow-look-at-my/buildhost/.github/actions/buildhost-download@master
+      with:
+        project: go-toolchain
+    - shell: bash
+      run: |
+        set -euo pipefail
+        bin="$RUNNER_TEMP/go-toolchain-bin"
+        mkdir -p "$bin"
+        mv "${{ steps.download.outputs.path }}" "$bin/go-toolchain"
+        chmod +x "$bin/go-toolchain"
+        echo "$bin" >> "$GITHUB_PATH"
+    - shell: bash
+      run: go-toolchain
+      env:
+        GITHUB_TOKEN: ${{ github.token }}

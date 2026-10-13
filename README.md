@@ -27,6 +27,8 @@ Build output is the disk filler no recycle bin explains. rustc appends to a `tar
 
 The copies under `.claude/worktrees` and `.grok/worktrees` are found too. `--dry-run` says what will go and what it weighs, and `--cap` is the size. It runs when you invoke it.
 
+What a run takes goes to the recycle bin as one item per target directory. The bin keeps build output to the same cap. The bin gives the rest back to the filesystem, oldest first, so a trim returns the space it took. The daemon holds the bin to that cap between runs. Your own recycled files never count against it.
+
 Run on a terminal with no arguments, `recycler` opens the bin in a browser: arrows move, `/` filters, `enter` restores what is selected. Redirected, it prints the help instead, and `recycler tui` opens the browser either way.
 
 `restore` takes the ID from `recycler list`, or a name or original path when it matches exactly one item. `list --json` prints the same data for scripts.
