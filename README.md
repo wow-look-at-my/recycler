@@ -16,11 +16,16 @@ recycler trash notes.txt project/   # move to the recycle bin
 recycler list                       # what is in there, newest first
 recycler restore notes.txt          # put it back where it came from
 recycler daemon                     # watch free space (started for you)
+recycler trim --dry-run             # cargo build output over its size cap
 ```
 
 No command of yours deletes anything: an item leaves the bin by being restored, and emptying the bin is left to the desktop environment.
 
 Disk pressure is the exception, because a bin nobody empties fills the disk and the recycled copy is what holds the space. Recycling something starts a daemon that reads free space every few seconds. It gives back the oldest items when a filesystem drops under a tenth free, or 1 GiB, whichever is smaller. It uses the size recorded when each item was recycled, so it never walks the bin to measure it. Set `RECYCLER_NO_DAEMON=1` to run it yourself instead, or not at all.
+
+Build output is the disk filler no recycle bin explains. rustc appends to a `target` directory and never removes anything from it, so every branch. Every worktree and every dependency bump leaves its object files, rlibs and fingerprints behind, and cargo's only remedy is `cargo clean`. This throws away the whole directory and rebuilds everything still wanted. `recycler trim` caps each target directory instead. It recycles the oldest regenerable output inside one, incrementals first, and stops as soon as the directory fits so the build. In progress keeps its cache.
+
+The copies under `.claude/worktrees` and `.grok/worktrees` are found too. `--dry-run` says what will go and what it weighs, and `--cap` is the size. It runs when you invoke it.
 
 Run on a terminal with no arguments, `recycler` opens the bin in a browser: arrows move, `/` filters, `enter` restores what is selected. Redirected, it prints the help instead, and `recycler tui` opens the browser either way.
 

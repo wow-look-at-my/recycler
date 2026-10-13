@@ -131,7 +131,8 @@ func pressureLine(p recycler.Pressure) string {
 	if p.Stranded > 0 {
 		return fmt.Sprintf("%s, and %s of recycled items would not go", line, pressure.Bytes(p.Stranded))
 	}
-	return line + ", and nothing recycled is left to give back"
+	// Build output is what fills a filesystem nobody can otherwise explain.
+	return line + `, and nothing recycled is left to give back. "recycler trim" recycles the build output nobody recycled`
 }
 
 var daemonUpCmd = &cobra.Command{
