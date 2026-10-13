@@ -111,4 +111,3 @@ func TestOverflowKeepsTheNewestWithinTheBudget(t *testing.T) {
 	over := Overflow([]bin.Item{oldest, maven, newest, elsewhere, unknown, middle, theTarget}, 100)
 	assert.Equal(t, []bin.Item{middle, oldest}, over)
 }
-

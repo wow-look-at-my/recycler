@@ -28,7 +28,6 @@ import (
 	"github.com/wow-look-at-my/recycler/internal/bin"
 	"github.com/wow-look-at-my/recycler/internal/diskfree"
 	"github.com/wow-look-at-my/recycler/internal/fsutil"
-	"github.com/wow-look-at-my/recycler/internal/pressure"
 	"github.com/wow-look-at-my/recycler/internal/trash"
 )
 
