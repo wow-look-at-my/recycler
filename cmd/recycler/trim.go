@@ -49,8 +49,8 @@ Nothing is deleted. Each entry goes to the recycle bin like any other path this
 tool takes, where "recycler list" shows it and "recycler restore" puts it back. A
 recycle bin sits on the filesystem it takes from, so this holds a target directory
 to its cap rather than freeing the bytes at once: the disk-pressure daemon gives
-them back, oldest item first, when the filesystem needs them. An entry too large
-to be deferred into the bin is reported and left where it is.
+them back, oldest item first, when the filesystem needs them. The move into the
+bin is a rename, so an entry goes however much it weighs.
 
 With no arguments the directories listed in RECYCLER_TRIM_ROOTS are scanned,
 defaulting to ~/repos. A scan never crosses onto another filesystem, never

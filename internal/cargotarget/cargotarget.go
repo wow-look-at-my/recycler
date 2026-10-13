@@ -27,6 +27,7 @@ import (
 
 	"github.com/wow-look-at-my/recycler/internal/bin"
 	"github.com/wow-look-at-my/recycler/internal/diskfree"
+	"github.com/wow-look-at-my/recycler/internal/fsutil"
 	"github.com/wow-look-at-my/recycler/internal/pressure"
 	"github.com/wow-look-at-my/recycler/internal/trash"
 )
@@ -589,14 +590,7 @@ func apply(b bin.Backend, plan *Plan, free func(string) (uint64, uint64, error),
 			// It went away between the walk and here, or it cannot be read.
 			continue
 		}
-		if uint64(size) > avail {
-			out.Refusals = append(out.Refusals, Refusal{
-				Path: c.Path,
-				Reason: fmt.Sprintf("%s does not fit in the %s free, so it would be deleted rather than recycled",
-					pressure.Bytes(uint64(size)), pressure.Bytes(avail)),
-			})
-			continue
-		}
+		// A bin on the target directory's own filesystem takes this by rename, which needs no free space whatever it weighs.
 		disposals, err := b.Recycle([]string{c.Path})
 		if err != nil {
 			out.Errors = append(out.Errors, err)
@@ -662,10 +656,7 @@ func exists(path string) bool {
 
 // sizeOf is the space an entry occupies.
 func sizeOf(info fs.FileInfo) int64 {
-	if blocks, ok := blocksOf(info); ok {
-		return blocks
-	}
-	return info.Size()
+	return fsutil.Allocated(info)
 }
 
 // DiskSize is the space a file, or everything under a directory, takes on its

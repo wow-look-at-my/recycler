@@ -26,6 +26,11 @@ func isolateMac(t *testing.T) (bin.Backend, string) {
 	require.NoError(t, os.MkdirAll(home, 0o700))
 	t.Setenv("HOME", home)
 
+	// Every volume of the host keeps a trash of its own, which HOME does not move.
+	mounts := Mounts
+	Mounts = func() []string { return nil }
+	t.Cleanup(func() { Mounts = mounts })
+
 	b, err := macBackend()
 	require.NoError(t, err)
 

@@ -242,10 +242,11 @@ func TestACapIsChargedToOneTargetDirectory(t *testing.T) {
 		filepath.Join("debug", "deps", "lib-a-1.rlib"): 400,
 	})
 	large := writeTarget(t, filepath.Join(work, "large"), 24*time.Hour, map[string]int{
-		filepath.Join("debug", "deps", "lib-b-1.rlib"): 4000,
+		filepath.Join("debug", "deps", "lib-b-1.rlib"): 1 << 20,
 	})
 
-	out, err := run(t, "", "trim", "--dry-run", "--cap", "1k", work)
+	// A cap is charged in allocated blocks, so the small checkout's files weigh a few blocks each.
+	out, err := run(t, "", "trim", "--dry-run", "--cap", "256k", work)
 	require.NoError(t, err)
 	assert.NotContains(t, out, small, "a checkout inside its cap was reported anyway")
 	assert.Contains(t, out, large)

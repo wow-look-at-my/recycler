@@ -432,25 +432,22 @@ func TestTrimRecyclesThroughTheBin(t *testing.T) {
 	assert.DirExists(t, target, "the target directory itself was removed")
 }
 
-// An entry bigger than what the filesystem has left cannot be deferred into a bin:
-// the backends would delete it. This package declines instead.
-func TestAnEntryTooBigForTheBinIsRefused(t *testing.T) {
+// An entry bigger than what the filesystem has left still goes to the bin.
+func TestAnEntryLargerThanTheFreeSpaceIsStillRecycled(t *testing.T) {
 	root := t.TempDir()
 	target := newTarget(t, root, map[string]fixture{
 		deps("small-000000.rlib"): {size: 100, age: old},
 		deps("huge-000000.rlib"):  {size: 600_000, age: fresh},
 	})
 	b := newBin(t)
-	// Enough room to defer a small file and nowhere near enough for the large one.
+	// Above the floor, and far less free than the large entry weighs.
 	tight := func(string) (uint64, uint64, error) { return (1 << 19) + 1, 1 << 20, nil }
 
 	outcome, err := Trim(root, Options{Cap: 1, Bin: b, Free: tight})
 	require.NoError(t, err)
-	assert.Equal(t, 1, outcome.Recycled, "the entry that fits was not recycled")
-	require.Len(t, outcome.Refusals, 1)
-	assert.Contains(t, outcome.Refusals[0].Path, "huge-000000.rlib")
-	assert.Contains(t, outcome.Refusals[0].Reason, "does not fit")
-	assert.FileExists(t, filepath.Join(target, deps("huge-000000.rlib")), "a refused entry was moved anyway")
+	assert.Empty(t, outcome.Refusals)
+	assert.Equal(t, 2, outcome.Recycled)
+	assert.NoFileExists(t, filepath.Join(target, deps("huge-000000.rlib")), "an entry was held back for its size")
 	assert.NoFileExists(t, filepath.Join(target, deps("small-000000.rlib")))
 }
 
