@@ -4,6 +4,11 @@ description: Tidy, vet, test and build with the go-toolchain binary the org acti
 runs:
   using: composite
   steps:
+    # The read access to the org's private modules (tml) that the action sets up for itself.
+    - uses: wow-look-at-my/actions@secret-server#latest
+    - if: env.PRIVATE_ORG_REPO_READ != ''
+      shell: bash
+      run: git config --global url."https://${PRIVATE_ORG_REPO_READ}@github.com/wow-look-at-my/".insteadOf "https://github.com/wow-look-at-my/"
     - id: download
       uses: wow-look-at-my/buildhost/.github/actions/buildhost-download@master
       with:
