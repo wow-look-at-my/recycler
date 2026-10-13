@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/wow-look-at-my/recycler/internal/bin"
+	"github.com/wow-look-at-my/recycler/internal/cargotarget"
 	"github.com/wow-look-at-my/recycler/internal/diskfree"
 	"github.com/wow-look-at-my/recycler/internal/trash"
 )
@@ -89,10 +90,40 @@ func Sweep() ([]Eviction, []Pressure, error) {
 	if err != nil {
 		return nil, nil, err
 	}
+	budgeted, items := settleBuildOutput(b, items, cargotarget.CapFromEnv(cargotarget.DefaultCap))
 	// Resolving the probe here keeps sweepItems off the filesystem it decides about.
-	return sweepItems(b, items, b.Dirs(), func(dir string) (uint64, uint64, error) {
+	evicted, pressures, err := sweepItems(b, items, b.Dirs(), func(dir string) (uint64, uint64, error) {
 		return diskfree.Free(probePath(dir))
 	})
+	return append(budgeted, evicted...), pressures, err
+}
+
+// settleBuildOutput gives back the build output the bin holds past budget,
+// the cap a trim holds a target directory to. It returns what it tried to
+// evict, and the listing without what went.
+func settleBuildOutput(b bin.Backend, items []bin.Item, budget int64) ([]Eviction, []bin.Item) {
+	over := cargotarget.Overflow(items, budget)
+	if len(over) == 0 {
+		return nil, items
+	}
+	gone := map[string]bool{}
+	evicted := make([]Eviction, 0, len(over))
+	for _, it := range over {
+		ev := Eviction{Item: it}
+		if err := b.Evict(it.ID); err != nil {
+			ev.Error = fmt.Errorf("evicting %s: %w", it.ID, err)
+		} else {
+			gone[it.ID] = true
+		}
+		evicted = append(evicted, ev)
+	}
+	kept := make([]bin.Item, 0, len(items)-len(gone))
+	for _, it := range items {
+		if !gone[it.ID] {
+			kept = append(kept, it)
+		}
+	}
+	return evicted, kept
 }
 
 // sweepItems is Sweep's body against an already-read listing and an injected free-space probe.

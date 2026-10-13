@@ -150,13 +150,17 @@ func (t *macTrash) Restore(id, dest string) (string, error) {
 	return dest, putback.Clear(dir, name)
 }
 
-// evict destroys a trashed item.
+// Evict destroys a trashed item and the put back record naming it. The
+// trash's .DS_Store does not keep growing with records for items long gone.
 func (t *macTrash) Evict(id string) error {
 	file, err := t.resolveID(id)
 	if err != nil {
 		return err
 	}
-	return os.RemoveAll(file)
+	if err := os.RemoveAll(file); err != nil {
+		return err
+	}
+	return putback.Clear(filepath.Dir(file), filepath.Base(file))
 }
 
 // resolveID validates an item ID, rejecting anything.

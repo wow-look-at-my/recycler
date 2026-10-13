@@ -465,8 +465,20 @@ type Outcome struct {
 	Recycled  int
 	Reclaimed int64
 
+	// Returned is the build output the bin held past its budget and gave back.
+	Returned []Return
+
 	Refusals []Refusal
 	Errors   []error
+}
+
+// Freed is what the bin gave back to the filesystem.
+func (o *Outcome) Freed() int64 {
+	var total int64
+	for _, r := range o.Returned {
+		total += r.Bytes
+	}
+	return total
 }
 
 // Planned is what the plans would take back, which is the number a dry run has
@@ -498,12 +510,9 @@ type Options struct {
 // recycling the oldest regenerable output first and newest last. The build in
 // progress keeps its cache.
 //
-// Nothing here is ever deleted: an entry goes through the recycle bin like any
-// other path the tool takes. That is also why a target directory on a filesystem
-// under the daemon's floor is refused rather than trimmed. A bin sits on the
-// filesystem it takes from, so a move there frees nothing. The backends turn a
-// move that cannot be deferred into a deletion. Build output that cargo writes
-// again is not worth breaking that promise over, and the refusal says so.
+// Every entry goes through the recycle bin. Under the daemon's floor the
+// backends would delete instead, so such a target directory is refused. A run
+// that is not a dry run then settles the bin with [Settle].
 func Trim(root string, opts Options) (*Outcome, error) {
 	if opts.Cap == 0 {
 		opts.Cap = CapFromEnv(DefaultCap)
@@ -543,6 +552,14 @@ func Trim(root string, opts Options) (*Outcome, error) {
 		out.Recycled += applied.Recycled
 		out.Reclaimed += applied.Applied
 	}
+	if opts.DryRun {
+		return out, nil
+	}
+	returned, err := Settle(b, opts.Cap)
+	out.Returned = returned
+	if err != nil {
+		out.Errors = append(out.Errors, err)
+	}
 	return out, nil
 }
 
@@ -562,10 +579,16 @@ func CapFromEnv(def int64) int64 {
 // EnvCapName is the variable [CapFromEnv] reads, for the CLI to name in its help.
 const EnvCapName = capEnv
 
-// apply recycles a plan's entries in order, re-measuring each as it goes. The
-// plan's own numbers come from an earlier walk of the same tree. An earlier
-// tier has already moved some of what a whole profile directory used to
-// contain. It returns the count and bytes that reached the bin.
+// apply recycles a plan's entries, re-measuring each as it goes. The plan's
+// own numbers come from an earlier walk of the same tree. An earlier tier has
+// already moved some of what a whole profile directory used to contain. It
+// returns the count and bytes that reached the bin.
+//
+// The entries go to the bin as one item. Each is renamed into a directory
+// inside the target directory, keeping its path, and that directory is
+// recycled. A cargo tree holds entries by those, and a bin item each would
+// cost a put back record each. It would also make a listing of the bin as long
+// as the deps directories it came from.
 func apply(b bin.Backend, plan *Plan, free func(string) (uint64, uint64, error), out *Outcome) (int, int64) {
 	avail, total, err := free(filepath.Dir(plan.Target.Path))
 	if err != nil {
@@ -582,7 +605,8 @@ func apply(b bin.Backend, plan *Plan, free func(string) (uint64, uint64, error),
 		return 0, 0
 	}
 
-	var recycled int
+	bundle := filepath.Join(plan.Target.Path, fsutil.UniqueName(bundlePrefix+time.Now().Format(bundleStamp), plan.Target.Path))
+	var staged int
 	var bytes int64
 	for _, c := range plan.Recycle {
 		size := DiskSize(c.Path)
@@ -590,23 +614,80 @@ func apply(b bin.Backend, plan *Plan, free func(string) (uint64, uint64, error),
 			// It went away between the walk and here, or it cannot be read.
 			continue
 		}
-		// A bin on the target directory's own filesystem takes this by rename, which needs no free space whatever it weighs.
-		disposals, err := b.Recycle([]string{c.Path})
+		rel, err := filepath.Rel(plan.Target.Path, c.Path)
 		if err != nil {
 			out.Errors = append(out.Errors, err)
 			continue
 		}
-		for _, d := range disposals {
-			if d.Permanent {
-				// Checked again after the fact: the bin has the last word on whether it could defer.
-				out.Refusals = append(out.Refusals, Refusal{Path: d.Path, Reason: "recycled permanently: " + d.Reason})
-				continue
-			}
-			recycled++
-			bytes += size
+		if err := stage(c.Path, filepath.Join(bundle, rel)); err != nil {
+			out.Errors = append(out.Errors, fmt.Errorf("recycler: gathering %s for the bin: %w", c.Path, err))
+			continue
+		}
+		staged++
+		bytes += size
+	}
+	if staged == 0 {
+		// Nothing moved, so the bundle holds at most the directories made for it.
+		if err := os.RemoveAll(bundle); err != nil {
+			out.Errors = append(out.Errors, err)
+		}
+		return 0, 0
+	}
+
+	// A bin on the target directory's own filesystem takes the bundle by rename.
+	disposals, err := b.Recycle([]string{bundle})
+	if err != nil {
+		out.Errors = append(out.Errors, err)
+		return 0, 0
+	}
+	for _, d := range disposals {
+		if d.Permanent {
+			// Checked again after the fact: the bin has the last word on whether it could defer.
+			out.Refusals = append(out.Refusals, Refusal{Path: d.Path, Reason: "recycled permanently: " + d.Reason})
+			return 0, 0
 		}
 	}
-	return recycled, bytes
+	return staged, bytes
+}
+
+// bundlePrefix and bundleStamp name the directory a run gathers a target
+// directory's entries into, which is the name the bin lists them under.
+const (
+	bundlePrefix = "recycler-trim-"
+	bundleStamp  = "20060102-150405"
+)
+
+// stage renames src to dst, creating dst's parents. A directory whose
+// destination already exists is merged into it: a profile directory goes
+// after entries an earlier tier already took out of it.
+func stage(src, dst string) error {
+	dstInfo, err := os.Lstat(dst)
+	if errors.Is(err, fs.ErrNotExist) {
+		if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+			return err
+		}
+		return os.Rename(src, dst)
+	}
+	if err != nil {
+		return err
+	}
+	srcInfo, err := os.Lstat(src)
+	if err != nil {
+		return err
+	}
+	if !srcInfo.IsDir() || !dstInfo.IsDir() {
+		return fmt.Errorf("%w: %s", bin.ErrExists, dst)
+	}
+	entries, err := os.ReadDir(src)
+	if err != nil {
+		return err
+	}
+	for _, e := range entries {
+		if err := stage(filepath.Join(src, e.Name()), filepath.Join(dst, e.Name())); err != nil {
+			return err
+		}
+	}
+	return os.Remove(src)
 }
 
 // ParseCap reads a size cap: a plain byte count, or a number followed by a unit

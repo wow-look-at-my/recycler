@@ -45,12 +45,14 @@ progress keeps its cache:
   4. for a worktree's target directory only, a whole build profile directory,
      which is what a merged or deleted branch leaves behind.
 
-Nothing is deleted. Each entry goes to the recycle bin like any other path this
-tool takes, where "recycler list" shows it and "recycler restore" puts it back. A
-recycle bin sits on the filesystem it takes from, so this holds a target directory
-to its cap rather than freeing the bytes at once: the disk-pressure daemon gives
-them back, oldest item first, when the filesystem needs them. The move into the
-bin is a rename, so an entry goes however much it weighs.
+What a run takes from one target directory goes to the recycle bin as a single
+item, a recycler-trim-<time> directory holding each entry at its own path, where
+"recycler list" shows it and "recycler restore" puts it back. A recycle bin sits
+on the filesystem it takes from, so the move frees nothing by itself. The bin
+therefore keeps build output to the same cap: after the move, the build output
+it holds past the cap goes back to the filesystem, oldest first. The
+disk-pressure daemon holds the bin to that cap between runs too. The move into
+the bin is a rename, so an entry goes however much it weighs.
 
 With no arguments the directories listed in RECYCLER_TRIM_ROOTS are scanned,
 defaulting to ~/repos. A scan never crosses onto another filesystem, never
@@ -98,6 +100,7 @@ capped.`,
 			whole.Plans = append(whole.Plans, outcome.Plans...)
 			whole.Recycled += outcome.Recycled
 			whole.Reclaimed += outcome.Reclaimed
+			whole.Returned = append(whole.Returned, outcome.Returned...)
 			whole.Refusals = append(whole.Refusals, outcome.Refusals...)
 			whole.Errors = append(whole.Errors, outcome.Errors...)
 		}
@@ -191,6 +194,10 @@ func tallyByTier(plan cargotarget.Plan) []tally {
 // reportTrimTotals is the line a script reads: what the run found, and what
 // it did about it.
 func reportTrimTotals(out io.Writer, o *cargotarget.Outcome, dryRun bool) {
+	if len(o.Returned) > 0 {
+		fmt.Fprintf(out, "the bin gave back %s of build output past its budget, %s\n",
+			humanSize(o.Freed()), plural(len(o.Returned), "item", "items"))
+	}
 	if len(o.Plans) == 0 {
 		fmt.Fprintln(out, "nothing to do: every cargo target directory scanned is inside its cap")
 		return
@@ -208,10 +215,6 @@ func reportTrimTotals(out io.Writer, o *cargotarget.Outcome, dryRun bool) {
 	fmt.Fprintf(out, "%s %s, %s taking %s\n",
 		plural(len(o.Plans), "target directory", "target directories"), what,
 		plural(entries, "entry", "entries"), humanSize(taken))
-	if !dryRun && o.Recycled > 0 {
-		fmt.Fprintln(out, "the bytes are in the recycle bin, which sits on the filesystem they came from: "+
-			"\"recycler daemon --once\" gives them back when that filesystem needs them")
-	}
 }
 
 // reportTrimRefusals names what the run left over the cap. A refusal is the

@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/wow-look-at-my/recycler/internal/bin"
+	"github.com/wow-look-at-my/recycler/internal/putback"
 )
 
 // A cosmo build carries the macOS backend, so this exercises it on whatever
@@ -64,6 +65,26 @@ func TestTheMacBinRecyclesListsAndRestores(t *testing.T) {
 	after, err := b.List()
 	require.NoError(t, err)
 	assert.Empty(t, after, "the record outlived the item")
+}
+
+// An evicted item takes its put back record with it. A record left behind for
+// every evicted item makes each later write to the .DS_Store slower.
+func TestTheMacBinEvictsTheRecordWithTheItem(t *testing.T) {
+	b, work := isolateMac(t)
+	path := filepath.Join(work, "doomed.txt")
+	require.NoError(t, os.WriteFile(path, []byte("x"), 0o644))
+	_, err := b.Recycle([]string{path})
+	require.NoError(t, err)
+
+	items, err := b.List()
+	require.NoError(t, err)
+	require.Len(t, items, 1)
+	dir, name := filepath.Dir(items[0].ID), filepath.Base(items[0].ID)
+	require.Contains(t, putback.Read(dir), name)
+
+	require.NoError(t, b.Evict(items[0].ID))
+	assert.NoFileExists(t, items[0].ID)
+	assert.NotContains(t, putback.Read(dir), name, "the put back record outlived the evicted item")
 }
 
 // An ID is a path inside this user's bin. Anything else must not be reached,

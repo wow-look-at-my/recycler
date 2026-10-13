@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/wow-look-at-my/recycler/internal/bin"
+	"github.com/wow-look-at-my/recycler/internal/fsutil"
 )
 
 // A fixture is a fake cargo tree written in code, sized and dated per file.
@@ -90,12 +91,13 @@ func markers(t *testing.T, target string) int64 {
 	return DiskSize(filepath.Join(target, cacheDirTag)) + DiskSize(filepath.Join(target, rustcInfo))
 }
 
-// A recordingBin stands in for the platform bin. It moves what it is given into a
-// directory of its own and remembers the order it was asked in.
+// A recordingBin stands in for the platform bin.
 type recordingBin struct {
-	dir   string
-	taken []string
-	err   error
+	dir     string
+	taken   []string
+	items   []bin.Item
+	evicted []string
+	err     error
 
 	// perm answers with a permanent disposal, which is what a bin with nowhere to defer a deletion does.
 	perm bool
@@ -112,19 +114,34 @@ func (b *recordingBin) Recycle(paths []string) ([]bin.Disposal, error) {
 	}
 	var disposals []bin.Disposal
 	for _, path := range paths {
-		if err := os.Rename(path, filepath.Join(b.dir, filepath.Base(path))); err != nil {
+		dest := filepath.Join(b.dir, filepath.Base(path))
+		if err := os.Rename(path, dest); err != nil {
 			return nil, err
 		}
 		b.taken = append(b.taken, path)
 		disposals = append(disposals, bin.Disposal{Path: path, Permanent: b.perm})
+		if !b.perm {
+			b.items = append(b.items, bin.Item{ID: dest, OriginalPath: path, Size: fsutil.TreeSize(dest), DeletedAt: time.Now()})
+		}
 	}
 	return disposals, nil
 }
 
-func (b *recordingBin) List() ([]bin.Item, error)              { return nil, nil }
+func (b *recordingBin) List() ([]bin.Item, error)              { return b.items, nil }
 func (b *recordingBin) Restore(string, string) (string, error) { return "", nil }
-func (b *recordingBin) Evict(string) error                     { return nil }
 func (b *recordingBin) Dirs() []string                         { return []string{b.dir} }
+
+func (b *recordingBin) Evict(id string) error {
+	if err := os.RemoveAll(id); err != nil {
+		return err
+	}
+	b.evicted = append(b.evicted, id)
+	b.items = slices.DeleteFunc(b.items, func(it bin.Item) bool { return it.ID == id })
+	return nil
+}
+
+// binned is where the bin keeps what it took from path.
+func (b *recordingBin) binned(path string) string { return filepath.Join(b.dir, filepath.Base(path)) }
 
 // roomy is a filesystem with somewhere to defer a recycle into.
 func roomy(string) (uint64, uint64, error) { return 100 << 30, 1000 << 30, nil }
@@ -400,8 +417,9 @@ func TestADryRunChangesNothing(t *testing.T) {
 	assert.FileExists(t, filepath.Join(target, cacheDirTag))
 }
 
-// The real path: each entry reaches the bin, the newest last, and the directory
-// itself and the markers that identify it stay where they are.
+// The real path. The entries reach the bin as one item holding each at its own
+// path, and the directory itself and the markers. That identify it stay where
+// they are.
 func TestTrimRecyclesThroughTheBin(t *testing.T) {
 	root := t.TempDir()
 	target := newTarget(t, root, map[string]fixture{
@@ -419,10 +437,15 @@ func TestTrimRecyclesThroughTheBin(t *testing.T) {
 	assert.Equal(t, 2*one, outcome.Reclaimed)
 	assert.Empty(t, outcome.Errors)
 	assert.Empty(t, outcome.Refusals)
-	assert.Equal(t, []string{
-		filepath.Join(target, "debug", incrementalDir, "crate-1"),
-		filepath.Join(target, deps("lib-a-000000.rlib")),
-	}, b.taken, "the bin got the oldest of each kind")
+
+	require.Len(t, b.taken, 1, "a run is one item in the bin")
+	assert.Equal(t, target, filepath.Dir(b.taken[0]))
+	assert.True(t, strings.HasPrefix(filepath.Base(b.taken[0]), bundlePrefix), "the item is named %s", b.taken[0])
+	binned := b.binned(b.taken[0])
+	assert.FileExists(t, filepath.Join(binned, "debug", incrementalDir, "crate-1", "a.o"), "the bin did not get the oldest incremental")
+	assert.FileExists(t, filepath.Join(binned, deps("lib-a-000000.rlib")), "the bin did not get the oldest artifact")
+	assert.NoFileExists(t, filepath.Join(binned, deps("lib-b-000000.rlib")))
+	assert.Empty(t, outcome.Returned, "build output inside the budget was given back")
 
 	assert.NoFileExists(t, filepath.Join(target, deps("lib-a-000000.rlib")))
 	assert.FileExists(t, filepath.Join(target, deps("lib-b-000000.rlib")),
@@ -536,7 +559,109 @@ func TestAnEntryAlreadyGoneIsSkipped(t *testing.T) {
 	assert.Equal(t, 1, recycled)
 	assert.Equal(t, one, bytes)
 	assert.Empty(t, out.Errors)
-	assert.Equal(t, []string{filepath.Join(target, "debug", incrementalDir, "crate-1")}, b.taken)
+	require.Len(t, b.taken, 1)
+	binned := b.binned(b.taken[0])
+	assert.DirExists(t, filepath.Join(binned, "debug", incrementalDir, "crate-1"))
+	assert.NoDirExists(t, filepath.Join(binned, "debug", depsDir), "the entry that was gone reached the bin anyway")
+}
+
+// A run that gathers nothing leaves no empty directory behind in the target.
+func TestARunThatGathersNothingLeavesNoBundle(t *testing.T) {
+	root := t.TempDir()
+	target := newTarget(t, root, map[string]fixture{deps("lib-a-000000.rlib"): {size: 300, age: old}})
+	plan, err := Inspect(Target{Path: target}, 1)
+	require.NoError(t, err)
+	require.NoError(t, os.Remove(filepath.Join(target, deps("lib-a-000000.rlib"))))
+	b := newBin(t)
+
+	recycled, _ := apply(b, &plan, roomy, &Outcome{})
+	assert.Zero(t, recycled)
+	assert.Empty(t, b.taken)
+	entries, err := os.ReadDir(target)
+	require.NoError(t, err)
+	for _, e := range entries {
+		assert.False(t, strings.HasPrefix(e.Name(), bundlePrefix), "an empty bundle was left at %s", e.Name())
+	}
+}
+
+// A whole profile directory goes after entries an earlier tier already took out
+// of it, so it is merged into what is already gathered.
+func TestStageMergesIntoWhatIsAlreadyGathered(t *testing.T) {
+	root := t.TempDir()
+	src := filepath.Join(root, "src", "debug")
+	dst := filepath.Join(root, "dst", "debug")
+	writeFile(t, filepath.Join(src, "a"), "a", 0)
+	writeFile(t, filepath.Join(src, "deps", "c"), "c", 0)
+	writeFile(t, filepath.Join(dst, "deps", "b"), "b", 0)
+
+	require.NoError(t, stage(src, dst))
+	assert.FileExists(t, filepath.Join(dst, "a"))
+	assert.FileExists(t, filepath.Join(dst, "deps", "b"))
+	assert.FileExists(t, filepath.Join(dst, "deps", "c"))
+	assert.NoDirExists(t, src)
+
+	// A file where a directory is to go is never overwritten.
+	writeFile(t, filepath.Join(src, "a"), "new", 0)
+	err := stage(filepath.Join(src, "a"), filepath.Join(dst, "a"))
+	require.ErrorIs(t, err, bin.ErrExists)
+	got, err := os.ReadFile(filepath.Join(dst, "a"))
+	require.NoError(t, err)
+	assert.Equal(t, "a", string(got))
+}
+
+// A trim returns the space it took: build output the bin holds past the cap
+// goes back to the filesystem. A user's own item in the bin is not build
+// output, and stays however large it is.
+func TestATrimGivesBackBuildOutputPastTheBudget(t *testing.T) {
+	root := t.TempDir()
+	target := newTarget(t, root, map[string]fixture{
+		deps("lib-a-000000.rlib"): {size: 300, age: old},
+		deps("lib-b-000000.rlib"): {size: 300, age: old},
+	})
+	b := newBin(t)
+	mine := filepath.Join(b.dir, "notes.txt")
+	writeFile(t, mine, strings.Repeat("y", 4096), 0)
+	b.items = append(b.items, bin.Item{
+		ID: mine, OriginalPath: filepath.Join(root, "notes.txt"), Size: 4096, DeletedAt: time.Now().Add(-old),
+	})
+
+	outcome, err := Trim(root, Options{Cap: 1, Bin: b, Free: roomy})
+	require.NoError(t, err)
+	assert.Empty(t, outcome.Errors)
+	assert.Equal(t, 2, outcome.Recycled)
+	require.Len(t, outcome.Returned, 1)
+	require.Len(t, b.taken, 1)
+	assert.Equal(t, []string{b.binned(b.taken[0])}, b.evicted)
+	assert.NoDirExists(t, b.binned(b.taken[0]), "the build output is still holding its space")
+	assert.Positive(t, outcome.Freed())
+	assert.NoFileExists(t, filepath.Join(target, deps("lib-a-000000.rlib")))
+	assert.FileExists(t, mine, "a user's own item went for the build output's budget")
+}
+
+// The bin keeps the newest build output up to the budget, in each bin
+// directory, and gives back the rest. What it keeps is never chosen for being
+// small: an older item goes once a newer one has filled the budget.
+func TestOverflowKeepsTheNewestWithinTheBudget(t *testing.T) {
+	root := t.TempDir()
+	target := newTarget(t, root, nil)
+	notCargo := filepath.Join(root, "other", targetName)
+	require.NoError(t, os.MkdirAll(notCargo, 0o755))
+	now := time.Now()
+	in := func(dir, name string, size int64, age time.Duration) bin.Item {
+		return bin.Item{
+			ID: filepath.Join(dir, name), OriginalPath: filepath.Join(target, name), Size: size, DeletedAt: now.Add(-age),
+		}
+	}
+	newest := in("/bin-a", "trim-3", 60, 1*time.Hour)
+	middle := in("/bin-a", "trim-2", 60, 2*time.Hour)
+	oldest := in("/bin-a", "trim-1", 1, 3*time.Hour)
+	elsewhere := in("/bin-b", "trim-4", 60, 4*time.Hour)
+	unknown := in("/bin-a", "trim-0", bin.SizeUnknown, 5*time.Hour)
+	maven := bin.Item{ID: "/bin-a/classes", OriginalPath: filepath.Join(notCargo, "classes"), Size: 1000, DeletedAt: now}
+	theTarget := bin.Item{ID: "/bin-a/target", OriginalPath: target, Size: 1000, DeletedAt: now}
+
+	over := Overflow([]bin.Item{oldest, maven, newest, elsewhere, unknown, middle, theTarget}, 100)
+	assert.Equal(t, []bin.Item{middle, oldest}, over)
 }
 
 // A symlink inside a target directory stands for bytes that are not its own, and

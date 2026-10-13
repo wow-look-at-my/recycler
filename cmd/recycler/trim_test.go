@@ -115,7 +115,7 @@ func TestTrimRecyclesTheOldestOutputIntoTheBin(t *testing.T) {
 	out, err := run(t, "", "trim", "--cap", capTaking(t, target, stale...), work)
 	require.NoError(t, err)
 	assert.Contains(t, out, "trimmed")
-	assert.Contains(t, out, "recycler daemon --once", "the bytes are in the bin, and only the daemon gives them back")
+	assert.NotContains(t, out, "gave back", "build output inside the budget left the bin")
 
 	assert.NoFileExists(t, filepath.Join(target, "debug", "incremental", "old-1", "big.o"))
 	assert.NoFileExists(t, filepath.Join(target, "debug", "deps", "lib-old-1.rlib"))
@@ -124,11 +124,26 @@ func TestTrimRecyclesTheOldestOutputIntoTheBin(t *testing.T) {
 	assert.DirExists(t, target)
 
 	mine := itemsFrom(t, target)
-	require.Len(t, mine, 2, "what the cap took is not in the recycle bin")
-	for _, item := range mine {
-		assert.True(t, strings.HasPrefix(item.OriginalPath, target),
-			"%s came from somewhere the cap has no business reaching", item.OriginalPath)
-	}
+	require.Len(t, mine, 1, "what the cap took is not one item in the recycle bin")
+	assert.Equal(t, target, filepath.Dir(mine[0].OriginalPath),
+		"%s came from somewhere the cap has no business reaching", mine[0].OriginalPath)
+	assert.FileExists(t, filepath.Join(mine[0].ID, "debug", "incremental", "old-1", "big.o"))
+	assert.FileExists(t, filepath.Join(mine[0].ID, "debug", "deps", "lib-old-1.rlib"))
+}
+
+// Past the cap the bin gives the build output back. The run returns the
+// space it took rather than moving it beside the target directory.
+func TestTrimReturnsTheSpaceItTook(t *testing.T) {
+	work := isolateTrash(t)
+	target := writeTarget(t, work, 24*time.Hour, map[string]int{
+		filepath.Join("debug", "deps", "lib-a-1.rlib"): 64 << 10,
+	})
+
+	out, err := run(t, "", "trim", "--cap", "1", work)
+	require.NoError(t, err)
+	assert.Contains(t, out, "the bin gave back")
+	assert.NoFileExists(t, filepath.Join(target, "debug", "deps", "lib-a-1.rlib"))
+	assert.Empty(t, itemsFrom(t, target), "the build output is still in the bin, holding its space")
 }
 
 func TestTrimLeavesATargetWithRoomAlone(t *testing.T) {
