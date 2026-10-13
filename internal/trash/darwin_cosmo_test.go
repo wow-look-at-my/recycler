@@ -10,6 +10,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/wow-look-at-my/go-containers/set"
 
 	"github.com/wow-look-at-my/recycler/internal/bin"
 	"github.com/wow-look-at-my/recycler/internal/putback"
@@ -83,13 +84,13 @@ func TestTheMacBinRecordsABatchInOneRewrite(t *testing.T) {
 
 	items, err := b.List()
 	require.NoError(t, err)
-	recorded := map[string]bool{}
+	recorded := set.New[string](len(items))
 	for _, item := range items {
-		recorded[item.OriginalPath] = true
+		recorded.Add(item.OriginalPath)
 	}
 	for _, path := range paths {
 		assert.NoFileExists(t, path)
-		assert.True(t, recorded[path], "%s is in the trash with no put back record", path)
+		assert.True(t, recorded.Contains(path), "%s is in the trash with no put back record", path)
 	}
 }
 
