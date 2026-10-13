@@ -141,7 +141,16 @@ func Find(root string) ([]Target, error) {
 	if !rootInfo.IsDir() {
 		return nil, fmt.Errorf("recycler: %s is not a directory", abs)
 	}
+	if insideOffLimits(abs) {
+		return nil, fmt.Errorf("recycler: %s is inside a tree recycler never scans", abs)
+	}
 	rootDev, bounded := deviceOf(rootInfo)
+
+	// A target directory named as the root is what it names: "recycler trim
+	// <repo>/target" has to answer for that directory and not walk past it.
+	if filepath.Base(abs) == targetName && IsCargoTarget(abs) {
+		return []Target{{Path: abs, Worktree: worktreeOf(abs)}}, nil
+	}
 
 	var found []Target
 	err = filepath.WalkDir(abs, func(path string, d fs.DirEntry, err error) error {
@@ -196,6 +205,20 @@ func skipTrees(name string) bool {
 		return true
 	}
 	return false
+}
+
+// insideOffLimits reports whether path sits under a directory a scan never
+// enters.
+func insideOffLimits(path string) bool {
+	for rest := path; ; rest = filepath.Dir(rest) {
+		if skipTrees(filepath.Base(rest)) {
+			return true
+		}
+		parent := filepath.Dir(rest)
+		if parent == rest {
+			return false
+		}
+	}
 }
 
 // worktreeOf returns the agent worktree a target directory belongs to, or the
@@ -260,6 +283,9 @@ func (p Plan) Shortfall() int64 {
 func Inspect(target Target, cap int64) (Plan, error) {
 	if !IsCargoTarget(target.Path) {
 		return Plan{}, fmt.Errorf("recycler: refusing to trim %s: it is not a cargo target directory", target.Path)
+	}
+	if insideOffLimits(target.Path) {
+		return Plan{}, fmt.Errorf("recycler: refusing to trim %s: it is inside a tree recycler never scans", target.Path)
 	}
 	plan := Plan{Target: target, Cap: cap}
 

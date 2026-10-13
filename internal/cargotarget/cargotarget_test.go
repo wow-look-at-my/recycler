@@ -346,6 +346,36 @@ func TestARecycleBinIsNotScannedForBuildOutput(t *testing.T) {
 	got, err := Find(root)
 	require.NoError(t, err)
 	assert.Empty(t, got, "a scan reached into the recycle bin")
+
+	// Naming one directly is refused as well, so no caller can talk its way in.
+	inBin := filepath.Join(root, ".Trash-501", targetName)
+	_, err = Find(inBin)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "never scans")
+
+	_, err = Inspect(Target{Path: inBin}, 1)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "never scans")
+	assert.FileExists(t, filepath.Join(inBin, deps("libcrate-1-000000.rlib")),
+		"a refused directory was disturbed anyway")
+}
+
+// A user names the directory they are worried about, which is usually the target
+// directory itself rather than the checkout holding it.
+func TestATargetDirectoryCanBeNamedAsTheRoot(t *testing.T) {
+	root := t.TempDir()
+	target := newTarget(t, root, map[string]fixture{
+		deps("libcrate-1-000000.rlib"): {size: 10, age: old},
+	})
+
+	got, err := Find(target)
+	require.NoError(t, err)
+	require.Len(t, got, 1)
+	assert.Equal(t, target, got[0].Path)
+
+	outcome, err := Trim(target, Options{Cap: 1, Bin: newBin(t), Free: roomy})
+	require.NoError(t, err)
+	require.Len(t, outcome.Plans, 1, "naming the build directory found nothing to cap")
 }
 
 // A dry run is a measurement, not the rehearsal of a change.
