@@ -1,7 +1,6 @@
 package main
 
 import (
-	"errors"
 	"fmt"
 
 	"github.com/spf13/cobra"
@@ -26,33 +25,26 @@ naming it goes to standard error and --quiet does not suppress it.`,
 	Args: cobra.MinimumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		quiet, _ := cmd.Flags().GetBool("quiet")
-		// A call per path, so a failure affects only its own path.
-		var errs []error
+		// One call for every path, so the backend can batch its bookkeeping.
+		disposals, err := recycler.Recycle(args...)
 		recycled := 0
-		for _, path := range args {
-			disposals, err := recycler.Recycle(path)
-			if err != nil {
-				errs = append(errs, err)
+		for _, d := range disposals {
+			if d.Permanent {
+				// Never quiet. A caller who believes this went to the bin
+				// will go looking for it, and there is nothing to find.
+				fmt.Fprintf(cmd.ErrOrStderr(), "deleted %s permanently, not recycled: %s\n",
+					d.Path, d.Reason)
 				continue
 			}
-			for _, d := range disposals {
-				if d.Permanent {
-					// Never quiet. A caller who believes this went to the bin
-					// will go looking for it, and there is nothing to find.
-					fmt.Fprintf(cmd.ErrOrStderr(), "deleted %s permanently, not recycled: %s\n",
-						path, d.Reason)
-					continue
-				}
-				recycled++
-				if !quiet {
-					fmt.Fprintf(cmd.OutOrStdout(), "recycled %s\n", path)
-				}
+			recycled++
+			if !quiet {
+				fmt.Fprintf(cmd.OutOrStdout(), "recycled %s\n", d.Path)
 			}
 		}
 		if recycled > 0 {
 			startDaemon(cmd.ErrOrStderr())
 		}
-		return errors.Join(errs...)
+		return err
 	},
 }
 

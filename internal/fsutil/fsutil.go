@@ -11,6 +11,8 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/wow-look-at-my/go-containers/set"
+
 	"github.com/wow-look-at-my/recycler/internal/bin"
 )
 
@@ -146,8 +148,8 @@ func TreeSize(path string) int64 {
 	return total.Load()
 }
 
-// UniqueName returns a name derived from want that does not yet exist.
-func UniqueName(want string, dirs ...string) string {
+// UniqueName returns a name derived from want that exists in none of dirs and is not in taken.
+func UniqueName(want string, taken set.Set[string], dirs ...string) string {
 	if want == "" || want == "." || want == ".." || strings.ContainsRune(want, filepath.Separator) {
 		want = "recycled"
 	}
@@ -158,7 +160,7 @@ func UniqueName(want string, dirs ...string) string {
 		if n > 0 {
 			candidate = fmt.Sprintf("%s_%d%s", base, n, ext)
 		}
-		if !existsIn(candidate, dirs) {
+		if !taken.Contains(candidate) && !existsIn(candidate, dirs) {
 			return candidate
 		}
 	}
