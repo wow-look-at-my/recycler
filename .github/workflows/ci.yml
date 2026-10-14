@@ -19,13 +19,11 @@ permissions:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.event.repository.visibility == 'public' && 'ubuntu-latest' || vars.CI_RUNNER || 'ubuntu-latest' }}
     steps:
       - uses: actions/checkout@v4
-      # The matrix's one native output is a cosmo APE, which recycles nothing.
+      # The only job that runs the action: it publishes every binary it builds, and a run's release takes one publish.
       - uses: wow-look-at-my/go-toolchain@master
-        with:
-          autorelease: false
       # Artifact storage is a quota deletion cannot give back, so the APE rides the cache to the Mac.
       - uses: wow-look-at-my/actions@cache-upload#latest
         with:
@@ -34,15 +32,15 @@ jobs:
 
   # The only job that compiles darwin.go. It waits on nothing, so a red linux build still answers for a Mac.
   macos:
+    if: github.event.repository.visibility == 'public'
     runs-on: macos-14
     steps:
       - uses: actions/checkout@v4
-      - uses: wow-look-at-my/go-toolchain@master
-        with:
-          autorelease: false
+      - uses: ./.github/actions/go-toolchain-cli
 
   # The APE a Mac downloads, run on a Mac: it picks its bin and its lock there, and nowhere else.
   macos-ape:
+    if: github.event.repository.visibility == 'public'
     runs-on: macos-14
     needs: build
     steps:
@@ -51,8 +49,6 @@ jobs:
         with:
           name: recycler-ape
           path: ape
-      - uses: wow-look-at-my/go-toolchain@master
-        with:
-          autorelease: false
+      - uses: ./.github/actions/go-toolchain-cli
         env:
           RECYCLER_TEST_BINARY: ${{ github.workspace }}/ape/recycler
