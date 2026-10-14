@@ -64,19 +64,19 @@ func (t *macTrash) recycleOne(path string) (bin.Disposal, error) {
 		return bin.Disposal{}, errors.New("refusing to recycle the filesystem root")
 	}
 
+	dir, err := t.trashDirFor(abs)
+	if err != nil {
+		return bin.Disposal{}, err
+	}
+
 	// A trash is on the volume it takes from, so recycling frees nothing there.
 	// Under the daemon's floor the deletion the caller asked for is the only
 	// thing that gives space back.
-	if decision := pressure.Check(abs, fsutil.TreeSize(abs)); decision.Permanent {
+	if decision := pressure.Check(abs, dir); decision.Permanent {
 		if err := os.RemoveAll(abs); err != nil {
 			return bin.Disposal{}, err
 		}
 		return bin.Disposal{Path: abs, Permanent: true, Reason: decision.Reason}, nil
-	}
-
-	dir, err := t.trashDirFor(abs)
-	if err != nil {
-		return bin.Disposal{}, err
 	}
 	dest := filepath.Join(dir, putback.TrashName(filepath.Base(abs), dir))
 	if err := fsutil.Move(abs, dest); err != nil {
@@ -150,13 +150,17 @@ func (t *macTrash) Restore(id, dest string) (string, error) {
 	return dest, putback.Clear(dir, name)
 }
 
-// evict destroys a trashed item.
+// Evict destroys a trashed item and the put back record naming it. The
+// trash's .DS_Store does not keep growing with records for items long gone.
 func (t *macTrash) Evict(id string) error {
 	file, err := t.resolveID(id)
 	if err != nil {
 		return err
 	}
-	return os.RemoveAll(file)
+	if err := os.RemoveAll(file); err != nil {
+		return err
+	}
+	return putback.Clear(filepath.Dir(file), filepath.Base(file))
 }
 
 // resolveID validates an item ID, rejecting anything.
@@ -223,7 +227,7 @@ func (t *macTrash) mountPoints() []string {
 	if t.mounts != nil {
 		return t.mounts()
 	}
-	return mountPoints()
+	return Mounts()
 }
 
 // volumeRoot returns the mount point a trash directory's put back locations sit under.

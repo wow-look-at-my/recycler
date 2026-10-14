@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/wow-look-at-my/recycler/internal/bin"
+	"github.com/wow-look-at-my/recycler/internal/diskfree"
 )
 
 // testFdo is the FreeDesktop backend over the isolated test environment.
@@ -144,6 +145,31 @@ func TestARecycleWithRoomReportsADeferral(t *testing.T) {
 	items, err := fdoList()
 	require.NoError(t, err)
 	assert.Len(t, items, 1, "the file is in the bin rather than destroyed")
+}
+
+// A bin on the same filesystem takes an entry by rename, which needs no free
+// space. A file whose stated length is past everything free is recycled, not
+// deleted: a compressed filesystem states lengths like that for ordinary
+// build output.
+func TestAFileStatingMoreThanTheFreeSpaceIsRecycled(t *testing.T) {
+	work := isolateTrash(t)
+	avail, _, err := diskfree.Free(work)
+	require.NoError(t, err)
+	path := filepath.Join(work, "sparse")
+	f, err := os.Create(path)
+	require.NoError(t, err)
+	require.NoError(t, f.Truncate(int64(avail)+1<<30))
+	require.NoError(t, f.Close())
+
+	disposals, err := fdoDispose(path)
+	require.NoError(t, err)
+	require.Len(t, disposals, 1)
+	assert.False(t, disposals[0].Permanent, "deleted outright: %s", disposals[0].Reason)
+
+	items, err := fdoList()
+	require.NoError(t, err)
+	require.Len(t, items, 1, "the file is not in the bin")
+	assert.Equal(t, path, items[0].OriginalPath)
 }
 
 // TestAForeignEntryIsSizedOnceAndRecorded covers an entry another trash implementation wrote, which

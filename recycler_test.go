@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/wow-look-at-my/recycler/internal/bin"
+	"github.com/wow-look-at-my/recycler/internal/trash"
 )
 
 // isolateTrash points the recycle bin at a temporary directory so tests never touch.
@@ -27,6 +28,11 @@ func isolateTrash(t *testing.T) string {
 	require.NoError(t, os.MkdirAll(home, 0o700))
 	t.Setenv("HOME", home)
 	t.Setenv("XDG_DATA_HOME", filepath.Join(home, ".local", "share"))
+
+	// Every volume of the host keeps a trash of its own, which HOME does not move.
+	mounts := trash.Mounts
+	trash.Mounts = func() []string { return nil }
+	t.Cleanup(func() { trash.Mounts = mounts })
 
 	work := filepath.Join(root, "work")
 	require.NoError(t, os.MkdirAll(work, 0o700))
