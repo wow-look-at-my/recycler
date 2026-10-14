@@ -29,6 +29,11 @@ func isolateMac(t *testing.T) (bin.Backend, string) {
 	require.NoError(t, os.MkdirAll(home, 0o700))
 	t.Setenv("HOME", home)
 
+	// Every volume of the host keeps a trash of its own, which HOME does not move.
+	mounts := Mounts
+	Mounts = func() []string { return nil }
+	t.Cleanup(func() { Mounts = mounts })
+
 	b, err := macBackend()
 	require.NoError(t, err)
 
@@ -122,6 +127,26 @@ func writeMacFile(t *testing.T, path string) string {
 	require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
 	require.NoError(t, os.WriteFile(path, []byte("build output"), 0o644))
 	return path
+}
+
+// An evicted item takes its put back record with it. A record left behind for
+// every evicted item makes each later write to the .DS_Store slower.
+func TestTheMacBinEvictsTheRecordWithTheItem(t *testing.T) {
+	b, work := isolateMac(t)
+	path := filepath.Join(work, "doomed.txt")
+	require.NoError(t, os.WriteFile(path, []byte("x"), 0o644))
+	_, err := b.Recycle([]string{path})
+	require.NoError(t, err)
+
+	items, err := b.List()
+	require.NoError(t, err)
+	require.Len(t, items, 1)
+	dir, name := filepath.Dir(items[0].ID), filepath.Base(items[0].ID)
+	require.Contains(t, putback.Read(dir), name)
+
+	require.NoError(t, b.Evict(items[0].ID))
+	assert.NoFileExists(t, items[0].ID)
+	assert.NotContains(t, putback.Read(dir), name, "the put back record outlived the evicted item")
 }
 
 // An ID is a path inside this user's bin. Anything else must not be reached,

@@ -7,6 +7,9 @@ import (
 	"strconv"
 )
 
+// Mounts lists the mount points searched for a volume's own trash directory.
+var Mounts = mountPoints
+
 // volumeTrashes returns the existing <mount>/.Trashes/<uid> directory of each mount point, in
 // order and without repeats. A mount point whose trash does not exist yet contributes nothing.
 func volumeTrashes(mounts []string, uid int) []string {

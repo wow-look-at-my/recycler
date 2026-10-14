@@ -85,23 +85,23 @@ func (t *fdoTrash) recycleOne(path string) (bin.Disposal, error) {
 		return bin.Disposal{}, errors.New("refusing to recycle the filesystem root")
 	}
 
-	// Measured before anything moves: this decides whether the item fits in what is left, as well as what gets recorded.
-	size := fsutil.TreeSize(abs)
+	dir, top, err := t.trashDirFor(abs)
+	if err != nil {
+		return bin.Disposal{}, err
+	}
 
 	// A bin is on the filesystem it takes from, so recycling frees nothing here.
 	// Under the daemon's floor that stops being a deferral, and the deletion the
 	// caller asked for is the only thing that gives space back.
-	if decision := pressure.Check(abs, size); decision.Permanent {
+	if decision := pressure.Check(abs, dir); decision.Permanent {
 		if err := os.RemoveAll(abs); err != nil {
 			return bin.Disposal{}, err
 		}
 		return bin.Disposal{Path: abs, Permanent: true, Reason: decision.Reason}, nil
 	}
 
-	dir, top, err := t.trashDirFor(abs)
-	if err != nil {
-		return bin.Disposal{}, err
-	}
+	// Measured before anything moves, so the record holds what went in.
+	size := fsutil.TreeSize(abs)
 
 	// A per-filesystem trash records the location relative to the top directory.
 	recorded := abs
@@ -302,7 +302,7 @@ func (t *fdoTrash) Dirs() []string { return t.trashDirs() }
 func (t *fdoTrash) trashDirs() []string {
 	dirs := []string{t.home}
 	seen := set.Of[string](t.home)
-	for _, top := range mountPoints() {
+	for _, top := range Mounts() {
 		for _, candidate := range []string{
 			filepath.Join(top, ".Trash", strconv.Itoa(t.uid)),
 			filepath.Join(top, ".Trash-"+strconv.Itoa(t.uid)),

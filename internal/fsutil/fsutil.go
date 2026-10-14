@@ -99,14 +99,26 @@ func copyFile(src, dst string, perm fs.FileMode) error {
 // statWorkers bounds the concurrent stats: an lstat waits on the inode, not a core.
 const statWorkers = 64
 
-// TreeSize returns the total size.
+// TreeSize returns the total length the files under path state.
 func TreeSize(path string) int64 {
+	return treeSum(path, fs.FileInfo.Size)
+}
+
+// DiskUsage returns the bytes the files under path occupy on their
+// filesystem, which is what a copy of them needs.
+func DiskUsage(path string) int64 {
+	return treeSum(path, Allocated)
+}
+
+// treeSum adds measure over every entry under path, or reports
+// [bin.SizeUnknown] when part of the tree cannot be read.
+func treeSum(path string, measure func(fs.FileInfo) int64) int64 {
 	info, err := os.Lstat(path)
 	if err != nil {
 		return bin.SizeUnknown
 	}
 	if !info.IsDir() {
-		return info.Size()
+		return measure(info)
 	}
 
 	entries := make(chan fs.DirEntry, statWorkers)
@@ -123,7 +135,7 @@ func TreeSize(path string) int64 {
 					failed.Store(true)
 					continue
 				}
-				total.Add(fi.Size())
+				total.Add(measure(fi))
 			}
 		}()
 	}

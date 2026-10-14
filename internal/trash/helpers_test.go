@@ -23,6 +23,11 @@ func isolateTrash(t *testing.T) string {
 	t.Setenv("HOME", home)
 	t.Setenv("XDG_DATA_HOME", filepath.Join(home, ".local", "share"))
 
+	// Every volume of the host keeps a trash of its own, which HOME does not move.
+	mounts := Mounts
+	Mounts = func() []string { return nil }
+	t.Cleanup(func() { Mounts = mounts })
+
 	work := filepath.Join(root, "work")
 	require.NoError(t, os.MkdirAll(work, 0o700))
 	return work
