@@ -1,17 +1,8 @@
-//go:build darwin
+//go:build darwin || cosmo
 
 package trash
 
 // macOS Trash implementation.
-//
-// Finder moves deleted files into ~/.Trash (or .Trashes/$uid on other volumes)
-// and records where each item came from in that trash directory's own .DS_Store,
-// as the "ptbL" and "ptbN" records behind its Put Back command. Apple documents
-// neither the file nor an API for reading it, but it is the only place the
-// original location exists, so this reads and writes those same records
-// (internal/putback over internal/dsstore) instead of keeping an index of its
-// own. Items recycled here can therefore be put back from Finder, and items
-// Finder trashed can be restored here.
 
 import (
 	"errors"
@@ -34,9 +25,12 @@ import (
 type macTrash struct {
 	home string // ~/.Trash
 	uid  int
+
+	// mounts replaces the kernel's mount table when set.
+	mounts func() []string
 }
 
-func Backend() (bin.Backend, error) {
+func macBackend() (bin.Backend, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return nil, fmt.Errorf("recycler: locating home directory: %w", err)
@@ -70,19 +64,19 @@ func (t *macTrash) recycleOne(path string) (bin.Disposal, error) {
 		return bin.Disposal{}, errors.New("refusing to recycle the filesystem root")
 	}
 
+	dir, err := t.trashDirFor(abs)
+	if err != nil {
+		return bin.Disposal{}, err
+	}
+
 	// A trash is on the volume it takes from, so recycling frees nothing there.
 	// Under the daemon's floor the deletion the caller asked for is the only
 	// thing that gives space back.
-	if decision := pressure.Check(abs, fsutil.TreeSize(abs)); decision.Permanent {
+	if decision := pressure.Check(abs, dir); decision.Permanent {
 		if err := os.RemoveAll(abs); err != nil {
 			return bin.Disposal{}, err
 		}
 		return bin.Disposal{Path: abs, Permanent: true, Reason: decision.Reason}, nil
-	}
-
-	dir, err := t.trashDirFor(abs)
-	if err != nil {
-		return bin.Disposal{}, err
 	}
 	dest := filepath.Join(dir, putback.TrashName(filepath.Base(abs), dir))
 	if err := fsutil.Move(abs, dest); err != nil {
@@ -156,13 +150,17 @@ func (t *macTrash) Restore(id, dest string) (string, error) {
 	return dest, putback.Clear(dir, name)
 }
 
-// evict destroys a trashed item.
+// Evict destroys a trashed item and the put back record naming it. The
+// trash's .DS_Store does not keep growing with records for items long gone.
 func (t *macTrash) Evict(id string) error {
 	file, err := t.resolveID(id)
 	if err != nil {
 		return err
 	}
-	return os.RemoveAll(file)
+	if err := os.RemoveAll(file); err != nil {
+		return err
+	}
+	return putback.Clear(filepath.Dir(file), filepath.Base(file))
 }
 
 // resolveID validates an item ID, rejecting anything.
@@ -216,22 +214,20 @@ func (t *macTrash) Dirs() []string { return t.trashDirs() }
 // trashDirs returns every trash directory belonging to this user.
 func (t *macTrash) trashDirs() []string {
 	dirs := []string{t.home}
-	seen := map[string]bool{t.home: true}
-	volumes, err := filepath.Glob("/Volumes/*")
-	if err != nil {
-		return dirs
-	}
-	for _, volume := range volumes {
-		candidate := filepath.Join(volume, ".Trashes", strconv.Itoa(t.uid))
-		if seen[candidate] {
-			continue
-		}
-		if fi, err := os.Stat(candidate); err == nil && fi.IsDir() {
-			seen[candidate] = true
-			dirs = append(dirs, candidate)
+	for _, dir := range volumeTrashes(t.mountPoints(), t.uid) {
+		if dir != t.home {
+			dirs = append(dirs, dir)
 		}
 	}
 	return dirs
+}
+
+// mountPoints lists the mount points to look for a volume trash under.
+func (t *macTrash) mountPoints() []string {
+	if t.mounts != nil {
+		return t.mounts()
+	}
+	return Mounts()
 }
 
 // volumeRoot returns the mount point a trash directory's put back locations sit under.
@@ -255,10 +251,11 @@ func dataVolumePath(path string) string {
 	return short
 }
 
-// deletedAt reports when an item was moved to the trash.
+// deletedAt reports when an item reached the trash. macOS records no deletion
+// time, so this takes the inode change time the rename updated.
 func deletedAt(info fs.FileInfo) time.Time {
 	if st, ok := info.Sys().(*syscall.Stat_t); ok {
-		return time.Unix(st.Ctimespec.Unix())
+		return ctime(st)
 	}
 	return info.ModTime()
 }

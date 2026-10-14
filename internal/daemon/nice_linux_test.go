@@ -28,6 +28,9 @@ func threadNice(t *testing.T, tid string) int {
 // Naming the caller alone left the runtime's other threads at the priority the daemon started with,
 // which is the whole of a sweep's work.
 func TestRaisingPriorityCoversEveryThread(t *testing.T) {
+	if _, err := os.Stat("/proc/self/task"); err != nil {
+		t.Skip("no /proc: a cosmo build on macOS, where the thread table cannot be read")
+	}
 	if !raisePriority() {
 		t.Skip("no CAP_SYS_NICE here, so nothing could be granted")
 	}

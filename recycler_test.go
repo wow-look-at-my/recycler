@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/wow-look-at-my/recycler/internal/bin"
+	"github.com/wow-look-at-my/recycler/internal/trash"
 )
 
 // isolateTrash points the recycle bin at a temporary directory so tests never touch.
@@ -27,6 +28,11 @@ func isolateTrash(t *testing.T) string {
 	require.NoError(t, os.MkdirAll(home, 0o700))
 	t.Setenv("HOME", home)
 	t.Setenv("XDG_DATA_HOME", filepath.Join(home, ".local", "share"))
+
+	// Every volume of the host keeps a trash of its own, which HOME does not move.
+	mounts := trash.Mounts
+	trash.Mounts = func() []string { return nil }
+	t.Cleanup(func() { trash.Mounts = mounts })
 
 	work := filepath.Join(root, "work")
 	require.NoError(t, os.MkdirAll(work, 0o700))
@@ -117,8 +123,7 @@ func TestRecycleKeepsNamesApart(t *testing.T) {
 	require.Len(t, items, 2)
 	require.NotEqual(t, items[0].ID, items[1].ID, "two files with the same name share an ID")
 
-	// Each has to restore to its own original location, with its own
-	// content.
+	// Each has to restore to its own original location, with its own content.
 	for _, item := range items {
 		_, err := Restore(item.ID)
 		require.NoError(t, err)
@@ -175,9 +180,7 @@ func TestBackendDestroysOnlyUnderDiskPressure(t *testing.T) {
 		got = append(got, iface.Method(i).Name)
 	}
 	sort.Strings(got)
-	// Evict is the only method here that destroys anything, and only the daemon
-	// calls it. Dirs reports where the bins are so the daemon can read their
-	// filesystems; adding another destructive method is what this guards against.
+	// Evict is the only method here that destroys anything, and only the daemon calls it.
 	assert.Equal(t, []string{"Dirs", "Evict", "List", "Recycle", "Restore"}, got)
 }
 
@@ -242,7 +245,8 @@ func TestListOnAnEmptyBin(t *testing.T) {
 	assert.Empty(t, items)
 }
 
-// The daemon is reached through this package, so each entry point has to actually forward to it.
+// The daemon is reached through this package, so each entry point has to
+// forward to it.
 func TestTheDaemonIsReachableFromHere(t *testing.T) {
 	isolateTrash(t)
 	t.Setenv("XDG_CACHE_HOME", t.TempDir())
@@ -254,8 +258,7 @@ func TestTheDaemonIsReachableFromHere(t *testing.T) {
 	assert.Equal(t, "daemon.lock", filepath.Base(lock))
 	assert.DirExists(t, filepath.Dir(lock))
 
-	// A test binary is never the daemon: running it with a "daemon" argument re-runs the suite, which
-	// recycles.
+	// A test binary is never the daemon: running it with a "daemon" argument re-runs the suite, which recycles.
 	started, err := EnsureDaemon(filepath.Join(t.TempDir(), "recycler.test"))
 	assert.False(t, started)
 	require.Error(t, err)
@@ -263,6 +266,14 @@ func TestTheDaemonIsReachableFromHere(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	assert.ErrorIs(t, RunDaemon(ctx, time.Millisecond, func([]Eviction, []Pressure, error) { cancel() }), context.Canceled)
+
+	standbyCtx, cancelStandby := context.WithCancel(t.Context())
+	defer cancelStandby()
+	assert.ErrorIs(t, RunDaemonStandby(standbyCtx, time.Millisecond, func([]Eviction, []Pressure, error) { cancelStandby() }), context.Canceled)
+
+	// An executable that is not there is refused before any service manager is asked.
+	_, err = InstallDaemon(filepath.Join(t.TempDir(), "gone"))
+	assert.ErrorIs(t, err, os.ErrNotExist)
 }
 
 func TestAvailable(t *testing.T) {
