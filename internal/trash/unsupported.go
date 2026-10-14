@@ -13,3 +13,6 @@ import (
 func Backend() (bin.Backend, error) {
 	return nil, fmt.Errorf("%w: %s", bin.ErrUnsupported, runtime.GOOS)
 }
+
+// mountPoints names no volume: a GOOS with no bin has no volume trash either.
+func mountPoints() []string { return nil }

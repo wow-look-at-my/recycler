@@ -12,10 +12,13 @@ import (
 	"github.com/wow-look-at-my/tml"
 )
 
+// testWidth is wide enough that a macOS temp directory under the isolated bin is not cut short.
+const testWidth = 200
+
 // screen renders a frame with the styling taken off, so an assertion is about.
 func screen(t *testing.T, m *model) string {
 	t.Helper()
-	return ansi.Strip(m.frameOf(100, 30))
+	return ansi.Strip(m.frameOf(testWidth, 30))
 }
 
 // press feeds keys through the same Update a terminal does. Painting between them is what sizes the viewport.
@@ -69,14 +72,14 @@ func TestMovingTheCursorMovesTheBarAndThePath(t *testing.T) {
 	require.Len(t, m.shown, 2)
 
 	top, _ := m.current()
-	resting := m.frameOf(100, 30)
+	resting := m.frameOf(testWidth, 30)
 
 	press(t, m, "down")
 	next, _ := m.current()
 
 	require.NotEqual(t, top.ID, next.ID, "down moved to the other item")
 	assert.Equal(t, 1, m.selected)
-	assert.NotEqual(t, resting, m.frameOf(100, 30), "the bar moved with it")
+	assert.NotEqual(t, resting, m.frameOf(testWidth, 30), "the bar moved with it")
 	assert.Contains(t, screen(t, m), filepath.Join(work, next.Name), "and the path under the listing followed")
 }
 
@@ -199,7 +202,8 @@ func TestCancellingTheAskLeavesTheItemInTheBin(t *testing.T) {
 	assert.Len(t, m.shown, 1)
 }
 
-// Nothing is overwritten: a file that took the original location back is reported rather than clobbered.
+// Nothing is overwritten: a file that took the location back is reported
+// rather than clobbered.
 func TestRestoreRefusesToOverwriteWhatTookThePlaceBack(t *testing.T) {
 	m, work := binWith(t, "notes.md")
 	original := writeFile(t, filepath.Join(work, "notes.md"), "something else entirely")

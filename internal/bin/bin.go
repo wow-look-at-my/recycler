@@ -61,12 +61,13 @@ func Sort(items []Item) {
 	})
 }
 
-// A Disposal records what a single path handed to Recycle actually got.
+// A Disposal records what a single path handed to Recycle got.
 type Disposal struct {
 	Path string
 
-	Permanent bool   // removed outright: no room left to defer into
-	Reason    string // which measurement decided that
+	// Permanent marks a path removed outright, with Reason saying why.
+	Permanent bool
+	Reason    string
 }
 
 // A Backend is the per-platform implementation of the package API.
@@ -77,6 +78,6 @@ type Backend interface {
 	Restore(id, dest string) (string, error)
 	Evict(id string) error
 
-	// Dirs returns this user's bin directories, the empty ones included.
+	// Dirs answers this user's bin directories, empty ones included.
 	Dirs() []string
 }
