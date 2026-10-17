@@ -139,6 +139,31 @@ func TestBuildsATreeOfManyNodes(t *testing.T) {
 	assert.ElementsMatch(t, records, parsed)
 }
 
+// A record count where the LAST record overflows its node leaves a pivot with
+// nothing to its right. The parent then carries a single more record than it
+// has children, and the encoder reads past the end of the level below. Which
+// count does that depends on every name and value length, so the range is
+// swept rather than guessed: recycling generated files found it, and the
+// 400-record case above does not.
+func TestEveryRecordCountBuildsAReadableTree(t *testing.T) {
+	for n := 1; n <= 420; n++ {
+		var records []Record
+		for i := range n {
+			name := fmt.Sprintf("item-%03d.txt", i)
+			records = append(records,
+				Ustr(name, "ptbL", fmt.Sprintf("Users/ada/Documents/some/reasonably/long/path/%03d", i)),
+				Ustr(name, "ptbN", name))
+		}
+
+		data, err := Build(records)
+		require.NoError(t, err, "%d records", n)
+
+		parsed, err := Parse(data)
+		require.NoError(t, err, "%d records", n)
+		require.ElementsMatch(t, records, parsed, "%d records", n)
+	}
+}
+
 // A record count that fills the last node exactly promotes a pivot with no
 // node after it. The level above then has a single child fewer than it has
 // keys, which the encoder reads past the end of. Every count in a range
