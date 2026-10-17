@@ -222,10 +222,7 @@ func TestASecondDaemonStandsDown(t *testing.T) {
 
 // The loop is what makes it a daemon: it sweeps, reports, waits for the tick and sweeps again.
 func TestTheDaemonSweepsUntilItsContextIsDone(t *testing.T) {
-	t.Setenv("XDG_CACHE_HOME", t.TempDir())
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	t.Setenv("XDG_DATA_HOME", filepath.Join(home, ".local", "share"))
+	isolateDaemonState(t)
 
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
@@ -244,10 +241,7 @@ func TestTheDaemonSweepsUntilItsContextIsDone(t *testing.T) {
 
 // An unset interval is the caller not choosing, not a request to spin.
 func TestAZeroIntervalTakesTheDefault(t *testing.T) {
-	t.Setenv("XDG_CACHE_HOME", t.TempDir())
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	t.Setenv("XDG_DATA_HOME", filepath.Join(home, ".local", "share"))
+	isolateDaemonState(t)
 
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()

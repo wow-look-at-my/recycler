@@ -35,7 +35,6 @@ func runShipped(t *testing.T, bin, home string, args ...string) (string, error) 
 	cmd.Env = append(os.Environ(),
 		"HOME="+home,
 		"XDG_DATA_HOME="+filepath.Join(home, ".local", "share"),
-		"XDG_CACHE_HOME="+filepath.Join(home, ".cache"),
 	)
 	out, err := cmd.CombinedOutput()
 	t.Logf("%s %s\n%s", filepath.Base(bin), strings.Join(args, " "), out)

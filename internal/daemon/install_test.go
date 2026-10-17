@@ -77,7 +77,7 @@ func readFile(t *testing.T, path string) string {
 func TestTheLaunchAgentRunsAPortableExecutableThroughAShell(t *testing.T) {
 	exe := writeExe(t, "recycler", "MZqFpD='")
 	m := &fakeManager{}
-	s := testService(t, exe, map[string]string{"XDG_CACHE_HOME": "/cache & more"}, m)
+	s := testService(t, exe, map[string]string{"XDG_CACHE_HOME": "/cache", "XDG_DATA_HOME": "/data"}, m)
 
 	path, err := s.install("Darwin")
 	require.NoError(t, err)
@@ -87,8 +87,7 @@ func TestTheLaunchAgentRunsAPortableExecutableThroughAShell(t *testing.T) {
 	assert.Contains(t, plist, "<string>/bin/sh</string>\n\t\t<string>"+exe+"</string>\n\t\t<string>daemon</string>\n\t\t<string>--standby</string>")
 	assert.Contains(t, plist, "<key>KeepAlive</key>\n\t<true/>")
 	assert.Contains(t, plist, "<key>RunAtLoad</key>\n\t<true/>")
-	assert.Contains(t, plist, "<key>XDG_CACHE_HOME</key>\n\t\t<string>/cache &amp; more</string>")
-	assert.NotContains(t, plist, "XDG_DATA_HOME", "an unset variable was copied")
+	assert.NotContains(t, plist, "EnvironmentVariables", "the installer's environment would give the daemon its lock and bin")
 	assert.Contains(t, plist, "<string>"+filepath.Join(s.home, "daemon &amp; log")+"</string>")
 
 	assert.Equal(t, []string{
@@ -137,7 +136,7 @@ func TestTheSystemdUnitRestartsTheDaemonAlways(t *testing.T) {
 	exe := writeExe(t, "re cycler 100%", "jartsr='")
 	m := &fakeManager{}
 	config := t.TempDir()
-	s := testService(t, exe, map[string]string{"XDG_CONFIG_HOME": config, "XDG_DATA_HOME": `/data "quoted"`}, m)
+	s := testService(t, exe, map[string]string{"XDG_CONFIG_HOME": config, "XDG_DATA_HOME": "/data"}, m)
 
 	path, err := s.install("Linux")
 	require.NoError(t, err)
@@ -146,7 +145,7 @@ func TestTheSystemdUnitRestartsTheDaemonAlways(t *testing.T) {
 	unit := readFile(t, path)
 	escaped := strings.ReplaceAll(exe, "%", "%%")
 	assert.Contains(t, unit, `ExecStart="/bin/sh" "`+escaped+`" "daemon" "--standby"`)
-	assert.Contains(t, unit, `Environment="XDG_DATA_HOME=/data \"quoted\""`)
+	assert.NotContains(t, unit, "Environment=", "the installer's environment would give the daemon its lock and bin")
 	assert.Contains(t, unit, "Restart=always\n")
 	assert.Contains(t, unit, "WantedBy=default.target\n")
 

@@ -86,17 +86,37 @@ func TestConcurrentEnsureStartsOneDaemon(t *testing.T) {
 	assert.Equal(t, 1, count, "expected exactly one caller to start a daemon")
 }
 
-// The lock lives under the user's cache directory, and Ensure creates it rather than failing on a
-// cache.
-func TestLockPathIsCreatedUnderTheCacheDirectory(t *testing.T) {
-	isolateDaemonState(t)
-	cache, err := os.UserCacheDir()
-	require.NoError(t, err)
+// The lock lives in the state directory, which LockPath creates rather than
+// failing on a missing one.
+func TestLockPathIsCreatedInTheStateDirectory(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "not", "there", "yet")
+	useStateDir(t, dir)
 
 	lock, err := LockPath()
 	require.NoError(t, err)
-	assert.Equal(t, filepath.Join(cache, "recycler", "daemon.lock"), lock)
-	assert.DirExists(t, filepath.Dir(lock))
+	assert.Equal(t, filepath.Join(dir, "daemon.lock"), lock)
+	assert.DirExists(t, dir)
+}
+
+// One user gets one daemon. A caller that exports its own HOME, cache or data
+// directory must reach the same lock as every other caller, or each such
+// caller starts a daemon of its own that nothing ever stops.
+func TestTheLockIgnoresTheCallersEnvironment(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows keeps the state where the shell's known folders say")
+	}
+	stateDirIn := func(home string) string {
+		t.Helper()
+		t.Setenv("HOME", home)
+		t.Setenv("XDG_CACHE_HOME", filepath.Join(home, ".cache"))
+		t.Setenv("XDG_DATA_HOME", filepath.Join(home, ".local", "share"))
+		dir, err := StateDir()
+		require.NoError(t, err)
+		assert.NotContains(t, dir, home, "the state directory follows the environment")
+		return dir
+	}
+	assert.Equal(t, stateDirIn(t.TempDir()), stateDirIn(t.TempDir()),
+		"callers with different environments reach different locks")
 }
 
 // A failure here reaches the user as a single line under a recycle, so it has

@@ -13,6 +13,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/wow-look-at-my/go-containers/set"
 	"github.com/wow-look-at-my/recycler"
+	"github.com/wow-look-at-my/recycler/internal/daemon"
 	"github.com/wow-look-at-my/recycler/internal/pressure"
 )
 
@@ -43,7 +44,13 @@ The tool starts this by itself the first time it recycles something.
 "recycler daemon up" starts it up front, and "recycler daemon install" has the
 service manager start it at login and restart it when it exits. Run it by hand
 to watch what it does; a second one exits rather than sweeping alongside the
-first, or with --standby waits for the first to stop and then takes over.`,
+first, or with --standby waits for the first to stop and then takes over.
+
+A user has one daemon per system. Its lock and its home recycle bin come from
+the account database, so a caller that exports another HOME, XDG_CACHE_HOME or
+XDG_DATA_HOME reaches the same daemon as every other caller. On Linux the
+daemon also stops any other daemon of the same user that holds a different
+lock, which is what an older build left behind under such a caller.`,
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		interval, _ := cmd.Flags().GetDuration("interval")
@@ -57,11 +64,17 @@ first, or with --standby waits for the first to stop and then takes over.`,
 			return err
 		}
 
+		// The bin this watches is the account's, not the one its starter exported.
+		if err := daemon.UseAccountEnvironment(); err != nil {
+			return err
+		}
+
 		ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
 		defer stop()
 
 		// Repeating an unchanged complaint on every tick buries the change that matters, in a log nobody can then read.
 		seen := map[string]bool{}
+		var reaped time.Time
 		run := recycler.RunDaemon
 		if standby {
 			run = recycler.RunDaemonStandby
@@ -69,12 +82,35 @@ first, or with --standby waits for the first to stop and then takes over.`,
 		err := run(ctx, interval, func(evicted []recycler.Eviction, pressures []recycler.Pressure, err error) {
 			reportEvictions(out, evicted, err)
 			reportPressureChanges(out, pressures, seen)
+			if time.Since(reaped) >= reapInterval {
+				reaped = time.Now()
+				reapStrays(out)
+			}
 		})
 		if errors.Is(err, context.Canceled) {
 			return nil
 		}
 		return err
 	},
+}
+
+// reapInterval is how often the daemon holding the lock looks for another one.
+const reapInterval = 10 * time.Second
+
+// reapStrays stops every other daemon of this user, and names each one. Only
+// one daemon may sweep per user per system.
+func reapStrays(out io.Writer) {
+	lock, err := recycler.DaemonLockPath()
+	if err == nil {
+		var pids []int
+		pids, err = daemon.ReapStrays(lock)
+		for _, pid := range pids {
+			fmt.Fprintf(out, "stopped daemon %d, which held a lock other than %s\n", pid, lock)
+		}
+	}
+	if err != nil {
+		fmt.Fprintf(out, "could not look for a second daemon: %v\n", err)
+	}
 }
 
 // reportEvictions names what a sweep destroyed. Giving a file back is not a
@@ -180,8 +216,9 @@ again whenever it exits, so a crash or a reboot does not leave the disk
 unwatched.
 
 Running it again replaces what an earlier install wrote, which is how a moved
-executable is picked up. The XDG_CACHE_HOME and XDG_DATA_HOME this runs with are
-written into the service, so the daemon uses the same lock and recycle bin.`,
+executable is picked up. Nothing from the environment this runs with is written
+into the service: the daemon finds its lock and its home recycle bin from the
+account database, wherever HOME or the XDG variables point.`,
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		exe, err := os.Executable()

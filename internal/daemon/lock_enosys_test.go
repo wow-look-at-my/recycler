@@ -47,7 +47,7 @@ func TestALockIsStillTakenWhereFlockIsNotImplemented(t *testing.T) {
 // With no flock it has to start a daemon rather than report a single missing.
 func TestEnsureStartsADaemonWhereFlockIsNotImplemented(t *testing.T) {
 	withoutFlock(t, syscall.ENOSYS)
-	t.Setenv("XDG_CACHE_HOME", t.TempDir())
+	useStateDir(t, t.TempDir())
 
 	exe := filepath.Join(t.TempDir(), "stand-in")
 	require.NoError(t, os.WriteFile(exe, []byte("#!/bin/sh\nexit 0\n"), 0o755))
