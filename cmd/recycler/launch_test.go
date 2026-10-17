@@ -7,6 +7,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/wow-look-at-my/recycler/internal/daemon"
 )
 
 // capture runs a command line through the same routing main uses, and returns everything it printed.
@@ -53,7 +54,10 @@ func TestTUICommandIsRegistered(t *testing.T) {
 // nothing would stop. Under a test binary the spawner refuses, which is what proves it was reached.
 func TestDaemonUpAsksTheSpawnerAndReturns(t *testing.T) {
 	isolateTrash(t)
-	t.Setenv("XDG_CACHE_HOME", t.TempDir())
+	state := t.TempDir()
+	was := daemon.StateDir
+	daemon.StateDir = func() (string, error) { return state, nil }
+	t.Cleanup(func() { daemon.StateDir = was })
 
 	_, err := capture(t, false, "daemon", "up")
 	require.Error(t, err)

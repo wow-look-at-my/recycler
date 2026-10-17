@@ -21,8 +21,16 @@ func isolateDaemonState(t *testing.T) {
 	t.Helper()
 	home := t.TempDir()
 	t.Setenv("HOME", home)
-	t.Setenv("XDG_CACHE_HOME", filepath.Join(home, "cache"))
 	t.Setenv("XDG_DATA_HOME", filepath.Join(home, "share"))
+	useStateDir(t, filepath.Join(home, "cache", "recycler"))
+}
+
+// useStateDir moves the daemon's state to dir for the rest of the test.
+func useStateDir(t *testing.T, dir string) {
+	t.Helper()
+	was := StateDir
+	StateDir = func() (string, error) { return dir, nil }
+	t.Cleanup(func() { StateDir = was })
 }
 
 // buildID describes a build of the given version whose executable was written
