@@ -12,8 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// standInLockEnv makes the test binary a stand-in daemon that holds the lock
-// it names until it is killed.
+// standInLockEnv makes the test binary a stand-in daemon that holds the lock it names until it is killed.
 const standInLockEnv = "RECYCLER_TEST_STAND_IN_LOCK"
 
 func TestMain(m *testing.M) {
