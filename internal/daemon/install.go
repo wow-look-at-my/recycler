@@ -26,9 +26,6 @@ const (
 	unloadTimeout = 10 * time.Second
 )
 
-// serviceEnv lists the variables a service gets copied from the installer.
-var serviceEnv = []string{"XDG_CACHE_HOME", "XDG_DATA_HOME"}
-
 // A service is what Install needs to register the daemon with a service manager.
 type service struct {
 	exe    string
@@ -42,9 +39,9 @@ type service struct {
 
 // newService describes the daemon in exe for the user running this.
 func newService(exe string) (service, error) {
-	home, err := os.UserHomeDir()
+	home, err := accountHome()
 	if err != nil {
-		return service{}, fmt.Errorf("recycler: locating home directory: %w", err)
+		return service{}, err
 	}
 	log, err := LogPath()
 	if err != nil {
@@ -134,13 +131,6 @@ func (s service) launchdPlist() ([]byte, error) {
 		b.WriteString("\t\t<string>" + xmlText(arg) + "</string>\n")
 	}
 	b.WriteString("\t</array>\n")
-	if env := s.copiedEnv(); len(env) > 0 {
-		b.WriteString("\t<key>EnvironmentVariables</key>\n\t<dict>\n")
-		for _, kv := range env {
-			b.WriteString("\t\t<key>" + xmlText(kv[0]) + "</key>\n\t\t<string>" + xmlText(kv[1]) + "</string>\n")
-		}
-		b.WriteString("\t</dict>\n")
-	}
 	b.WriteString(`	<key>RunAtLoad</key>
 	<true/>
 	<key>KeepAlive</key>
@@ -197,9 +187,6 @@ func (s service) systemdUnit() ([]byte, error) {
 	var b bytes.Buffer
 	b.WriteString("[Unit]\nDescription=recycler disk-pressure daemon\n\n[Service]\n")
 	b.WriteString("ExecStart=" + strings.Join(quoted, " ") + "\n")
-	for _, kv := range s.copiedEnv() {
-		b.WriteString("Environment=" + systemdQuote(kv[0]+"="+kv[1]) + "\n")
-	}
 	b.WriteString("Restart=always\nRestartSec=1\n\n[Install]\nWantedBy=default.target\n")
 	return b.Bytes(), nil
 }
@@ -280,17 +267,6 @@ func utf16File(s string) []byte {
 		out = append(out, byte(u), byte(u>>8))
 	}
 	return out
-}
-
-// copiedEnv returns the serviceEnv variables the installer has set, in order.
-func (s service) copiedEnv() [][2]string {
-	var env [][2]string
-	for _, name := range serviceEnv {
-		if v := s.getenv(name); v != "" {
-			env = append(env, [2]string{name, v})
-		}
-	}
-	return env
 }
 
 // apeMagic opens every Actually Portable Executable.
