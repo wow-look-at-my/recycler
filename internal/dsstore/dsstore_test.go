@@ -140,9 +140,9 @@ func TestBuildsATreeOfManyNodes(t *testing.T) {
 }
 
 // A record count that fills the last node exactly promotes a pivot with no
-// node after it. The level above then has a single child fewer than it has
-// keys, which the encoder reads past the end of. Every count in a range
-// holding several such boundaries has to round-trip.
+// node after it. The level above then has fewer children than it has keys,
+// which the encoder reads past the end of. Every count in a range holding
+// several such boundaries has to build a tree the encoder can walk.
 func TestBuildsATreeWhateverTheLastNodeHolds(t *testing.T) {
 	for count := 1; count <= 600; count++ {
 		records := make([]Record, 0, count)
