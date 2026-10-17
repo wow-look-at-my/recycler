@@ -15,12 +15,21 @@ func LockPath() (string, error) { return statePath("daemon.lock") }
 // LogPath is a detached daemon's only way to say what it destroyed.
 func LogPath() (string, error) { return statePath("daemon.log") }
 
-func statePath(name string) (string, error) {
-	cache, err := os.UserCacheDir()
+// StateDir answers the directory that holds the daemon's lock, its identity
+// and its log.
+var StateDir = func() (string, error) {
+	cache, err := accountCacheDir()
 	if err != nil {
-		return "", fmt.Errorf("recycler: locating cache directory: %w", err)
+		return "", err
 	}
-	dir := filepath.Join(cache, "recycler")
+	return filepath.Join(cache, "recycler"), nil
+}
+
+func statePath(name string) (string, error) {
+	dir, err := StateDir()
+	if err != nil {
+		return "", err
+	}
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return "", fmt.Errorf("recycler: creating %s: %w", dir, err)
 	}
