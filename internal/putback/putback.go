@@ -10,7 +10,9 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 
+	"github.com/wow-look-at-my/go-containers/set"
 	"golang.org/x/sys/unix"
 
 	"github.com/wow-look-at-my/recycler/internal/dsstore"
@@ -49,11 +51,12 @@ func (p Origin) Path(root string) string {
 	return filepath.Join(root, p.Dir, p.Name)
 }
 
-// TrashName picks the name an item takes inside a trash directory.
-func TrashName(want, dir string) string {
-	name := fsutil.UniqueName(want, dir)
+// TrashName picks the name. An item takes inside a trash directory, passing
+// over the names in taken that are promised to items not moved in yet.
+func TrashName(want, dir string, taken set.Set[string]) string {
+	name := fsutil.UniqueName(want, taken, dir)
 	if name == dsstore.FileName {
-		name = fsutil.UniqueName("recycled"+dsstore.FileName, dir)
+		name = fsutil.UniqueName("recycled"+dsstore.FileName, taken, dir)
 	}
 	return name
 }
@@ -104,32 +107,58 @@ func putBacksFrom(records []dsstore.Record) map[string]Origin {
 	return origins
 }
 
-// Set records where an item now in a trash directory came from, leaving
-// every other record in the .DS_Store alone.
+// Rewrites counts the .DS_Store rewrites this process has made.
+var Rewrites atomic.Int64
+
+// Set records where an item in a trash directory came from, leaving every
+// other record in the .DS_Store alone.
 func Set(dir, name string, origin Origin) error {
-	return updateDSStore(dir, func(records []dsstore.Record) []dsstore.Record {
-		records = withoutPutBack(records, name)
-		return append(records,
-			dsstore.Ustr(name, putBackDirCode, origin.Dir),
-			dsstore.Ustr(name, putBackNameCode, origin.Name))
-	})
+	return SetAll(dir, map[string]Origin{name: origin})
 }
 
-// Clear drops the records of items that have left the trash.
-func Clear(dir string, names ...string) error {
+// SetAll records the origins of many items, keyed by their names in the trash
+// directory, in a single rewrite of its .DS_Store.
+func SetAll(dir string, origins map[string]Origin) error {
+	names := set.New[string](len(origins))
+	for name := range origins {
+		names.Add(name)
+	}
 	return updateDSStore(dir, func(records []dsstore.Record) []dsstore.Record {
-		for _, name := range names {
-			records = withoutPutBack(records, name)
+		records = withoutPutBacks(records, func(r dsstore.Record) bool { return names.Contains(r.Name) })
+		for name, origin := range origins {
+			records = append(records,
+				dsstore.Ustr(name, putBackDirCode, origin.Dir),
+				dsstore.Ustr(name, putBackNameCode, origin.Name))
 		}
 		return records
 	})
 }
 
-// withoutPutBack removes an item's put back records, keeping everything else the .DS_Store.
-func withoutPutBack(records []dsstore.Record, name string) []dsstore.Record {
+// Retract drops the records SetAll wrote for items that never reached the
+// trash. A record another writer has since replaced is left alone.
+func Retract(dir string, origins map[string]Origin) error {
+	return updateDSStore(dir, func(records []dsstore.Record) []dsstore.Record {
+		current := putBacksFrom(records)
+		return withoutPutBacks(records, func(r dsstore.Record) bool {
+			ours, ok := origins[r.Name]
+			return ok && current[r.Name] == ours
+		})
+	})
+}
+
+// Clear drops the records of items that have left the trash.
+func Clear(dir string, names ...string) error {
+	gone := set.Of(names...)
+	return updateDSStore(dir, func(records []dsstore.Record) []dsstore.Record {
+		return withoutPutBacks(records, func(r dsstore.Record) bool { return gone.Contains(r.Name) })
+	})
+}
+
+// withoutPutBacks removes the put back records drop picks, keeping everything else in the .DS_Store.
+func withoutPutBacks(records []dsstore.Record, drop func(dsstore.Record) bool) []dsstore.Record {
 	kept := records[:0]
 	for _, r := range records {
-		if r.Name == name && (r.Code == putBackDirCode || r.Code == putBackNameCode) {
+		if (r.Code == putBackDirCode || r.Code == putBackNameCode) && drop(r) {
 			continue
 		}
 		kept = append(kept, r)
@@ -162,6 +191,7 @@ func updateDSStore(dir string, fn func([]dsstore.Record) []dsstore.Record) error
 	if err != nil {
 		return err
 	}
+	Rewrites.Add(1)
 	if err := f.Truncate(0); err != nil {
 		return err
 	}
