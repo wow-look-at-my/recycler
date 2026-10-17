@@ -26,6 +26,5 @@ func accountCacheDir() (string, error) {
 	return dir, nil
 }
 
-// UseAccountEnvironment has nothing to do here: the Windows recycle bin is on
-// each drive, and no variable moves it.
+// UseAccountEnvironment has nothing to do here: the Windows recycle bin is on each drive, and no variable moves it.
 func UseAccountEnvironment() error { return nil }

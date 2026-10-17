@@ -21,7 +21,9 @@ recycler trim --dry-run             # cargo build output over its size cap
 
 No command of yours deletes anything: an item leaves the bin by being restored, and emptying the bin is left to the desktop environment.
 
-Disk pressure is the exception, because a bin nobody empties fills the disk and the recycled copy is what holds the space. Recycling something starts a daemon that reads free space every few seconds. It gives back the oldest items when a filesystem drops under a tenth free, or 1 GiB, whichever is smaller. It uses the size recorded when each item was recycled, so it never walks the bin to measure it. There is one daemon per user per system: its lock and home bin come from the account database, so a script that exports its own `HOME` or `XDG_*` directories reaches the same daemon. Set `RECYCLER_NO_DAEMON=1` to run it yourself instead, or not at all.
+Disk pressure is the exception, because a bin nobody empties fills the disk and the recycled copy is what holds the space. Recycling something starts a daemon that reads free space every few seconds. It gives back the oldest items when a filesystem drops under a tenth free, or 1 GiB, whichever is smaller. It uses the size recorded when each item was recycled, so it never walks the bin to measure it. There is one daemon per user. This holds per system.
+
+Its lock and home bin come from the account database, so a script that exports its own `HOME` or `XDG_*` directories reaches the same daemon. Set `RECYCLER_NO_DAEMON=1` to run it yourself instead, or not at all.
 
 Build output is the disk filler no recycle bin explains. rustc appends to a `target` directory and never removes anything from it, so every branch. Every worktree and every dependency bump leaves its object files, rlibs and fingerprints behind, and cargo's only remedy is `cargo clean`. This throws away the whole directory and rebuilds everything still wanted. `recycler trim` caps each target directory instead. It recycles the oldest regenerable output inside one, incrementals first, and stops as soon as the directory fits so the build. In progress keeps its cache.
 

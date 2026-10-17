@@ -26,7 +26,6 @@ func accountHome() (string, error) {
 	return u.HomeDir, nil
 }
 
-// accountCacheDir is where os.UserCacheDir points when nothing overrides it.
 func accountCacheDir() (string, error) {
 	home, err := accountHome()
 	if err != nil {
@@ -39,8 +38,7 @@ func accountCacheDir() (string, error) {
 }
 
 // UseAccountEnvironment gives this process the account's home bin, whoever
-// started it. The daemon is one per user, so the bin it watches cannot depend
-// on the environment of the caller that happened to start it.
+// started it.
 func UseAccountEnvironment() error {
 	home, err := accountHome()
 	if err != nil {

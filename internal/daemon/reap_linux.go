@@ -13,8 +13,6 @@ import (
 // other than lock, and returns the pids it signalled. Only a daemon holding the
 // lock calls this. Such a stray comes from a build that kept its lock under the
 // caller's environment, and it never stops by itself.
-//
-// /proc lists only this PID namespace, so a daemon in a container is never seen.
 func ReapStrays(lock string) ([]int, error) {
 	entries, err := os.ReadDir("/proc")
 	if os.IsNotExist(err) {

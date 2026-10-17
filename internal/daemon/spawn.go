@@ -15,10 +15,8 @@ func LockPath() (string, error) { return statePath("daemon.lock") }
 // LogPath is a detached daemon's only way to say what it destroyed.
 func LogPath() (string, error) { return statePath("daemon.log") }
 
-// StateDir answers the directory that holds the daemon's lock, its identity and
-// its log. It comes from the account database and never from HOME or
-// XDG_CACHE_HOME, so one user gets one daemon whatever a caller exports. It is
-// a variable so a test in another package can move it, as with trash.Mounts.
+// StateDir answers the directory that holds the daemon's lock, its identity
+// and its log.
 var StateDir = func() (string, error) {
 	cache, err := accountCacheDir()
 	if err != nil {

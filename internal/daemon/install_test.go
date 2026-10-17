@@ -245,7 +245,7 @@ func TestInstallRefusesAMissingExecutable(t *testing.T) {
 }
 
 // newService fills in the user running this, with the home the account
-// database records rather than the one HOME names.
+// database records rather than the HOME names.
 func TestNewServiceDescribesTheCurrentUser(t *testing.T) {
 	isolateDaemonState(t)
 	s, err := newService("/bin/recycler")

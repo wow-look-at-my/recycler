@@ -98,9 +98,9 @@ func TestLockPathIsCreatedInTheStateDirectory(t *testing.T) {
 	assert.DirExists(t, dir)
 }
 
-// One user gets one daemon. A caller that exports its own HOME, cache or data
-// directory must reach the same lock as every other caller, or each such
-// caller starts a daemon of its own that nothing ever stops.
+// One user gets one daemon. A caller that exports. Its own HOME, cache or
+// data directory must reach the same lock as every other caller. Otherwise,
+// each such caller starts a daemon of its own that nothing ever stops.
 func TestTheLockIgnoresTheCallersEnvironment(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("Windows keeps the state where the shell's known folders say")

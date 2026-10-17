@@ -94,11 +94,11 @@ lock, which is what an older build left behind under such a caller.`,
 	},
 }
 
-// reapInterval is how often the daemon holding the lock looks for another one.
+// reapInterval is how often the daemon holding the lock looks for another.
 const reapInterval = 10 * time.Second
 
-// reapStrays stops every other daemon of this user, and names each one. Only
-// one daemon may sweep per user per system.
+// reapStrays stops every other daemon of this user, and names each. Only one
+// daemon may sweep per system.
 func reapStrays(out io.Writer) {
 	lock, err := recycler.DaemonLockPath()
 	if err == nil {
