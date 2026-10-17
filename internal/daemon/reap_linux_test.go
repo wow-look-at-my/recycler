@@ -30,6 +30,9 @@ func TestMain(m *testing.M) {
 // and returns once it holds it.
 func startStandIn(t *testing.T, lock string, args ...string) *exec.Cmd {
 	t.Helper()
+	if _, err := os.Stat("/proc/self/fd"); err != nil {
+		t.Skip("a portable build runs this file on a kernel with no /proc, where nothing is reaped")
+	}
 	require.NoError(t, os.MkdirAll(filepath.Dir(lock), 0o700))
 	cmd := exec.Command(os.Args[0], args...)
 	cmd.Env = append(os.Environ(), standInLockEnv+"="+lock)
