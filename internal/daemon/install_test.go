@@ -244,12 +244,16 @@ func TestInstallRefusesAMissingExecutable(t *testing.T) {
 	assert.ErrorIs(t, err, os.ErrNotExist)
 }
 
-// newService fills in the user running this.
+// newService fills in the user running this, with the home the account
+// database records rather than the one HOME names.
 func TestNewServiceDescribesTheCurrentUser(t *testing.T) {
 	isolateDaemonState(t)
 	s, err := newService("/bin/recycler")
 	require.NoError(t, err)
-	assert.Equal(t, os.Getenv("HOME"), s.home)
+	home, err := accountHome()
+	require.NoError(t, err)
+	assert.Equal(t, home, s.home)
+	assert.NotEqual(t, os.Getenv("HOME"), s.home, "the service follows the installer's HOME")
 	assert.Equal(t, os.Getuid(), s.uid)
 	log, err := LogPath()
 	require.NoError(t, err)
