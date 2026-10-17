@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/wow-look-at-my/recycler/internal/bin"
+	"github.com/wow-look-at-my/recycler/internal/daemon"
 	"github.com/wow-look-at-my/recycler/internal/trash"
 )
 
@@ -249,7 +250,10 @@ func TestListOnAnEmptyBin(t *testing.T) {
 // forward to it.
 func TestTheDaemonIsReachableFromHere(t *testing.T) {
 	isolateTrash(t)
-	t.Setenv("XDG_CACHE_HOME", t.TempDir())
+	state := t.TempDir()
+	was := daemon.StateDir
+	daemon.StateDir = func() (string, error) { return state, nil }
+	t.Cleanup(func() { daemon.StateDir = was })
 
 	assert.Equal(t, uint64(100), FreeTarget(1000), "a tenth of a small filesystem")
 
