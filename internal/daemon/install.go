@@ -2,6 +2,7 @@ package daemon
 
 import (
 	"bytes"
+	_ "embed"
 	"encoding/xml"
 	"fmt"
 	"io"
@@ -25,6 +26,29 @@ const (
 	// unloadTimeout bounds the wait for launchd to finish unloading the job an install replaces.
 	unloadTimeout = 10 * time.Second
 )
+
+// The embedded service files hold these where the value is only known at install time.
+const (
+	argToken   = "{{arg}}"
+	argsToken  = "{{args}}"
+	execToken  = "{{exec}}"
+	exeToken   = "{{exe}}"
+	labelToken = "{{label}}"
+	logToken   = "{{log}}"
+	userToken  = "{{user}}"
+)
+
+//go:embed launchd.plist
+var launchdPlistFile string
+
+//go:embed launchd_arg.plist
+var launchdArgFile string
+
+//go:embed scheduled_task.xml
+var scheduledTaskFile string
+
+//go:embed systemd.service
+var systemdServiceFile string
 
 // A service is what Install needs to register the daemon with a service manager.
 type service struct {
@@ -117,32 +141,15 @@ func (s service) launchdPlist() ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	var b bytes.Buffer
-	b.WriteString(`<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-	<key>Label</key>
-	<string>` + serviceLabel + `</string>
-	<key>ProgramArguments</key>
-	<array>
-`)
+	var lines bytes.Buffer
 	for _, arg := range args {
-		b.WriteString("\t\t<string>" + xmlText(arg) + "</string>\n")
+		lines.WriteString(strings.NewReplacer(argToken, xmlText(arg)).Replace(launchdArgFile))
 	}
-	b.WriteString("\t</array>\n")
-	b.WriteString(`	<key>RunAtLoad</key>
-	<true/>
-	<key>KeepAlive</key>
-	<true/>
-	<key>StandardOutPath</key>
-	<string>` + xmlText(s.log) + `</string>
-	<key>StandardErrorPath</key>
-	<string>` + xmlText(s.log) + `</string>
-</dict>
-</plist>
-`)
-	return b.Bytes(), nil
+	return []byte(strings.NewReplacer(
+		labelToken, serviceLabel,
+		logToken, xmlText(s.log),
+		argsToken, lines.String(),
+	).Replace(launchdPlistFile)), nil
 }
 
 // systemd writes a user unit, which starts at login and is restarted whenever it exits.
@@ -184,11 +191,7 @@ func (s service) systemdUnit() ([]byte, error) {
 	for i, arg := range args {
 		quoted[i] = systemdQuote(arg)
 	}
-	var b bytes.Buffer
-	b.WriteString("[Unit]\nDescription=recycler disk-pressure daemon\n\n[Service]\n")
-	b.WriteString("ExecStart=" + strings.Join(quoted, " ") + "\n")
-	b.WriteString("Restart=always\nRestartSec=1\n\n[Install]\nWantedBy=default.target\n")
-	return b.Bytes(), nil
+	return []byte(strings.NewReplacer(execToken, strings.Join(quoted, " ")).Replace(systemdServiceFile)), nil
 }
 
 // systemdQuote spells s as one double-quoted word of a unit file, where % starts
@@ -217,44 +220,10 @@ func (s service) scheduledTask() (string, error) {
 }
 
 func (s service) taskXML() string {
-	user := xmlText(s.user)
-	return `<?xml version="1.0" encoding="UTF-16"?>
-<Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
-  <RegistrationInfo>
-    <Description>recycler disk-pressure daemon</Description>
-  </RegistrationInfo>
-  <Triggers>
-    <LogonTrigger>
-      <Enabled>true</Enabled>
-      <UserId>` + user + `</UserId>
-    </LogonTrigger>
-  </Triggers>
-  <Principals>
-    <Principal id="Author">
-      <UserId>` + user + `</UserId>
-      <LogonType>InteractiveToken</LogonType>
-      <RunLevel>LeastPrivilege</RunLevel>
-    </Principal>
-  </Principals>
-  <Settings>
-    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
-    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
-    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>
-    <ExecutionTimeLimit>PT0S</ExecutionTimeLimit>
-    <RestartOnFailure>
-      <Interval>PT1M</Interval>
-      <Count>999</Count>
-    </RestartOnFailure>
-    <Enabled>true</Enabled>
-  </Settings>
-  <Actions Context="Author">
-    <Exec>
-      <Command>` + xmlText(s.exe) + `</Command>
-      <Arguments>daemon --standby</Arguments>
-    </Exec>
-  </Actions>
-</Task>
-`
+	return strings.NewReplacer(
+		userToken, xmlText(s.user),
+		exeToken, xmlText(s.exe),
+	).Replace(scheduledTaskFile)
 }
 
 // utf16File encodes s as UTF-16LE with a byte order mark, the encoding

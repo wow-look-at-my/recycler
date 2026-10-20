@@ -87,6 +87,21 @@ func TestPressureCountsWhatWouldNotBeEvicted(t *testing.T) {
 		"bytes that would not go are not the same as bytes that are not there")
 }
 
+// The report reaches a log, where the filesystem and the numbers behind the
+// shortfall are all anyone reading it gets.
+func TestAPressureNamesTheFilesystemAndItsNumbers(t *testing.T) {
+	p := Pressure{Dir: "/trash", Avail: 750, Target: 1000, Total: 4096}
+	got := p.String()
+	for _, want := range []string{"/trash", "750", "250", "1000", "4096"} {
+		assert.Contains(t, got, want)
+	}
+}
+
+func TestNothingIsShortAtOrAboveTheTarget(t *testing.T) {
+	assert.Zero(t, Pressure{Avail: 1000, Target: 1000}.Shortfall())
+	assert.Zero(t, Pressure{Avail: 2000, Target: 1000}.Shortfall())
+}
+
 // A bin directory nothing has been recycled into yet does not exist. Refusing to
 // measure its filesystem would leave the daemon blind until the earliest
 // recycle, which is the window a machine fills the disk in.

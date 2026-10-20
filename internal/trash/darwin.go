@@ -128,8 +128,11 @@ func (t *macTrash) prepare(path string) (abs, dir string, deleted *bin.Disposal,
 	return abs, dir, nil, err
 }
 
-// moveBatch records every origin in the batch in one rewrite, then moves each
-// item in. Only a move that fails costs a second rewrite, to retract records.
+// moveBatch records every origin in the batch in one rewrite, then hands each
+// item to the trash. The system picks the name inside the trash, so an item can
+// land under one this batch did not promise it. Only the records that need it -
+// those of a move that failed, and those of an item the system named itself -
+// cost a second rewrite. That rewrite covers the whole batch.
 func (t *macTrash) moveBatch(b *batch, results []*bin.Disposal, fail func(int, error)) {
 	origins := make(map[string]putback.Origin, len(b.moves))
 	for _, m := range b.moves {
@@ -137,13 +140,15 @@ func (t *macTrash) moveBatch(b *batch, results []*bin.Disposal, fail func(int, e
 	}
 	recordErr := putback.SetAll(b.dir, origins)
 
-	stranded := map[string]putback.Origin{}
+	drops := map[string]map[string]putback.Origin{}
+	adds := map[string]map[string]putback.Origin{}
 	moveErrs := map[int]error{}
 	for _, m := range b.moves {
-		if err := fsutil.Move(m.src, filepath.Join(b.dir, m.name)); err != nil {
-			stranded[m.name] = m.origin
+		dest, err := trashItem(m.src, b.dir)
+		if err != nil {
 			moveErrs[m.index] = err
 			fail(m.index, err)
+			recordOrigin(drops, b.dir, m.name, m.origin)
 			continue
 		}
 		if recordErr != nil {
@@ -151,17 +156,53 @@ func (t *macTrash) moveBatch(b *batch, results []*bin.Disposal, fail func(int, e
 			continue
 		}
 		results[m.index] = &bin.Disposal{Path: m.src}
+		dir, name := filepath.Dir(dest), filepath.Base(dest)
+		if dir == b.dir && name == m.name {
+			continue
+		}
+		recordOrigin(drops, b.dir, m.name, m.origin)
+		recordOrigin(adds, dir, name, putback.Of(t.volumeRoot(dir), m.src))
 	}
-	if recordErr != nil || len(stranded) == 0 {
+	if recordErr != nil {
 		return
 	}
-	retractErr := putback.Retract(b.dir, stranded)
-	if retractErr == nil {
+
+	dirs := set.New[string](2)
+	settled := make([]string, 0, 2)
+	for _, pending := range []map[string]map[string]putback.Origin{drops, adds} {
+		for dir := range pending {
+			if dirs.Contains(dir) {
+				continue
+			}
+			dirs.Add(dir)
+			settled = append(settled, dir)
+		}
+	}
+	if len(settled) == 0 {
+		return
+	}
+
+	var settleErr error
+	for _, dir := range settled {
+		if err := putback.Amend(dir, drops[dir], adds[dir]); err != nil && settleErr == nil {
+			settleErr = err
+		}
+	}
+	if settleErr == nil {
 		return
 	}
 	for index, err := range moveErrs {
-		fail(index, errors.Join(err, fmt.Errorf("its put back record could not be withdrawn: %w", retractErr)))
+		fail(index, errors.Join(err, fmt.Errorf("its put back record could not be withdrawn: %w", settleErr)))
 	}
+}
+
+// recordOrigin notes the record a rewrite drops, or the one it writes, under
+// the directory that rewrite belongs to.
+func recordOrigin(records map[string]map[string]putback.Origin, dir, name string, origin putback.Origin) {
+	if records[dir] == nil {
+		records[dir] = map[string]putback.Origin{}
+	}
+	records[dir][name] = origin
 }
 
 func (t *macTrash) List() ([]bin.Item, error) {

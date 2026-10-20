@@ -128,6 +128,54 @@ func TestEscapeClearsTheFilter(t *testing.T) {
 }
 
 // Restoring is the only thing that takes an item out of the bin, and it asks before it writes a file back.
+// Backspace takes back a letter and widens the match again, so a typo costs a
+// key rather than the whole filter.
+func TestBackspaceTakesBackALetter(t *testing.T) {
+	m, _ := binWith(t, "notes.md", "report.pdf")
+
+	press(t, m, "/", "r", "e", "p", "z")
+	require.Empty(t, m.shown)
+
+	press(t, m, "backspace")
+	assert.Equal(t, "rep", m.filter)
+	assert.Len(t, m.shown, 1)
+
+	// Backspace on an empty filter is a key that does nothing, not an underflow.
+	press(t, m, "backspace", "backspace", "backspace", "backspace")
+	assert.Empty(t, m.filter)
+	assert.Len(t, m.shown, 2)
+}
+
+// Enter leaves the filter in place and gives the keys back to the listing.
+// This is how an item is picked out of what the filter narrowed to.
+func TestEnterKeepsTheFilterAndReturnsToTheListing(t *testing.T) {
+	m, _ := binWith(t, "notes.md", "report.pdf")
+
+	press(t, m, "/", "r", "e", "p", "enter")
+	assert.False(t, m.filtering)
+	assert.Equal(t, "rep", m.filter)
+	assert.Len(t, m.shown, 1)
+}
+
+// The cursor keys move the selection while the filter is still being typed, so
+// a match can be picked while the filter is still open.
+func TestTheCursorMovesWhileTheFilterIsBeingTyped(t *testing.T) {
+	m, _ := binWith(t, "report-a.pdf", "report-b.pdf")
+
+	press(t, m, "/", "r", "e", "p")
+	require.Len(t, m.shown, 2)
+	top, _ := m.current()
+
+	press(t, m, "down")
+	next, _ := m.current()
+	assert.NotEqual(t, top.ID, next.ID, "the selection did not move")
+	assert.True(t, m.filtering, "a cursor key ended the filter")
+
+	press(t, m, "up")
+	back, _ := m.current()
+	assert.Equal(t, top.ID, back.ID)
+}
+
 func TestRestoreAsksAndThenPutsTheFileBack(t *testing.T) {
 	m, work := binWith(t, "notes.md")
 	original := filepath.Join(work, "notes.md")

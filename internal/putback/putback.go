@@ -137,12 +137,31 @@ func SetAll(dir string, origins map[string]Origin) error {
 // Retract drops the records SetAll wrote for items that never reached the
 // trash. A record another writer has since replaced is left alone.
 func Retract(dir string, origins map[string]Origin) error {
+	return Amend(dir, origins, nil)
+}
+
+// Amend rewrites a directory's .DS_Store once, dropping the records named in
+// drop and writing those in add. A record another writer has since replaced
+// is left alone. A batch uses it to settle what its moves changed after the
+// rewrite they were planned from.
+func Amend(dir string, drop, add map[string]Origin) error {
 	return updateDSStore(dir, func(records []dsstore.Record) []dsstore.Record {
 		current := putBacksFrom(records)
-		return withoutPutBacks(records, func(r dsstore.Record) bool {
-			ours, ok := origins[r.Name]
+		records = withoutPutBacks(records, func(r dsstore.Record) bool {
+			ours, ok := drop[r.Name]
 			return ok && current[r.Name] == ours
 		})
+		names := set.New[string](len(add))
+		for name := range add {
+			names.Add(name)
+		}
+		records = withoutPutBacks(records, func(r dsstore.Record) bool { return names.Contains(r.Name) })
+		for name, origin := range add {
+			records = append(records,
+				dsstore.Ustr(name, putBackDirCode, origin.Dir),
+				dsstore.Ustr(name, putBackNameCode, origin.Name))
+		}
+		return records
 	})
 }
 
