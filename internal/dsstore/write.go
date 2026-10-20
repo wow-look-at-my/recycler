@@ -86,6 +86,10 @@ func dsBuildLevels(records []Record) ([][][]Record, error) {
 		// to its right even when nothing followed it.
 		if len(node) > 0 || len(next) > 0 {
 			nodes = append(nodes, node)
+		} else if len(next) > 0 {
+			// The last record became a pivot and nothing followed it.
+			nodes = append(nodes, []Record{next[len(next)-1]})
+			next = next[:len(next)-1]
 		}
 		levels = append(levels, nodes)
 		if len(nodes) == 1 {
