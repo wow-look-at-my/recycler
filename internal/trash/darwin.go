@@ -79,9 +79,8 @@ func (t *macTrash) recycleOne(path string) (bin.Disposal, error) {
 		return bin.Disposal{Path: abs, Permanent: true, Reason: decision.Reason}, nil
 	}
 
-	// The system picks the trash and the name inside it, on the item's own
-	// volume, and answers where the item landed.
-	dest, err := trashItem(abs)
+	// The system picks the trash and the name inside it, on the item's own volume, and answers where the item landed.
+	dest, err := trashItem(abs, dir)
 	if err != nil {
 		return bin.Disposal{}, err
 	}

@@ -8,9 +8,9 @@ runs:
     - uses: wow-look-at-my/actions@secret-server#latest
     - if: env.PRIVATE_ORG_REPO_READ != ''
       shell: bash
-      run: git config --global url."https://${PRIVATE_ORG_REPO_READ}@github.com/wow-look-at-my/".insteadOf "https://github.com/wow-look-at-my/"
+      run: git config --global url."https://x-access-token:${PRIVATE_ORG_REPO_READ}@github.com/wow-look-at-my/".insteadOf "https://github.com/wow-look-at-my/"
     - id: download
-      uses: wow-look-at-my/buildhost/.github/actions/buildhost-download@master
+      uses: wow-look-at-my/buildhost/.github/actions/buildhost-download@lkgb
       with:
         project: go-toolchain
     - shell: bash
