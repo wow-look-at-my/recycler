@@ -6,12 +6,12 @@
   <Triggers>
     <LogonTrigger>
       <Enabled>true</Enabled>
-      <UserId>{{xml .User}}</UserId>
+      <UserId>{{user}}</UserId>
     </LogonTrigger>
   </Triggers>
   <Principals>
     <Principal id="Author">
-      <UserId>{{xml .User}}</UserId>
+      <UserId>{{user}}</UserId>
       <LogonType>InteractiveToken</LogonType>
       <RunLevel>LeastPrivilege</RunLevel>
     </Principal>
@@ -29,7 +29,7 @@
   </Settings>
   <Actions Context="Author">
     <Exec>
-      <Command>{{xml .Exe}}</Command>
+      <Command>{{exe}}</Command>
       <Arguments>daemon --standby</Arguments>
     </Exec>
   </Actions>

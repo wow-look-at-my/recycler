@@ -2,7 +2,7 @@
 Description=recycler disk-pressure daemon
 
 [Service]
-ExecStart={{.ExecStart}}
+ExecStart={{exec}}
 Restart=always
 RestartSec=1
 

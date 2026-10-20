@@ -3,18 +3,17 @@
 <plist version="1.0">
 <dict>
 	<key>Label</key>
-	<string>{{xml .Label}}</string>
+	<string>{{label}}</string>
 	<key>ProgramArguments</key>
 	<array>
-{{range .Args}}		<string>{{xml .}}</string>
-{{end}}	</array>
+{{args}}	</array>
 	<key>RunAtLoad</key>
 	<true/>
 	<key>KeepAlive</key>
 	<true/>
 	<key>StandardOutPath</key>
-	<string>{{xml .Log}}</string>
+	<string>{{log}}</string>
 	<key>StandardErrorPath</key>
-	<string>{{xml .Log}}</string>
+	<string>{{log}}</string>
 </dict>
 </plist>

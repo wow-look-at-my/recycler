@@ -10,7 +10,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
-	"text/template"
 	"time"
 	"unicode/utf16"
 
@@ -28,30 +27,28 @@ const (
 	unloadTimeout = 10 * time.Second
 )
 
-// The service files hold the text install writes, with a placeholder per value.
-var (
-	//go:embed launchd.plist.tmpl
-	launchdPlistFile string
-
-	//go:embed recycler.service
-	systemdUnitFile string
-
-	//go:embed daemon-task.tmpl
-	taskFile string
+// The embedded service files hold these where the value is only known at install time.
+const (
+	argToken   = "{{arg}}"
+	argsToken  = "{{args}}"
+	execToken  = "{{exec}}"
+	exeToken   = "{{exe}}"
+	labelToken = "{{label}}"
+	logToken   = "{{log}}"
+	userToken  = "{{user}}"
 )
 
-// fill renders one of the service files with data, escaping each text value as XML.
-func fill(name, text string, data any) ([]byte, error) {
-	tmpl, err := template.New(name).Funcs(template.FuncMap{"xml": xmlText}).Parse(text)
-	if err != nil {
-		return nil, err
-	}
-	var b bytes.Buffer
-	if err := tmpl.Execute(&b, data); err != nil {
-		return nil, err
-	}
-	return b.Bytes(), nil
-}
+//go:embed launchd.plist
+var launchdPlistFile string
+
+//go:embed launchd_arg.plist
+var launchdArgFile string
+
+//go:embed scheduled_task.xml
+var scheduledTaskFile string
+
+//go:embed systemd.service
+var systemdServiceFile string
 
 // A service is what Install needs to register the daemon with a service manager.
 type service struct {
@@ -144,11 +141,15 @@ func (s service) launchdPlist() ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	return fill("launchd", launchdPlistFile, struct {
-		Label string
-		Log   string
-		Args  []string
-	}{serviceLabel, s.log, args})
+	var lines bytes.Buffer
+	for _, arg := range args {
+		lines.WriteString(strings.NewReplacer(argToken, xmlText(arg)).Replace(launchdArgFile))
+	}
+	return []byte(strings.NewReplacer(
+		labelToken, serviceLabel,
+		logToken, xmlText(s.log),
+		argsToken, lines.String(),
+	).Replace(launchdPlistFile)), nil
 }
 
 // systemd writes a user unit, which starts at login and is restarted whenever it exits.
@@ -190,9 +191,7 @@ func (s service) systemdUnit() ([]byte, error) {
 	for i, arg := range args {
 		quoted[i] = systemdQuote(arg)
 	}
-	return fill("systemd", systemdUnitFile, struct {
-		ExecStart string
-	}{strings.Join(quoted, " ")})
+	return []byte(strings.NewReplacer(execToken, strings.Join(quoted, " ")).Replace(systemdServiceFile)), nil
 }
 
 // systemdQuote spells s as one double-quoted word of a unit file, where % starts
@@ -208,11 +207,7 @@ func (s service) scheduledTask() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	task, err := s.taskXML()
-	if err != nil {
-		return "", err
-	}
-	if err := os.WriteFile(path, utf16File(task), 0o600); err != nil {
+	if err := os.WriteFile(path, utf16File(s.taskXML()), 0o600); err != nil {
 		return "", err
 	}
 	if err := s.run("schtasks", "/Create", "/TN", serviceLabel, "/XML", path, "/F"); err != nil {
@@ -224,12 +219,11 @@ func (s service) scheduledTask() (string, error) {
 	return path, nil
 }
 
-func (s service) taskXML() (string, error) {
-	out, err := fill("task", taskFile, struct {
-		User string
-		Exe  string
-	}{s.user, s.exe})
-	return string(out), err
+func (s service) taskXML() string {
+	return strings.NewReplacer(
+		userToken, xmlText(s.user),
+		exeToken, xmlText(s.exe),
+	).Replace(scheduledTaskFile)
 }
 
 // utf16File encodes s as UTF-16LE with a byte order mark, the encoding
