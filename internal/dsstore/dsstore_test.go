@@ -142,9 +142,9 @@ func TestBuildsATreeOfManyNodes(t *testing.T) {
 // A record count where the LAST record overflows its node leaves a pivot with
 // nothing to its right. The parent then carries a single more record than it
 // has children, and the encoder reads past the end of the level below. Which
-// count does that depends on every name and value length, so the range is
-// swept rather than guessed: recycling generated files found it, and the
-// 400-record case above does not.
+// count does that depends on every name and value length. The range is swept
+// rather than guessed: recycling generated files found it, and the 400-record
+// case above does not.
 func TestEveryRecordCountBuildsAReadableTree(t *testing.T) {
 	for n := 1; n <= 420; n++ {
 		var records []Record
