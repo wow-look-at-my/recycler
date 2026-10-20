@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/wow-look-at-my/go-containers/set"
+
 	"github.com/wow-look-at-my/recycler/internal/bin"
 	"github.com/wow-look-at-my/recycler/internal/fsutil"
 	"github.com/wow-look-at-my/recycler/internal/pressure"
@@ -39,7 +41,7 @@ func apply(b bin.Backend, plan *Plan, free func(string) (uint64, uint64, error),
 		return 0, 0
 	}
 
-	bundle := filepath.Join(plan.Target.Path, fsutil.UniqueName(bundlePrefix+time.Now().Format(bundleStamp), plan.Target.Path))
+	bundle := filepath.Join(plan.Target.Path, fsutil.UniqueName(bundlePrefix+time.Now().Format(bundleStamp), set.New[string](), plan.Target.Path))
 	var staged int
 	var bytes int64
 	for _, c := range plan.Recycle {

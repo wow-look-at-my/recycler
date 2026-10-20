@@ -7,21 +7,26 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/wow-look-at-my/go-containers/set"
 
 	"github.com/wow-look-at-my/recycler/internal/bin"
 )
 
 func TestUniqueName(t *testing.T) {
 	dir := t.TempDir()
-	assert.Equal(t, "report.txt", UniqueName("report.txt", dir))
+	none := set.Set[string]{}
+	assert.Equal(t, "report.txt", UniqueName("report.txt", none, dir))
 
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "report.txt"), nil, 0o600))
-	assert.Equal(t, "report_1.txt", UniqueName("report.txt", dir))
+	assert.Equal(t, "report_1.txt", UniqueName("report.txt", none, dir))
 
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "report_1.txt"), nil, 0o600))
-	assert.Equal(t, "report_2.txt", UniqueName("report.txt", dir))
+	assert.Equal(t, "report_2.txt", UniqueName("report.txt", none, dir))
 
-	assert.Equal(t, "recycled", UniqueName("..", dir), "a name that is not a file name should be replaced")
+	assert.Equal(t, "recycled", UniqueName("..", none, dir), "a name that is not a file name should be replaced")
+
+	// A name handed out but not yet on disk is as taken as one that is.
+	assert.Equal(t, "report_3.txt", UniqueName("report.txt", set.Of("report_2.txt"), dir))
 }
 
 func TestMoveRefusesToOverwrite(t *testing.T) {

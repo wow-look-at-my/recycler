@@ -8,12 +8,14 @@ package trash
 import (
 	"path/filepath"
 
+	"github.com/wow-look-at-my/go-containers/set"
+
 	"github.com/wow-look-at-my/recycler/internal/fsutil"
 )
 
 // trashItem moves path into dir and answers where it landed.
 func trashItem(path, dir string) (string, error) {
-	dest := filepath.Join(dir, fsutil.UniqueName(filepath.Base(path), dir))
+	dest := filepath.Join(dir, fsutil.UniqueName(filepath.Base(path), set.New[string](), dir))
 	if err := fsutil.Move(path, dest); err != nil {
 		return "", err
 	}

@@ -91,8 +91,21 @@ func (t *winTrash) Recycle(paths []string) ([]bin.Disposal, error) {
 	}
 	if err := shFileOperationDelete(abs); err != nil {
 		errs = append(errs, err)
+		disposals = stillGone(disposals)
 	}
 	return disposals, errors.Join(errs...)
+}
+
+// stillGone keeps the disposals whose path the shell emptied: one failed
+// shell call can leave any number of its paths where they were.
+func stillGone(disposals []bin.Disposal) []bin.Disposal {
+	kept := disposals[:0]
+	for _, d := range disposals {
+		if _, err := os.Lstat(d.Path); d.Permanent || errors.Is(err, fs.ErrNotExist) {
+			kept = append(kept, d)
+		}
+	}
+	return kept
 }
 
 // shFileOperationDelete asks the shell to delete every path to the recycle bin

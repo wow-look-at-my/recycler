@@ -3,12 +3,14 @@
 package trash
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/wow-look-at-my/go-containers/set"
 
 	"github.com/wow-look-at-my/recycler/internal/bin"
 	"github.com/wow-look-at-my/recycler/internal/putback"
@@ -65,6 +67,66 @@ func TestTheMacBinRecyclesListsAndRestores(t *testing.T) {
 	after, err := b.List()
 	require.NoError(t, err)
 	assert.Empty(t, after, "the record outlived the item")
+}
+
+// A trim hands over thousands of paths at once. Each put back record costs a
+// rewrite of the whole .DS_Store, so the call must pay for one, not one per path.
+func TestTheMacBinRecordsABatchInOneRewrite(t *testing.T) {
+	b, work := isolateMac(t)
+	var paths []string
+	for dir := range 3 {
+		for i := range 200 {
+			// The same names under each directory.
+			paths = append(paths, writeMacFile(t, filepath.Join(work, fmt.Sprintf("crate-%d", dir), fmt.Sprintf("dep-%03d.rlib", i))))
+		}
+	}
+
+	before := putback.Rewrites.Load()
+	disposals, err := b.Recycle(paths)
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), putback.Rewrites.Load()-before, "the .DS_Store was rewritten more than once for one batch")
+	assert.Len(t, disposals, len(paths))
+
+	items, err := b.List()
+	require.NoError(t, err)
+	recorded := set.New[string](len(items))
+	for _, item := range items {
+		recorded.Add(item.OriginalPath)
+	}
+	for _, path := range paths {
+		assert.NoFileExists(t, path)
+		assert.True(t, recorded.Contains(path), "%s is in the trash with no put back record", path)
+	}
+}
+
+// A path that cannot move after its record was written gets that record taken
+// back, and costs one more rewrite, not one per path.
+func TestTheMacBinRetractsTheRecordOfAPathThatDidNotMove(t *testing.T) {
+	b, work := isolateMac(t)
+	dir := filepath.Join(work, "target")
+	inner := writeMacFile(t, filepath.Join(dir, "inner.o"))
+	other := writeMacFile(t, filepath.Join(work, "other.o"))
+
+	before := putback.Rewrites.Load()
+	disposals, err := b.Recycle([]string{dir, inner, other})
+	require.Error(t, err, "a path that had already left with its directory was reported recycled")
+	assert.Contains(t, err.Error(), inner)
+	assert.Equal(t, int64(2), putback.Rewrites.Load()-before)
+	assert.Equal(t, []bin.Disposal{{Path: dir}, {Path: other}}, disposals)
+
+	home, err := os.UserHomeDir()
+	require.NoError(t, err)
+	assert.Equal(t, map[string]putback.Origin{
+		"target":  putback.Of("/", dir),
+		"other.o": putback.Of("/", other),
+	}, putback.Read(filepath.Join(home, ".Trash")), "the record of the path that never arrived was left behind")
+}
+
+func writeMacFile(t *testing.T, path string) string {
+	t.Helper()
+	require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
+	require.NoError(t, os.WriteFile(path, []byte("build output"), 0o644))
+	return path
 }
 
 // An evicted item takes its put back record with it. A record left behind for
