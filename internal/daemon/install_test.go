@@ -84,7 +84,12 @@ func TestTheLaunchAgentRunsAPortableExecutableThroughAShell(t *testing.T) {
 	assert.Equal(t, filepath.Join(s.home, "Library", "LaunchAgents", serviceLabel+".plist"), path)
 
 	plist := readFile(t, path)
-	assert.Contains(t, plist, "<string>/bin/sh</string>\n\t\t<string>"+exe+"</string>\n\t\t<string>daemon</string>\n\t\t<string>--standby</string>")
+	// The portable executable runs through a shell, and its arguments follow in order.
+	var arguments []string
+	for _, arg := range []string{"/bin/sh", exe, "daemon", "--standby"} {
+		arguments = append(arguments, "\t\t<string>"+arg+"</string>")
+	}
+	assert.Contains(t, plist, strings.Join(arguments, "\n")+"\n")
 	assert.Contains(t, plist, "<key>KeepAlive</key>\n\t<true/>")
 	assert.Contains(t, plist, "<key>RunAtLoad</key>\n\t<true/>")
 	assert.NotContains(t, plist, "EnvironmentVariables", "the installer's environment would give the daemon its lock and bin")
