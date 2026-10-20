@@ -2,6 +2,7 @@ package daemon
 
 import (
 	"bytes"
+	_ "embed"
 	"encoding/xml"
 	"fmt"
 	"io"
@@ -9,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"text/template"
 	"time"
 	"unicode/utf16"
 
@@ -25,6 +27,31 @@ const (
 	// unloadTimeout bounds the wait for launchd to finish unloading the job an install replaces.
 	unloadTimeout = 10 * time.Second
 )
+
+// The service files hold the text install writes, with a placeholder per value.
+var (
+	//go:embed launchd.plist.tmpl
+	launchdPlistFile string
+
+	//go:embed recycler.service
+	systemdUnitFile string
+
+	//go:embed daemon-task.tmpl
+	taskFile string
+)
+
+// fill renders one of the service files with data, escaping each text value as XML.
+func fill(name, text string, data any) ([]byte, error) {
+	tmpl, err := template.New(name).Funcs(template.FuncMap{"xml": xmlText}).Parse(text)
+	if err != nil {
+		return nil, err
+	}
+	var b bytes.Buffer
+	if err := tmpl.Execute(&b, data); err != nil {
+		return nil, err
+	}
+	return b.Bytes(), nil
+}
 
 // A service is what Install needs to register the daemon with a service manager.
 type service struct {
@@ -117,32 +144,11 @@ func (s service) launchdPlist() ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	var b bytes.Buffer
-	b.WriteString(`<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-	<key>Label</key>
-	<string>` + serviceLabel + `</string>
-	<key>ProgramArguments</key>
-	<array>
-`)
-	for _, arg := range args {
-		b.WriteString("\t\t<string>" + xmlText(arg) + "</string>\n")
-	}
-	b.WriteString("\t</array>\n")
-	b.WriteString(`	<key>RunAtLoad</key>
-	<true/>
-	<key>KeepAlive</key>
-	<true/>
-	<key>StandardOutPath</key>
-	<string>` + xmlText(s.log) + `</string>
-	<key>StandardErrorPath</key>
-	<string>` + xmlText(s.log) + `</string>
-</dict>
-</plist>
-`)
-	return b.Bytes(), nil
+	return fill("launchd", launchdPlistFile, struct {
+		Label string
+		Log   string
+		Args  []string
+	}{serviceLabel, s.log, args})
 }
 
 // systemd writes a user unit, which starts at login and is restarted whenever it exits.
@@ -184,11 +190,9 @@ func (s service) systemdUnit() ([]byte, error) {
 	for i, arg := range args {
 		quoted[i] = systemdQuote(arg)
 	}
-	var b bytes.Buffer
-	b.WriteString("[Unit]\nDescription=recycler disk-pressure daemon\n\n[Service]\n")
-	b.WriteString("ExecStart=" + strings.Join(quoted, " ") + "\n")
-	b.WriteString("Restart=always\nRestartSec=1\n\n[Install]\nWantedBy=default.target\n")
-	return b.Bytes(), nil
+	return fill("systemd", systemdUnitFile, struct {
+		ExecStart string
+	}{strings.Join(quoted, " ")})
 }
 
 // systemdQuote spells s as one double-quoted word of a unit file, where % starts
@@ -204,7 +208,11 @@ func (s service) scheduledTask() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if err := os.WriteFile(path, utf16File(s.taskXML()), 0o600); err != nil {
+	task, err := s.taskXML()
+	if err != nil {
+		return "", err
+	}
+	if err := os.WriteFile(path, utf16File(task), 0o600); err != nil {
 		return "", err
 	}
 	if err := s.run("schtasks", "/Create", "/TN", serviceLabel, "/XML", path, "/F"); err != nil {
@@ -216,45 +224,12 @@ func (s service) scheduledTask() (string, error) {
 	return path, nil
 }
 
-func (s service) taskXML() string {
-	user := xmlText(s.user)
-	return `<?xml version="1.0" encoding="UTF-16"?>
-<Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
-  <RegistrationInfo>
-    <Description>recycler disk-pressure daemon</Description>
-  </RegistrationInfo>
-  <Triggers>
-    <LogonTrigger>
-      <Enabled>true</Enabled>
-      <UserId>` + user + `</UserId>
-    </LogonTrigger>
-  </Triggers>
-  <Principals>
-    <Principal id="Author">
-      <UserId>` + user + `</UserId>
-      <LogonType>InteractiveToken</LogonType>
-      <RunLevel>LeastPrivilege</RunLevel>
-    </Principal>
-  </Principals>
-  <Settings>
-    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
-    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
-    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>
-    <ExecutionTimeLimit>PT0S</ExecutionTimeLimit>
-    <RestartOnFailure>
-      <Interval>PT1M</Interval>
-      <Count>999</Count>
-    </RestartOnFailure>
-    <Enabled>true</Enabled>
-  </Settings>
-  <Actions Context="Author">
-    <Exec>
-      <Command>` + xmlText(s.exe) + `</Command>
-      <Arguments>daemon --standby</Arguments>
-    </Exec>
-  </Actions>
-</Task>
-`
+func (s service) taskXML() (string, error) {
+	out, err := fill("task", taskFile, struct {
+		User string
+		Exe  string
+	}{s.user, s.exe})
+	return string(out), err
 }
 
 // utf16File encodes s as UTF-16LE with a byte order mark, the encoding
