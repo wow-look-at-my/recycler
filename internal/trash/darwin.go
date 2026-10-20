@@ -78,10 +78,13 @@ func (t *macTrash) recycleOne(path string) (bin.Disposal, error) {
 		}
 		return bin.Disposal{Path: abs, Permanent: true, Reason: decision.Reason}, nil
 	}
-	dest := filepath.Join(dir, putback.TrashName(filepath.Base(abs), dir))
-	if err := fsutil.Move(abs, dest); err != nil {
+
+	// The system picks the trash and the name inside it, on the item's own volume, and answers where the item landed.
+	dest, err := trashItem(abs, dir)
+	if err != nil {
 		return bin.Disposal{}, err
 	}
+	dir = filepath.Dir(dest)
 	if err := putback.Set(dir, filepath.Base(dest), putback.Of(t.volumeRoot(dir), abs)); err != nil {
 		return bin.Disposal{}, fmt.Errorf("moved to the trash, but its original location could not be recorded: %w", err)
 	}
