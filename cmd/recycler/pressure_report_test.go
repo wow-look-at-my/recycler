@@ -2,8 +2,9 @@ package main
 
 import (
 	"bytes"
-	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/wow-look-at-my/recycler"
 )
@@ -17,44 +18,27 @@ func TestPressureIsNamedOnceAndAgainWhenItRecovers(t *testing.T) {
 	var out bytes.Buffer
 
 	reportPressureChanges(&out, []recycler.Pressure{under("/bin", 0)}, seen)
-	first := out.String()
-	if !strings.Contains(first, "/bin") {
-		t.Fatalf("the filesystem under its target was not named: %q", first)
-	}
-	if !seen["/bin"] {
-		t.Fatal("a reported filesystem was not remembered")
-	}
+	require.Contains(t, out.String(), "/bin", "the filesystem under its target was not named")
+	require.True(t, seen["/bin"], "a reported filesystem was not remembered")
 
 	// Already reported, and the daemon polls: saying so every tick buries it.
 	out.Reset()
 	reportPressureChanges(&out, []recycler.Pressure{under("/bin", 0)}, seen)
-	if out.Len() != 0 {
-		t.Fatalf("the same pressure was reported twice: %q", out.String())
-	}
+	require.Empty(t, out.String(), "the same pressure was reported twice")
 
 	out.Reset()
 	reportPressureChanges(&out, nil, seen)
-	if got := out.String(); !strings.Contains(got, "/bin is back above its target") {
-		t.Fatalf("recovery was not reported: %q", got)
-	}
-	if seen["/bin"] {
-		t.Fatal("a recovered filesystem is still remembered, so it cannot be reported again")
-	}
+	require.Contains(t, out.String(), "/bin is back above its target", "recovery was not reported")
+	require.False(t, seen["/bin"], "a recovered filesystem is still remembered, so it cannot be reported again")
 }
 
 func TestPressureLineSaysWhetherAnythingWasStranded(t *testing.T) {
 	line := pressureLine(under("/bin", 0))
-	if !strings.Contains(line, "nothing recycled is left to give back") {
-		t.Fatalf("an exhausted bin was not named as such: %q", line)
-	}
+	require.Contains(t, line, "nothing recycled is left to give back", "an exhausted bin was not named as such")
 
 	line = pressureLine(under("/bin", 512))
-	if !strings.Contains(line, "would not go") {
-		t.Fatalf("stranded bytes were not reported: %q", line)
-	}
-	if strings.Contains(line, "nothing recycled is left") {
-		t.Fatalf("a bin holding stranded bytes was called empty: %q", line)
-	}
+	require.Contains(t, line, "would not go", "stranded bytes were not reported")
+	require.NotContains(t, line, "nothing recycled is left", "a bin holding stranded bytes was called empty")
 }
 
 func TestPressureReportsEachFilesystemSeparately(t *testing.T) {
@@ -63,18 +47,13 @@ func TestPressureReportsEachFilesystemSeparately(t *testing.T) {
 
 	reportPressureChanges(&out, []recycler.Pressure{under("/bin", 0), under("/other", 0)}, seen)
 	got := out.String()
-	if !strings.Contains(got, "/bin") || !strings.Contains(got, "/other") {
-		t.Fatalf("both filesystems were not named: %q", got)
-	}
+	require.Contains(t, got, "/bin", "both filesystems were not named")
+	require.Contains(t, got, "/other", "both filesystems were not named")
 
 	// A single recovers, the other does not. Only the recovery is news.
 	out.Reset()
 	reportPressureChanges(&out, []recycler.Pressure{under("/bin", 0)}, seen)
 	got = out.String()
-	if !strings.Contains(got, "/other is back above its target") {
-		t.Fatalf("the recovered filesystem was not reported: %q", got)
-	}
-	if strings.Contains(got, "cannot keep /bin") {
-		t.Fatalf("a filesystem still under its target was reported again: %q", got)
-	}
+	require.Contains(t, got, "/other is back above its target", "the recovered filesystem was not reported")
+	require.NotContains(t, got, "cannot keep /bin", "a filesystem still under its target was reported again")
 }
