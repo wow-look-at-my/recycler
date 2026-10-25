@@ -1,3 +1,5 @@
+// handoverTimeout bounds both halves of a handover.
+
 package daemon
 
 import (

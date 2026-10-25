@@ -1,3 +1,5 @@
+// apply recycles a plan's entries, re-measuring each as it goes.
+
 package cargotarget
 
 import (

@@ -1,5 +1,7 @@
 //go:build darwin
 
+// Apple spells the inode change time Ctimespec.
+
 package trash
 
 import (

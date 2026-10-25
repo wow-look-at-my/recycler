@@ -1,5 +1,7 @@
 //go:build linux
 
+// daemonNice is the priority the sweep runs at: pressure arrives on a busy machine.
+
 package daemon
 
 import (

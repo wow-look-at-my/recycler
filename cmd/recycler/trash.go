@@ -1,3 +1,5 @@
+// One call for every path, so the backend can batch its bookkeeping.
+
 package main
 
 import (

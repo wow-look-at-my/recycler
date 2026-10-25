@@ -1,5 +1,7 @@
 //go:build windows
 
+// raisePriority puts the sweep above a busy build's threads and reports whether it was granted.
+
 package daemon
 
 import "golang.org/x/sys/windows"

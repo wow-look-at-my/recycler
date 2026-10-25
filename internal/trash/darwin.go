@@ -1,5 +1,7 @@
 //go:build darwin || cosmo
 
+// macOS Trash implementation.
+
 package trash
 
 // macOS Trash implementation.

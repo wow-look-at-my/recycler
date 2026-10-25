@@ -1,5 +1,7 @@
 //go:build unix
 
+// flockFn is what tryLock locks with, so a test can answer ENOSYS from it.
+
 package daemon
 
 import (

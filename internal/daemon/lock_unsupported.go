@@ -1,5 +1,7 @@
 //go:build !unix && !windows
 
+// tryLock has no implementation on a platform with no recycle bin, where.
+
 package daemon
 
 import "github.com/wow-look-at-my/recycler/internal/bin"

@@ -1,5 +1,7 @@
 //go:build !unix
 
+// SameFilesystem reports whether a and b sit on one volume, where a rename between them moves no data and needs no free space.
+
 package fsutil
 
 import (

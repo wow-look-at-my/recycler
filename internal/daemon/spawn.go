@@ -1,3 +1,5 @@
+// LockPath returns the file whose lock names the running daemon.
+
 package daemon
 
 import (

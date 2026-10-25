@@ -1,3 +1,5 @@
+// The arrows walk the rows, so the ring is left with tab.
+
 package main
 
 import (

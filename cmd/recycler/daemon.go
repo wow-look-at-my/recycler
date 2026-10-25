@@ -1,3 +1,5 @@
+// The bin this watches is the account's, not the one its starter exported.
+
 package main
 
 import (

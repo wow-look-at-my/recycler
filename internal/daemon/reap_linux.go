@@ -1,3 +1,5 @@
+// ReapStrays stops every other daemon of this user that sweeps under a lock other than lock, and returns the pids it signalled.
+
 package daemon
 
 import (

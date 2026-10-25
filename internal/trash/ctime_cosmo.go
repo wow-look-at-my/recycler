@@ -1,5 +1,7 @@
 //go:build cosmo
 
+// A cosmo build carries the Linux Stat_t on every host, which spells it Ctim.
+
 package trash
 
 import (

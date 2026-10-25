@@ -1,3 +1,5 @@
+// accountHome answers the profile directory the shell records for this user.
+
 package daemon
 
 import (

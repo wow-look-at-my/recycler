@@ -1,3 +1,5 @@
+// serviceLabel names the daemon's job to launchd and its task to Windows.
+
 package daemon
 
 import (

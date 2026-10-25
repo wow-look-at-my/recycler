@@ -1,5 +1,7 @@
 //go:build unix
 
+// accountHome answers the home directory the account database records for this user.
+
 package daemon
 
 import (

@@ -1,5 +1,7 @@
 //go:build windows && (amd64 || arm64)
 
+// shellapi.h declares SHFILEOPSTRUCTW with default packing on wide Windows - it wraps the struct in pshpack1.h only under #ifndef _WIN64.
+
 package trash
 
 // shellapi.h declares SHFILEOPSTRUCTW with default packing on wide Windows -
