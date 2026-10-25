@@ -12,11 +12,7 @@ import (
 )
 
 // A sweep that derives the filesystems it reads from the listing alone makes
-<<<<<<< HEAD
 // empty probes on an empty bin. And exits clean and silent while the disk is
-=======
-// empty probes on an empty bin. Exits clean and silent while the disk is
->>>>>>> 21718d9 (commit)
 // full. A daemon that says nothing then reads as a single keeping up.
 func TestAFilesystemIsReadEvenWhenItsBinIsEmpty(t *testing.T) {
 	b := &fakeBackend{}

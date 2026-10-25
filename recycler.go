@@ -45,17 +45,7 @@ func Available() bool {
 	return err == nil
 }
 
-<<<<<<< HEAD
 // Recycle moves each path to the recycle bin and reports what each got.
-=======
-// Recycle moves each path to the recycle bin and reports what each a single got.
-//
-// A bin shares the filesystem it takes from, so recycling moves bytes sideways
-// rather than freeing any. Below the daemon's target, or for an item larger than
-// the space left, that cannot help and the path is removed outright instead. The
-// [Disposal] for such a path is marked Permanent, with the measurement that
-// decided it. A caller that reports a recycle has to report these too.
->>>>>>> 21718d9 (commit)
 func Recycle(paths ...string) ([]Disposal, error) {
 	if len(paths) == 0 {
 		return nil, nil

@@ -12,14 +12,7 @@ import (
 // LockPath returns the file whose lock names the running daemon.
 func LockPath() (string, error) { return statePath("daemon.lock") }
 
-<<<<<<< HEAD
 // LogPath is a detached daemon's only way to say what it destroyed.
-=======
-// LogPath returns the file a detached daemon writes its reports to. A daemon
-// nobody started from a terminal has nowhere else to say what it destroyed or
-// what it could not keep up with, and discarding. That leaves the a single
-// account of both with no reader.
->>>>>>> 21718d9 (commit)
 func LogPath() (string, error) { return statePath("daemon.log") }
 
 // StateDir answers the directory that holds the daemon's lock, its identity
@@ -43,13 +36,7 @@ func statePath(name string) (string, error) {
 	return filepath.Join(dir, name), nil
 }
 
-<<<<<<< HEAD
 // maxLogBytes keeps the log from being what fills the disk.
-=======
-// maxLogBytes keeps the log from becoming the thing that fills the disk. It is
-// truncated rather than rotated, because this file is read after something went
-// wrong and a rotation would keep another copy of what nobody read.
->>>>>>> 21718d9 (commit)
 const maxLogBytes = 1 << 20
 
 // openLog returns the detached daemon's log, truncated if it has grown past its

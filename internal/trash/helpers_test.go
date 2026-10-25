@@ -11,35 +11,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-<<<<<<< HEAD
-=======
-// recycle, list and restore are what the recycler package's own functions do, so a backend test.
-func recycle(paths ...string) error {
-	b, err := Backend()
-	if err != nil {
-		return err
-	}
-	_, err = b.Recycle(paths)
-	return err
-}
-
-func list() ([]bin.Item, error) {
-	b, err := Backend()
-	if err != nil {
-		return nil, err
-	}
-	return b.List()
-}
-
-func restore(id string) (string, error) {
-	b, err := Backend()
-	if err != nil {
-		return "", err
-	}
-	return b.Restore(id, "")
-}
-
->>>>>>> 21718d9 (commit)
 // isolateTrash points the recycle bin at a temporary directory so tests never touch.
 func isolateTrash(t *testing.T) string {
 	t.Helper()

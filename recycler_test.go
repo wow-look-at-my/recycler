@@ -40,15 +40,9 @@ func isolateTrash(t *testing.T) string {
 	return work
 }
 
-<<<<<<< HEAD
 // recycleAll recycles every path and asserts each was deferred rather than
 // deleted outright. The suite runs on a filesystem with room, so a permanent
 // deletion here means the pressure check read the wrong filesystem.
-=======
-// recycleAll recycles every path and asserts each a single was deferred rather
-// than deleted outright. The suite runs on a filesystem with room, so a
-// permanent deletion here means the pressure check read the wrong filesystem.
->>>>>>> 21718d9 (commit)
 func recycleAll(t *testing.T, paths ...string) {
 	t.Helper()
 	disposals, err := Recycle(paths...)
@@ -187,13 +181,7 @@ func TestBackendDestroysOnlyUnderDiskPressure(t *testing.T) {
 		got = append(got, iface.Method(i).Name)
 	}
 	sort.Strings(got)
-<<<<<<< HEAD
 	// Evict is the only method here that destroys anything, and only the daemon calls it.
-=======
-	// Evict is the only method here that destroys anything, and only the daemon
-	// calls it. Dirs reports where the bins are so the daemon can read their
-	// filesystems; adding another destructive method is what this guards against.
->>>>>>> 21718d9 (commit)
 	assert.Equal(t, []string{"Dirs", "Evict", "List", "Recycle", "Restore"}, got)
 }
 
