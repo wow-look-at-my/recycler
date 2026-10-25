@@ -1,5 +1,7 @@
 //go:build darwin
 
+// mountPoints returns every mounted filesystem's mount point, plus the entries of /Volumes.
+
 package trash
 
 import (

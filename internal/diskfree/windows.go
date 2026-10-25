@@ -1,5 +1,7 @@
 //go:build windows
 
+// Free reports the available and total bytes of the volume holding path.
+
 package diskfree
 
 import "golang.org/x/sys/windows"

@@ -1,5 +1,7 @@
 //go:build !cgo && (darwin || cosmo)
 
+// The trash on macOS is an operation the system performs, reached through Foundation.
+
 package trash
 
 // The trash on macOS is an operation the system performs, reached through

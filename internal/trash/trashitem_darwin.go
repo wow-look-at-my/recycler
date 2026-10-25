@@ -1,5 +1,7 @@
 //go:build darwin && cgo
 
+// The macOS trash operation, as the system performs it.
+
 package trash
 
 // The macOS trash operation, as the system performs it. A rename into ~/.Trash is

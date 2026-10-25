@@ -1,5 +1,7 @@
 //go:build unix
 
+// Install registers exe's daemon with the service manager of the kernel this runs on, so it starts at login and is restarted whenever it exits.
+
 package daemon
 
 import (

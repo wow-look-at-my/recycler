@@ -1,5 +1,7 @@
 //go:build unix
 
+// deviceOf returns the number of the filesystem an entry sits on.
+
 package cargotarget
 
 import (

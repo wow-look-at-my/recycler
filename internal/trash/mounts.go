@@ -1,5 +1,7 @@
 //go:build linux || freebsd || netbsd || openbsd || dragonfly || solaris
 
+// pseudoFilesystems never hold user data, so their mount points are not worth scanning for trash directories.
+
 package trash
 
 import (

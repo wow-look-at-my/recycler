@@ -1,5 +1,7 @@
 //go:build unix
 
+// DeviceOf returns the device number of the filesystem holding path.
+
 package fsutil
 
 import (

@@ -1,5 +1,7 @@
 //go:build !linux && !darwin && !windows && !freebsd && !netbsd && !openbsd && !dragonfly && !solaris
 
+// Backend reports that this GOOS has no recycle bin implementation.
+
 package trash
 
 import (

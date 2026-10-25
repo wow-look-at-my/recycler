@@ -1,3 +1,5 @@
+// trimRootsEnv lists the directories to scan when the command is given none.
+
 package main
 
 import (

@@ -1,5 +1,7 @@
 //go:build windows
 
+// Install registers exe's daemon as a scheduled task, so it starts at logon and is restarted when it fails.
+
 package daemon
 
 import (

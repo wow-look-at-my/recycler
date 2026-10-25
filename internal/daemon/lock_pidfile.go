@@ -1,5 +1,7 @@
 //go:build unix
 
+// A system with no flock reports "function not implemented" under an ordinary recycle, so the lock falls through to a pid file here.
+
 package daemon
 
 import (

@@ -1,3 +1,5 @@
+// move relocates src to dst, falling back to a copy when src and dst.
+
 package fsutil
 
 import (

@@ -1,3 +1,5 @@
+// Writing .DS_Store files, WHOLE and never in place: that is what lets the buddy allocator skip freeing.
+
 package dsstore
 
 // Writing .DS_Store files, WHOLE and never in place: that is what lets the

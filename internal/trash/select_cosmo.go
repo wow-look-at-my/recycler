@@ -1,5 +1,7 @@
 //go:build cosmo
 
+// macOSHost names a directory every Mac has and no other host does.
+
 package trash
 
 import (

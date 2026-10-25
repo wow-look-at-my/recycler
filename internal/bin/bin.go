@@ -1,3 +1,5 @@
+// ErrUnsupported is returned on platforms with no recycle bin.
+
 package bin
 
 import (
