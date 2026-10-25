@@ -72,7 +72,12 @@ lock, which is what an older build left behind under such a caller.`,
 		ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
 		defer stop()
 
+<<<<<<< HEAD
 		// Repeating an unchanged complaint on every tick buries the change that matters, in a log nobody can then read.
+=======
+		// The poll is a then so repeating an unchanged complaint every tick
+		// would bury the change that matters in a log nobody can read.
+>>>>>>> 21718d9 (commit)
 		seen := map[string]bool{}
 		var reaped time.Time
 		run := recycler.RunDaemon

@@ -1,5 +1,10 @@
 //go:build darwin && cgo
 
+<<<<<<< HEAD
+=======
+// The macOS trash operation, as the system performs it.
+
+>>>>>>> 21718d9 (commit)
 package trash
 
 // The macOS trash operation, as the system performs it. A rename into ~/.Trash is
@@ -23,9 +28,14 @@ import (
 )
 
 // trashItem hands path to the system's trash operation and returns the path
+<<<<<<< HEAD
 // the item now sits at inside the trash. The second argument is where a build
 // with no such operation puts the item; the system picks the trash itself.
 func trashItem(path, _ string) (string, error) {
+=======
+// the item now sits at inside the trash.
+func trashItem(path string) (string, error) {
+>>>>>>> 21718d9 (commit)
 	cPath := C.CString(path)
 	defer C.free(unsafe.Pointer(cPath))
 

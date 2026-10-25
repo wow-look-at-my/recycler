@@ -167,6 +167,7 @@ func (t *macTrash) moveBatch(b *batch, results []*bin.Disposal, fail func(int, e
 		return
 	}
 
+<<<<<<< HEAD
 	dirs := set.New[string](2)
 	settled := make([]string, 0, 2)
 	for _, pending := range []map[string]map[string]putback.Origin{drops, adds} {
@@ -187,6 +188,16 @@ func (t *macTrash) moveBatch(b *batch, results []*bin.Disposal, fail func(int, e
 		if err := putback.Amend(dir, drops[dir], adds[dir]); err != nil && settleErr == nil {
 			settleErr = err
 		}
+=======
+	// The system picks the trash and the name inside it, on the item's own volume, and answers where the item landed.
+	dest, err := trashItem(abs)
+	if err != nil {
+		return bin.Disposal{}, err
+	}
+	dir := filepath.Dir(dest)
+	if err := putback.Set(dir, filepath.Base(dest), putback.Of(t.volumeRoot(dir), abs)); err != nil {
+		return bin.Disposal{}, fmt.Errorf("moved to the trash, but its original location could not be recorded: %w", err)
+>>>>>>> 21718d9 (commit)
 	}
 	if settleErr == nil {
 		return

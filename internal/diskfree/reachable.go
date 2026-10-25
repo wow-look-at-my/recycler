@@ -2,7 +2,15 @@ package diskfree
 
 // reachable returns the blocks of a filesystem this caller can ever use.
 //
+<<<<<<< HEAD
 // free minus avail is the reserve: another user's, and never arriving here.
+=======
+// blocks counts the whole device. free counts what is unallocated. avail counts
+// what an unprivileged caller may still take. The difference between free and
+// avail is the reserve, which belongs to another user and never becomes
+// available here, so it is not part of the pool a caller measures itself
+// against.
+>>>>>>> 21718d9 (commit)
 func reachable[T int64 | uint64](blocks, free, avail T) uint64 {
 	if blocks < 0 || free < 0 || avail < 0 || free <= avail {
 		return uint64(max(blocks, 0))

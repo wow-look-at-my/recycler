@@ -56,7 +56,13 @@ type Eviction struct {
 }
 
 // Pressure is a filesystem left under its target after a sweep did what it
+<<<<<<< HEAD
 // could.
+=======
+// could. Recycling defers a deletion, so the daemon gives back only what was
+// recycled: a filesystem filling with files nobody recycled leaves it running,
+// correct and powerless.
+>>>>>>> 21718d9 (commit)
 type Pressure struct {
 	Dir    string
 	Avail  uint64 // available bytes after the sweep
@@ -80,7 +86,11 @@ func (p Pressure) String() string {
 		p.Dir, p.Avail, p.Shortfall(), p.Target, p.Total)
 }
 
+<<<<<<< HEAD
 // Sweep reclaims space on every filesystem holding a recycle bin. Sweep reports
+=======
+// Sweep reclaims space on every filesystem holding a recycle bin, and reports
+>>>>>>> 21718d9 (commit)
 // every a single still under its target a single time it has given back all it can.
 func Sweep() ([]Eviction, []Pressure, error) {
 	b, err := trash.Backend()
@@ -206,7 +216,12 @@ func groupByFilesystem(items []bin.Item, dirs []string) []filesystemGroup {
 		byDir[dir] = append(byDir[dir], it)
 	}
 	for _, dir := range dirs {
+<<<<<<< HEAD
 		// An ID names the files/ subdirectory, so spell a bin the same way here.
+=======
+		// An item's ID names the files/ subdirectory, so a bin directory is
+		// spelled the same way here for both to land in a single group.
+>>>>>>> 21718d9 (commit)
 		add(filepath.Join(dir, "files"))
 	}
 	groups := make([]filesystemGroup, 0, len(order))
@@ -216,8 +231,15 @@ func groupByFilesystem(items []bin.Item, dirs []string) []filesystemGroup {
 	return groups
 }
 
+<<<<<<< HEAD
 // probePath answers the nearest existing ancestor of dir, which is what
 // statfs can read.
+=======
+// probePath returns the nearest existing ancestor of dir, which is the path a
+// statfs can answer for. A bin directory nothing has been recycled into yet does
+// not exist, and refusing to measure its filesystem leaves the daemon blind
+// This happens until the earliest recycle.
+>>>>>>> 21718d9 (commit)
 func probePath(dir string) string {
 	for {
 		if _, err := os.Stat(dir); err == nil {

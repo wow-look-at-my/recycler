@@ -15,7 +15,11 @@ func TestTheFloorMatchesTheDaemonsTarget(t *testing.T) {
 	assert.Equal(t, uint64(1<<30), Floor(10<<30))
 	assert.Equal(t, uint64(1<<30), Floor(1<<40))
 
+<<<<<<< HEAD
 	// Small media keep the fraction, so they do not become a delete device.
+=======
+	// A smaller a single keeps the fraction, so small media does not become a permanent-delete device.
+>>>>>>> 21718d9 (commit)
 	assert.Equal(t, uint64(50<<20), Floor(500<<20))
 	assert.Equal(t, uint64(100), Floor(1000))
 }
@@ -44,7 +48,11 @@ func TestACopyLargerThanTheSpaceLeftIsDeletedOutright(t *testing.T) {
 	assert.Contains(t, d.Reason, "does not fit")
 }
 
+<<<<<<< HEAD
 // Both states are separate. A copy that fits, onto a filesystem with room, is
+=======
+// Both states are separate. An item that fits, on a filesystem with room, is
+>>>>>>> 21718d9 (commit)
 // recycled however large it is.
 func TestACopyThatFitsIsRecycled(t *testing.T) {
 	d := fits(decide(8<<30, terabyte), 8<<30, 4<<30)

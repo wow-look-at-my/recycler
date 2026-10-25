@@ -139,6 +139,7 @@ func TestBuildsATreeOfManyNodes(t *testing.T) {
 	assert.ElementsMatch(t, records, parsed)
 }
 
+<<<<<<< HEAD
 // A record count where the LAST record overflows its node leaves a pivot with
 // nothing to its right. The parent then carries a single more record than it
 // has children, and the encoder reads past the end of the level below. Which
@@ -168,6 +169,12 @@ func TestEveryRecordCountBuildsAReadableTree(t *testing.T) {
 // node after it. The level above then has fewer children than it has keys,
 // which the encoder reads past the end of. Every count in a range holding
 // several such boundaries has to build a tree the encoder can walk.
+=======
+// A record count that fills the last node exactly promotes a pivot with no
+// node after it. The level above then has a single child fewer than it has
+// keys, which the encoder reads past the end of. Every count in a range
+// holding several such boundaries has to round-trip.
+>>>>>>> 21718d9 (commit)
 func TestBuildsATreeWhateverTheLastNodeHolds(t *testing.T) {
 	for count := 1; count <= 600; count++ {
 		records := make([]Record, 0, count)

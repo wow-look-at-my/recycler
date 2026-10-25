@@ -25,15 +25,25 @@ type Decision struct {
 	Size   int64  // the blocks a copy of the path needs, or [bin.SizeUnknown] when no copy is made
 }
 
+<<<<<<< HEAD
 // Mirrors internal/daemon, which imports the backends calling this. A test pins
 // both spellings together.
+=======
+// These mirror internal/daemon, which imports the backends that call this and so
+// so cannot be imported back.
+>>>>>>> 21718d9 (commit)
 const (
 	freeTargetFraction = 10
 	freeTargetCeiling  = 1 << 30
 )
 
+<<<<<<< HEAD
 // Floor is the available bytes under which recycling stops deferring, and
 // where the daemon sweeps.
+=======
+// A smaller a single keeps the fraction, because a flat gigabyte on small media
+// would make every deletion there permanent.
+>>>>>>> 21718d9 (commit)
 func Floor(total uint64) uint64 {
 	if target := total / freeTargetFraction; target < freeTargetCeiling {
 		return target
@@ -68,11 +78,20 @@ func Check(path, dest string) Decision {
 	return fits(d, destAvail, fsutil.DiskUsage(path))
 }
 
+<<<<<<< HEAD
 // decide is the floor against an already-read filesystem, so the cases can be
 // tested without a filesystem that is full.
 func decide(avail, total uint64) Decision {
 	d := Decision{Avail: avail, Target: Floor(total), Size: bin.SizeUnknown}
 	if avail < d.Target {
+=======
+// decide is Check's rules against an already-read filesystem, so the cases can
+// can be tested without a single that is full.
+func decide(avail, total uint64, size int64) Decision {
+	d := Decision{Avail: avail, Target: Floor(total), Size: size}
+	switch {
+	case avail < d.Target:
+>>>>>>> 21718d9 (commit)
 		d.Permanent = true
 		d.Reason = fmt.Sprintf("only %s free, under the %s the bin needs to defer anything",
 			Bytes(avail), Bytes(d.Target))
