@@ -1,5 +1,7 @@
 //go:build linux || freebsd || netbsd || openbsd || dragonfly || solaris
 
+// Files recycled from the filesystem holding the home directory go to the home trash ($XDG_DATA_HOME/Trash).
+
 package trash
 
 //
@@ -144,11 +146,13 @@ func (t *fdoTrash) List() ([]bin.Item, error) {
 		if dir != t.home {
 			top = topDirOfTrash(dir)
 		}
+		recorded := set.New[string]()
 		for _, entry := range entries {
 			if entry.IsDir() || !strings.HasSuffix(entry.Name(), trashInfoExt) {
 				continue
 			}
 			name := strings.TrimSuffix(entry.Name(), trashInfoExt)
+			recorded.Add(name)
 			file := filepath.Join(dir, trashFilesDir, name)
 			st, err := os.Lstat(file)
 			if err != nil {
@@ -159,8 +163,12 @@ func (t *fdoTrash) List() ([]bin.Item, error) {
 				continue
 			}
 			orig := info.origPath
-			if !filepath.IsAbs(orig) && top != "" {
+			if orig != "" && !filepath.IsAbs(orig) && top != "" {
 				orig = filepath.Join(top, orig)
+			}
+			display := name
+			if orig != "" {
+				display = filepath.Base(orig)
 			}
 			deletedAt := info.deletedAt
 			if deletedAt.IsZero() {
@@ -178,13 +186,14 @@ func (t *fdoTrash) List() ([]bin.Item, error) {
 			}
 			items = append(items, bin.Item{
 				ID:           file,
-				Name:         filepath.Base(orig),
+				Name:         display,
 				OriginalPath: orig,
 				DeletedAt:    deletedAt,
 				Size:         size,
 				IsDir:        st.IsDir(),
 			})
 		}
+		items = append(items, t.adoptUnrecorded(dir, recorded)...)
 	}
 	bin.Sort(items)
 	return items, nil

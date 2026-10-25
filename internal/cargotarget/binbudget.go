@@ -1,3 +1,5 @@
+// Build output in the recycle bin answers to a budget of its own.
+
 package cargotarget
 
 import (

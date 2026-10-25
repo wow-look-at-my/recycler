@@ -1,3 +1,5 @@
+// Codec for the Finder's undocumented ".DS_Store" files, which hold the Trash's "Put Back" records.
+
 package dsstore
 
 // Codec for the Finder's undocumented ".DS_Store" files, which hold the

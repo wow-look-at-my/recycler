@@ -1,5 +1,7 @@
 //go:build unix
 
+// The "Put Back" records macOS keeps in a trash directory's .DS_Store: ptbL and ptbN.
+
 package putback
 
 // The "Put Back" records macOS keeps in a trash directory's .DS_Store: ptbL and

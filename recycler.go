@@ -1,3 +1,5 @@
+// ErrDaemonRunning is returned.
+
 package recycler
 
 import (

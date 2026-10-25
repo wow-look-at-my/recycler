@@ -1,5 +1,7 @@
 //go:build !unix
 
+// deviceOf reports that this platform answers no filesystem number to compare.
+
 package cargotarget
 
 import "io/fs"

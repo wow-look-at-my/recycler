@@ -1,3 +1,5 @@
+// Version is the build this daemon calls itself.
+
 package daemon
 
 import (

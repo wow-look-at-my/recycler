@@ -1,3 +1,5 @@
+// Codec for the "$I" metadata Windows writes beside every recycled file.
+
 package winbin
 
 // Codec for the "$I" metadata Windows writes beside every recycled file.

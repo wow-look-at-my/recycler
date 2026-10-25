@@ -1,3 +1,5 @@
+// interactive reports whether each end of the conversation.
+
 package main
 
 import (

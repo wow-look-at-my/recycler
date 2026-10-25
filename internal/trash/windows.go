@@ -1,5 +1,7 @@
 //go:build windows
 
+// Windows Recycle Bin implementation.
+
 package trash
 
 // Windows Recycle Bin implementation.

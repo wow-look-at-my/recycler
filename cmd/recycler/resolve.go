@@ -1,3 +1,5 @@
+// resolve turns a user-supplied reference into a recycle bin item.
+
 package main
 
 import (

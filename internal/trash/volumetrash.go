@@ -1,3 +1,5 @@
+// Mounts lists the mount points searched for a volume's own trash directory.
+
 package trash
 
 import (

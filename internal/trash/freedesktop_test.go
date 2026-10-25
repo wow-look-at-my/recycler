@@ -5,6 +5,7 @@ package trash
 import (
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -348,5 +349,65 @@ func TestTopDirOfTrash(t *testing.T) {
 	}
 	for in, want := range cases {
 		assert.Equal(t, want, topDirOfTrash(in), "topDirOfTrash(%q)", in)
+	}
+}
+
+// Data in files/ with no .trashinfo holds disk space all the same. The daemon
+// sees only what List returns, so such an entry must be listed with its size.
+func TestAnUnrecordedEntryIsListedSizedAndRecorded(t *testing.T) {
+	isolateTrash(t)
+	trash := homeTrash(t)
+	require.NoError(t, ensureTrashDir(trash))
+
+	orphan := filepath.Join(trash, trashFilesDir, "base-b")
+	writeFile(t, filepath.Join(orphan, "logs", "run.log"), strings.Repeat("a", 300))
+	writeFile(t, filepath.Join(orphan, "edits-r1", "out"), strings.Repeat("b", 212))
+
+	items, err := fdoList()
+	require.NoError(t, err)
+	require.Len(t, items, 1, "the unrecorded entry is not listed, so nothing can ever evict it")
+	assert.Equal(t, orphan, items[0].ID)
+	assert.Equal(t, "base-b", items[0].Name)
+	assert.Empty(t, items[0].OriginalPath)
+	assert.Equal(t, int64(512), items[0].Size)
+	assert.True(t, items[0].IsDir)
+
+	infoPath := filepath.Join(trash, trashInfoDir, "base-b"+trashInfoExt)
+	raw, err := os.ReadFile(infoPath)
+	require.NoError(t, err, "the entry got no record, so every poll walks it again")
+	assert.Contains(t, string(raw), "Size=512")
+
+	again, err := fdoList()
+	require.NoError(t, err)
+	require.Len(t, again, 1, "the record and the adoption must not list the entry twice")
+	assert.Equal(t, "base-b", again[0].Name)
+	assert.Empty(t, again[0].OriginalPath)
+	assert.Equal(t, int64(512), again[0].Size)
+
+	_, err = fdoRestore(again[0].ID)
+	require.ErrorIs(t, err, bin.ErrUnknownOrigin)
+
+	require.NoError(t, testFdo().Evict(again[0].ID))
+	assert.NoDirExists(t, orphan)
+	assert.NoFileExists(t, infoPath)
+}
+
+// An empty Path in a per-filesystem bin must not resolve to the top directory.
+func TestAnUnrecordedEntryInAVolumeBinHasNoOrigin(t *testing.T) {
+	t.Serial()
+	work := isolateTrash(t)
+	volume := filepath.Join(work, "volume")
+	dir := filepath.Join(volume, ".Trash-"+strconv.Itoa(os.Getuid()))
+	require.NoError(t, ensureTrashDir(dir))
+	Mounts = func() []string { return []string{volume} }
+	writeFile(t, filepath.Join(dir, trashFilesDir, "stray"), "xyz")
+
+	for range 2 {
+		items, err := fdoList()
+		require.NoError(t, err)
+		require.Len(t, items, 1)
+		assert.Empty(t, items[0].OriginalPath, "an unknown origin read as the volume root")
+		assert.Equal(t, "stray", items[0].Name)
+		assert.Equal(t, int64(3), items[0].Size)
 	}
 }

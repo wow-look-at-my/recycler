@@ -1,3 +1,5 @@
+// reachable returns the blocks of a filesystem this caller can ever use.
+
 package diskfree
 
 // reachable returns the blocks of a filesystem this caller can ever use.
