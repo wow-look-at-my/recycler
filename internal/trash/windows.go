@@ -1,13 +1,10 @@
 //go:build windows
 
+// Windows Recycle Bin implementation.
+
 package trash
 
 // Windows Recycle Bin implementation.
-//
-// Recycling goes through the shell (SHFileOperation with FOF_ALLOWUNDO), so it
-// behaves exactly like deleting from Explorer. Listing and restoring read the
-// bin's own on-disk layout directly: every recycled item is a "$R" data file
-// with a matching "$I" metadata file in <drive>:\$Recycle.Bin\<user SID>\.
 
 import (
 	"errors"
@@ -52,6 +49,9 @@ type winTrash struct {
 	sid string
 }
 
+// mountPoints names no volume. Windows keeps a bin on each drive, found by its drive letter.
+func mountPoints() []string { return nil }
+
 func Backend() (bin.Backend, error) {
 	user, err := windows.GetCurrentProcessToken().GetTokenUser()
 	if err != nil {
@@ -77,7 +77,7 @@ func (t *winTrash) Recycle(paths []string) ([]bin.Disposal, error) {
 		// The bin is on the volume it takes from, so recycling frees nothing
 		// there. Under the daemon's floor the deletion the caller asked for is
 		// the only thing that gives space back.
-		if decision := pressure.Check(p, fsutil.TreeSize(p)); decision.Permanent {
+		if decision := pressure.Check(p, filepath.VolumeName(p)+`\`); decision.Permanent {
 			if err := os.RemoveAll(p); err != nil {
 				errs = append(errs, fmt.Errorf("deleting %s: %w", path, err))
 				continue
@@ -93,8 +93,21 @@ func (t *winTrash) Recycle(paths []string) ([]bin.Disposal, error) {
 	}
 	if err := shFileOperationDelete(abs); err != nil {
 		errs = append(errs, err)
+		disposals = stillGone(disposals)
 	}
 	return disposals, errors.Join(errs...)
+}
+
+// stillGone keeps the disposals whose path the shell emptied: one failed
+// shell call can leave any number of its paths where they were.
+func stillGone(disposals []bin.Disposal) []bin.Disposal {
+	kept := disposals[:0]
+	for _, d := range disposals {
+		if _, err := os.Lstat(d.Path); d.Permanent || errors.Is(err, fs.ErrNotExist) {
+			kept = append(kept, d)
+		}
+	}
+	return kept
 }
 
 // shFileOperationDelete asks the shell to delete every path to the recycle bin

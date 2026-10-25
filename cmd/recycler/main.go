@@ -1,3 +1,5 @@
+// execute routes here rather than on the root command, which leaves cobra's handling of an unknown command intact.
+
 package main
 
 import (

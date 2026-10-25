@@ -1,3 +1,5 @@
+// detach gives the daemon no console and its own process group, so closing the window that ran the recycle.
+
 package daemon
 
 import (

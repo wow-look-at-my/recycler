@@ -1,9 +1,12 @@
 //go:build unix
 
+// DeviceOf returns the device number of the filesystem holding path.
+
 package fsutil
 
 import (
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"syscall"
@@ -20,6 +23,30 @@ func DeviceOf(path string) (uint64, error) {
 		return 0, fmt.Errorf("recycler: cannot determine the filesystem of %s", path)
 	}
 	return uint64(st.Dev), nil
+}
+
+// SameFilesystem reports whether a and b sit on one filesystem, where a
+// rename between them moves no data and needs no free space.
+func SameFilesystem(a, b string) (bool, error) {
+	devA, err := DeviceOf(a)
+	if err != nil {
+		return false, err
+	}
+	devB, err := DeviceOf(b)
+	if err != nil {
+		return false, err
+	}
+	return devA == devB, nil
+}
+
+// Allocated is the space an entry takes on its filesystem: its st_blocks, in
+// 512-byte units whatever the filesystem's block size.
+func Allocated(info fs.FileInfo) int64 {
+	st, ok := info.Sys().(*syscall.Stat_t)
+	if !ok {
+		return info.Size()
+	}
+	return int64(st.Blocks) * 512
 }
 
 // IsStickyDir reports whether path is a real directory, and not a symlink to a directory.

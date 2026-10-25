@@ -1,28 +1,9 @@
+// Codec for the Finder's undocumented ".DS_Store" files, which hold the Trash's "Put Back" records.
+
 package dsstore
 
-// Codec for the Finder's ".DS_Store" files. On macOS that is where the Trash
-// keeps the "Put Back" location of every item in it: "ptbL" holds the original
-// parent directory relative to the volume root, and "ptbN" the original name.
-//
-// Apple has never documented the format, but it has been reverse engineered
-// often enough to be reliable. A file is a B-tree of records, stored in blocks
-// managed by a buddy allocator. The header carries a fixed prefix, the magic
-// "Bud1", and the offset and length of the allocator's bookkeeping block. That
-// offset appears again further along, and the Finder rejects a file whose
-// copies disagree. The tail of the header has no known purpose.
-//
-// Every offset in the file is relative to the end of the prefix, which is what
-// the offset adjustment below accounts for. The bookkeeping block holds the block address
-// table, where an entry packs an offset together with the block's width in its
-// low bits. It also holds a directory mapping "DSDB" to the block number of the
-// B-tree master block, and a free list per width.
-//
-// A B-tree node opens with P and a record count. A leaf leaves P empty and its
-// records follow directly. An internal node holds that many (child block
-// number, record) entries, with P as the rightmost child.
-//
-// This file deliberately has no build constraint: keeping the codec portable
-// keeps it testable on any platform.
+// Codec for the Finder's undocumented ".DS_Store" files, which hold the
+// Trash's "Put Back" records. Depth: docs/ds-store-format.md.
 
 import (
 	"encoding/binary"

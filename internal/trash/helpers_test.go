@@ -1,3 +1,5 @@
+//go:build linux || freebsd || netbsd || openbsd || dragonfly || solaris
+
 package trash
 
 import (
@@ -7,45 +9,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-
-	"github.com/wow-look-at-my/recycler/internal/bin"
 )
-
-// recycle, list and restore are what the recycler package's own functions do, so a backend test.
-func recycle(paths ...string) error {
-	b, err := Backend()
-	if err != nil {
-		return err
-	}
-	_, err = b.Recycle(paths)
-	return err
-}
-
-// dispose is recycle for a test that has to see whether a path was deferred or
-// deleted outright.
-func dispose(paths ...string) ([]bin.Disposal, error) {
-	b, err := Backend()
-	if err != nil {
-		return nil, err
-	}
-	return b.Recycle(paths)
-}
-
-func list() ([]bin.Item, error) {
-	b, err := Backend()
-	if err != nil {
-		return nil, err
-	}
-	return b.List()
-}
-
-func restore(id string) (string, error) {
-	b, err := Backend()
-	if err != nil {
-		return "", err
-	}
-	return b.Restore(id, "")
-}
 
 // isolateTrash points the recycle bin at a temporary directory so tests never touch.
 func isolateTrash(t *testing.T) string {
@@ -59,6 +23,11 @@ func isolateTrash(t *testing.T) string {
 	t.Setenv("HOME", home)
 	t.Setenv("XDG_DATA_HOME", filepath.Join(home, ".local", "share"))
 
+	// Every volume of the host keeps a trash of its own, which HOME does not move.
+	mounts := Mounts
+	Mounts = func() []string { return nil }
+	t.Cleanup(func() { Mounts = mounts })
+
 	work := filepath.Join(root, "work")
 	require.NoError(t, os.MkdirAll(work, 0o700))
 	return work
@@ -69,11 +38,4 @@ func writeFile(t *testing.T, path, content string) string {
 	require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
 	require.NoError(t, os.WriteFile(path, []byte(content), 0o644))
 	return path
-}
-
-func mustList(t *testing.T) []bin.Item {
-	t.Helper()
-	items, err := list()
-	require.NoError(t, err)
-	return items
 }

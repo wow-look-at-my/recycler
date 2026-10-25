@@ -1,5 +1,7 @@
 //go:build unix
 
+// errCrossDevice is the error a rename.
+
 package fsutil
 
 import "syscall"

@@ -12,10 +12,13 @@ import (
 	"github.com/wow-look-at-my/tml"
 )
 
+// testWidth is wide enough that a macOS temp directory under the isolated bin is not cut short.
+const testWidth = 200
+
 // screen renders a frame with the styling taken off, so an assertion is about.
 func screen(t *testing.T, m *model) string {
 	t.Helper()
-	return ansi.Strip(m.frameOf(100, 30))
+	return ansi.Strip(m.frameOf(testWidth, 30))
 }
 
 // press feeds keys through the same Update a terminal does. Painting between them is what sizes the viewport.
@@ -69,14 +72,14 @@ func TestMovingTheCursorMovesTheBarAndThePath(t *testing.T) {
 	require.Len(t, m.shown, 2)
 
 	top, _ := m.current()
-	resting := m.frameOf(100, 30)
+	resting := m.frameOf(testWidth, 30)
 
 	press(t, m, "down")
 	next, _ := m.current()
 
 	require.NotEqual(t, top.ID, next.ID, "down moved to the other item")
 	assert.Equal(t, 1, m.selected)
-	assert.NotEqual(t, resting, m.frameOf(100, 30), "the bar moved with it")
+	assert.NotEqual(t, resting, m.frameOf(testWidth, 30), "the bar moved with it")
 	assert.Contains(t, screen(t, m), filepath.Join(work, next.Name), "and the path under the listing followed")
 }
 
@@ -125,6 +128,54 @@ func TestEscapeClearsTheFilter(t *testing.T) {
 }
 
 // Restoring is the only thing that takes an item out of the bin, and it asks before it writes a file back.
+// Backspace takes back a letter and widens the match again, so a typo costs a
+// key rather than the whole filter.
+func TestBackspaceTakesBackALetter(t *testing.T) {
+	m, _ := binWith(t, "notes.md", "report.pdf")
+
+	press(t, m, "/", "r", "e", "p", "z")
+	require.Empty(t, m.shown)
+
+	press(t, m, "backspace")
+	assert.Equal(t, "rep", m.filter)
+	assert.Len(t, m.shown, 1)
+
+	// Backspace on an empty filter is a key that does nothing, not an underflow.
+	press(t, m, "backspace", "backspace", "backspace", "backspace")
+	assert.Empty(t, m.filter)
+	assert.Len(t, m.shown, 2)
+}
+
+// Enter leaves the filter in place and gives the keys back to the listing.
+// This is how an item is picked out of what the filter narrowed to.
+func TestEnterKeepsTheFilterAndReturnsToTheListing(t *testing.T) {
+	m, _ := binWith(t, "notes.md", "report.pdf")
+
+	press(t, m, "/", "r", "e", "p", "enter")
+	assert.False(t, m.filtering)
+	assert.Equal(t, "rep", m.filter)
+	assert.Len(t, m.shown, 1)
+}
+
+// The cursor keys move the selection while the filter is still being typed, so
+// a match can be picked while the filter is still open.
+func TestTheCursorMovesWhileTheFilterIsBeingTyped(t *testing.T) {
+	m, _ := binWith(t, "report-a.pdf", "report-b.pdf")
+
+	press(t, m, "/", "r", "e", "p")
+	require.Len(t, m.shown, 2)
+	top, _ := m.current()
+
+	press(t, m, "down")
+	next, _ := m.current()
+	assert.NotEqual(t, top.ID, next.ID, "the selection did not move")
+	assert.True(t, m.filtering, "a cursor key ended the filter")
+
+	press(t, m, "up")
+	back, _ := m.current()
+	assert.Equal(t, top.ID, back.ID)
+}
+
 func TestRestoreAsksAndThenPutsTheFileBack(t *testing.T) {
 	m, work := binWith(t, "notes.md")
 	original := filepath.Join(work, "notes.md")
@@ -151,7 +202,8 @@ func TestCancellingTheAskLeavesTheItemInTheBin(t *testing.T) {
 	assert.Len(t, m.shown, 1)
 }
 
-// Nothing is overwritten: a file that took the original location back is reported rather than clobbered.
+// Nothing is overwritten: a file that took the location back is reported
+// rather than clobbered.
 func TestRestoreRefusesToOverwriteWhatTookThePlaceBack(t *testing.T) {
 	m, work := binWith(t, "notes.md")
 	original := writeFile(t, filepath.Join(work, "notes.md"), "something else entirely")

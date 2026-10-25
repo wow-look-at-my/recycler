@@ -1,3 +1,5 @@
+// ErrUnsupported is returned on platforms with no recycle bin.
+
 package bin
 
 import (
@@ -61,29 +63,23 @@ func Sort(items []Item) {
 	})
 }
 
-// A Disposal records what a single path handed to Recycle actually got.
+// A Disposal records what a single path handed to Recycle got.
 type Disposal struct {
 	Path string
 
-	// Permanent marks a path removed outright rather than recycled, because the
-	// filesystem had no room left to defer the deletion into. Reason says which
-	// measurement decided that.
+	// Permanent marks a path removed outright, with Reason saying why.
 	Permanent bool
 	Reason    string
 }
 
 // A Backend is the per-platform implementation of the package API.
 type Backend interface {
-	// Recycle reports what happened to every path it was given, including the
-	// ones it failed on. A caller must say when a deletion was permanent.
+	// Recycle reports every path it was given, the ones it failed on included.
 	Recycle(paths []string) ([]Disposal, error)
 	List() ([]Item, error)
 	Restore(id, dest string) (string, error)
 	Evict(id string) error
 
-	// Dirs returns this user's recycle bin directories, whether or not any of
-	// them holds anything. The daemon watches the filesystems behind these, so
-	// deriving them from a listing instead would leave it blind to a filesystem
-	// filling up with files nobody recycled.
+	// Dirs answers this user's bin directories, empty ones included.
 	Dirs() []string
 }

@@ -1,5 +1,7 @@
 //go:build !linux && !darwin && !freebsd && !dragonfly && !openbsd && !netbsd && !solaris && !windows
 
+// Free has no implementation on a platform with no recycle bin either.
+
 package diskfree
 
 import "github.com/wow-look-at-my/recycler/internal/bin"

@@ -1,5 +1,7 @@
 //go:build linux || freebsd || netbsd || openbsd || dragonfly || solaris
 
+// Files recycled from the filesystem holding the home directory go to the home trash ($XDG_DATA_HOME/Trash).
+
 package trash
 
 //
@@ -40,7 +42,7 @@ type fdoTrash struct {
 	uid  int
 }
 
-func Backend() (bin.Backend, error) {
+func fdoBackend() (bin.Backend, error) {
 	dataHome := os.Getenv("XDG_DATA_HOME")
 	if dataHome == "" || !filepath.IsAbs(dataHome) {
 		home, err := os.UserHomeDir()
@@ -85,25 +87,23 @@ func (t *fdoTrash) recycleOne(path string) (bin.Disposal, error) {
 		return bin.Disposal{}, errors.New("refusing to recycle the filesystem root")
 	}
 
-	// The size is measured here, while the item is still at its original
-	// location. It decides whether the item fits in what is left as well as
-	// what gets recorded, so it is read before anything is written.
-	size := fsutil.TreeSize(abs)
+	dir, top, err := t.trashDirFor(abs)
+	if err != nil {
+		return bin.Disposal{}, err
+	}
 
 	// A bin is on the filesystem it takes from, so recycling frees nothing here.
 	// Under the daemon's floor that stops being a deferral, and the deletion the
 	// caller asked for is the only thing that gives space back.
-	if decision := pressure.Check(abs, size); decision.Permanent {
+	if decision := pressure.Check(abs, dir); decision.Permanent {
 		if err := os.RemoveAll(abs); err != nil {
 			return bin.Disposal{}, err
 		}
 		return bin.Disposal{Path: abs, Permanent: true, Reason: decision.Reason}, nil
 	}
 
-	dir, top, err := t.trashDirFor(abs)
-	if err != nil {
-		return bin.Disposal{}, err
-	}
+	// Measured before anything moves, so the record holds what went in.
+	size := fsutil.TreeSize(abs)
 
 	// A per-filesystem trash records the location relative to the top directory.
 	recorded := abs
@@ -146,11 +146,13 @@ func (t *fdoTrash) List() ([]bin.Item, error) {
 		if dir != t.home {
 			top = topDirOfTrash(dir)
 		}
+		recorded := set.New[string]()
 		for _, entry := range entries {
 			if entry.IsDir() || !strings.HasSuffix(entry.Name(), trashInfoExt) {
 				continue
 			}
 			name := strings.TrimSuffix(entry.Name(), trashInfoExt)
+			recorded.Add(name)
 			file := filepath.Join(dir, trashFilesDir, name)
 			st, err := os.Lstat(file)
 			if err != nil {
@@ -161,8 +163,12 @@ func (t *fdoTrash) List() ([]bin.Item, error) {
 				continue
 			}
 			orig := info.origPath
-			if !filepath.IsAbs(orig) && top != "" {
+			if orig != "" && !filepath.IsAbs(orig) && top != "" {
 				orig = filepath.Join(top, orig)
+			}
+			display := name
+			if orig != "" {
+				display = filepath.Base(orig)
 			}
 			deletedAt := info.deletedAt
 			if deletedAt.IsZero() {
@@ -180,13 +186,14 @@ func (t *fdoTrash) List() ([]bin.Item, error) {
 			}
 			items = append(items, bin.Item{
 				ID:           file,
-				Name:         filepath.Base(orig),
+				Name:         display,
 				OriginalPath: orig,
 				DeletedAt:    deletedAt,
 				Size:         size,
 				IsDir:        st.IsDir(),
 			})
 		}
+		items = append(items, t.adoptUnrecorded(dir, recorded)...)
 	}
 	bin.Sort(items)
 	return items, nil
@@ -304,7 +311,7 @@ func (t *fdoTrash) Dirs() []string { return t.trashDirs() }
 func (t *fdoTrash) trashDirs() []string {
 	dirs := []string{t.home}
 	seen := set.Of[string](t.home)
-	for _, top := range mountPoints() {
+	for _, top := range Mounts() {
 		for _, candidate := range []string{
 			filepath.Join(top, ".Trash", strconv.Itoa(t.uid)),
 			filepath.Join(top, ".Trash-"+strconv.Itoa(t.uid)),

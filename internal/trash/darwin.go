@@ -1,17 +1,10 @@
-//go:build darwin
+//go:build darwin || cosmo
+
+// macOS Trash implementation.
 
 package trash
 
 // macOS Trash implementation.
-//
-// Finder moves deleted files into ~/.Trash (or .Trashes/$uid on other volumes)
-// and records where each item came from in that trash directory's own .DS_Store,
-// as the "ptbL" and "ptbN" records behind its Put Back command. Apple documents
-// neither the file nor an API for reading it, but it is the only place the
-// original location exists, so this reads and writes those same records
-// (internal/putback over internal/dsstore) instead of keeping an index of its
-// own. Items recycled here can therefore be put back from Finder, and items
-// Finder trashed can be restored here.
 
 import (
 	"errors"
@@ -24,6 +17,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/wow-look-at-my/go-containers/set"
+
 	"github.com/wow-look-at-my/recycler/internal/bin"
 	"github.com/wow-look-at-my/recycler/internal/dsstore"
 	"github.com/wow-look-at-my/recycler/internal/fsutil"
@@ -34,9 +29,12 @@ import (
 type macTrash struct {
 	home string // ~/.Trash
 	uid  int
+
+	// mounts replaces the kernel's mount table when set.
+	mounts func() []string
 }
 
-func Backend() (bin.Backend, error) {
+func macBackend() (bin.Backend, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return nil, fmt.Errorf("recycler: locating home directory: %w", err)
@@ -44,58 +42,174 @@ func Backend() (bin.Backend, error) {
 	return &macTrash{home: filepath.Join(home, ".Trash"), uid: os.Getuid()}, nil
 }
 
-func (t *macTrash) Recycle(paths []string) ([]bin.Disposal, error) {
-	var errs []error
-	disposals := make([]bin.Disposal, 0, len(paths))
-	for _, path := range paths {
-		d, err := t.recycleOne(path)
-		if err != nil {
-			errs = append(errs, fmt.Errorf("recycling %s: %w", path, err))
-			continue
-		}
-		disposals = append(disposals, d)
-	}
-	return disposals, errors.Join(errs...)
+// A Recycle call writes each trash directory's put back records once for the
+// whole call, before anything moves.
+
+// A move is a path headed for a trash directory under a name promised to it.
+type move struct {
+	index     int // position in the paths handed to Recycle
+	src, name string
+	origin    putback.Origin
 }
 
-func (t *macTrash) recycleOne(path string) (bin.Disposal, error) {
-	abs, err := filepath.Abs(path)
-	if err != nil {
-		return bin.Disposal{}, err
+// A batch is every move into one trash directory.
+type batch struct {
+	dir   string
+	moves []move
+	taken set.Set[string]
+}
+
+func (t *macTrash) Recycle(paths []string) ([]bin.Disposal, error) {
+	results := make([]*bin.Disposal, len(paths))
+	failures := make([]error, len(paths))
+	fail := func(i int, err error) { failures[i] = fmt.Errorf("recycling %s: %w", paths[i], err) }
+
+	var batches []*batch
+	byDir := map[string]*batch{}
+	for i, path := range paths {
+		abs, dir, deleted, err := t.prepare(path)
+		if err != nil {
+			fail(i, err)
+			continue
+		}
+		if deleted != nil {
+			results[i] = deleted
+			continue
+		}
+		b := byDir[dir]
+		if b == nil {
+			b = &batch{dir: dir, taken: set.New[string]()}
+			byDir[dir] = b
+			batches = append(batches, b)
+		}
+		name := putback.TrashName(filepath.Base(abs), dir, b.taken)
+		b.taken.Add(name)
+		b.moves = append(b.moves, move{index: i, src: abs, name: name, origin: putback.Of(t.volumeRoot(dir), abs)})
+	}
+
+	for _, b := range batches {
+		t.moveBatch(b, results, fail)
+	}
+
+	disposals := make([]bin.Disposal, 0, len(paths))
+	for _, d := range results {
+		if d != nil {
+			disposals = append(disposals, *d)
+		}
+	}
+	return disposals, errors.Join(failures...)
+}
+
+// prepare validates a path and answers the trash directory it goes to, or the
+// disposal of a path pressure deleted outright.
+func (t *macTrash) prepare(path string) (abs, dir string, deleted *bin.Disposal, err error) {
+	if abs, err = filepath.Abs(path); err != nil {
+		return "", "", nil, err
 	}
 	if _, err := os.Lstat(abs); err != nil {
-		return bin.Disposal{}, err
+		return "", "", nil, err
 	}
 	if abs == filepath.Clean("/") {
-		return bin.Disposal{}, errors.New("refusing to recycle the filesystem root")
+		return "", "", nil, errors.New("refusing to recycle the filesystem root")
+	}
+
+	dir, err = t.trashDirFor(abs)
+	if err != nil {
+		return "", "", nil, err
 	}
 
 	// A trash is on the volume it takes from, so recycling frees nothing there.
 	// Under the daemon's floor the deletion the caller asked for is the only
 	// thing that gives space back.
-	if decision := pressure.Check(abs, fsutil.TreeSize(abs)); decision.Permanent {
+	if decision := pressure.Check(abs, dir); decision.Permanent {
 		if err := os.RemoveAll(abs); err != nil {
-			return bin.Disposal{}, err
+			return "", "", nil, err
 		}
-		return bin.Disposal{Path: abs, Permanent: true, Reason: decision.Reason}, nil
+		return abs, "", &bin.Disposal{Path: abs, Permanent: true, Reason: decision.Reason}, nil
+	}
+	return abs, dir, nil, err
+}
+
+// moveBatch records every origin in the batch in one rewrite, then hands each
+// item to the trash. The system picks the name inside the trash, so an item can
+// land under one this batch did not promise it. Only the records that need it -
+// those of a move that failed, and those of an item the system named itself -
+// cost a second rewrite. That rewrite covers the whole batch.
+func (t *macTrash) moveBatch(b *batch, results []*bin.Disposal, fail func(int, error)) {
+	origins := make(map[string]putback.Origin, len(b.moves))
+	for _, m := range b.moves {
+		origins[m.name] = m.origin
+	}
+	recordErr := putback.SetAll(b.dir, origins)
+
+	drops := map[string]map[string]putback.Origin{}
+	adds := map[string]map[string]putback.Origin{}
+	moveErrs := map[int]error{}
+	for _, m := range b.moves {
+		dest, err := trashItem(m.src, b.dir)
+		if err != nil {
+			moveErrs[m.index] = err
+			fail(m.index, err)
+			recordOrigin(drops, b.dir, m.name, m.origin)
+			continue
+		}
+		if recordErr != nil {
+			fail(m.index, fmt.Errorf("moved to the trash, but its original location could not be recorded: %w", recordErr))
+			continue
+		}
+		results[m.index] = &bin.Disposal{Path: m.src}
+		dir, name := filepath.Dir(dest), filepath.Base(dest)
+		if dir == b.dir && name == m.name {
+			continue
+		}
+		recordOrigin(drops, b.dir, m.name, m.origin)
+		recordOrigin(adds, dir, name, putback.Of(t.volumeRoot(dir), m.src))
+	}
+	if recordErr != nil {
+		return
 	}
 
-	dir, err := t.trashDirFor(abs)
-	if err != nil {
-		return bin.Disposal{}, err
+	dirs := set.New[string](2)
+	settled := make([]string, 0, 2)
+	for _, pending := range []map[string]map[string]putback.Origin{drops, adds} {
+		for dir := range pending {
+			if dirs.Contains(dir) {
+				continue
+			}
+			dirs.Add(dir)
+			settled = append(settled, dir)
+		}
 	}
-	dest := filepath.Join(dir, putback.TrashName(filepath.Base(abs), dir))
-	if err := fsutil.Move(abs, dest); err != nil {
-		return bin.Disposal{}, err
+	if len(settled) == 0 {
+		return
 	}
-	if err := putback.Set(dir, filepath.Base(dest), putback.Of(t.volumeRoot(dir), abs)); err != nil {
-		return bin.Disposal{}, fmt.Errorf("moved to the trash, but its original location could not be recorded: %w", err)
+
+	var settleErr error
+	for _, dir := range settled {
+		if err := putback.Amend(dir, drops[dir], adds[dir]); err != nil && settleErr == nil {
+			settleErr = err
+		}
 	}
-	return bin.Disposal{Path: abs}, nil
+	if settleErr == nil {
+		return
+	}
+	for index, err := range moveErrs {
+		fail(index, errors.Join(err, fmt.Errorf("its put back record could not be withdrawn: %w", settleErr)))
+	}
+}
+
+// recordOrigin notes the record a rewrite drops, or the one it writes, under
+// the directory that rewrite belongs to.
+func recordOrigin(records map[string]map[string]putback.Origin, dir, name string, origin putback.Origin) {
+	if records[dir] == nil {
+		records[dir] = map[string]putback.Origin{}
+	}
+	records[dir][name] = origin
 }
 
 func (t *macTrash) List() ([]bin.Item, error) {
 	var items []bin.Item
+	measure := newSizer()
 	for _, dir := range t.trashDirs() {
 		entries, err := os.ReadDir(dir)
 		if err != nil {
@@ -116,7 +230,7 @@ func (t *macTrash) List() ([]bin.Item, error) {
 				ID:        file,
 				Name:      entry.Name(),
 				DeletedAt: deletedAt(info),
-				Size:      fsutil.TreeSize(file),
+				Size:      measure.size(file, info),
 				IsDir:     info.IsDir(),
 			}
 			if origin, ok := origins[entry.Name()]; ok {
@@ -126,6 +240,7 @@ func (t *macTrash) List() ([]bin.Item, error) {
 			items = append(items, item)
 		}
 	}
+	measure.keep()
 	bin.Sort(items)
 	return items, nil
 }
@@ -156,13 +271,17 @@ func (t *macTrash) Restore(id, dest string) (string, error) {
 	return dest, putback.Clear(dir, name)
 }
 
-// evict destroys a trashed item.
+// Evict destroys a trashed item and the put back record naming it. The
+// trash's .DS_Store does not keep growing with records for items long gone.
 func (t *macTrash) Evict(id string) error {
 	file, err := t.resolveID(id)
 	if err != nil {
 		return err
 	}
-	return os.RemoveAll(file)
+	if err := os.RemoveAll(file); err != nil {
+		return err
+	}
+	return putback.Clear(filepath.Dir(file), filepath.Base(file))
 }
 
 // resolveID validates an item ID, rejecting anything.
@@ -216,22 +335,20 @@ func (t *macTrash) Dirs() []string { return t.trashDirs() }
 // trashDirs returns every trash directory belonging to this user.
 func (t *macTrash) trashDirs() []string {
 	dirs := []string{t.home}
-	seen := map[string]bool{t.home: true}
-	volumes, err := filepath.Glob("/Volumes/*")
-	if err != nil {
-		return dirs
-	}
-	for _, volume := range volumes {
-		candidate := filepath.Join(volume, ".Trashes", strconv.Itoa(t.uid))
-		if seen[candidate] {
-			continue
-		}
-		if fi, err := os.Stat(candidate); err == nil && fi.IsDir() {
-			seen[candidate] = true
-			dirs = append(dirs, candidate)
+	for _, dir := range volumeTrashes(t.mountPoints(), t.uid) {
+		if dir != t.home {
+			dirs = append(dirs, dir)
 		}
 	}
 	return dirs
+}
+
+// mountPoints lists the mount points to look for a volume trash under.
+func (t *macTrash) mountPoints() []string {
+	if t.mounts != nil {
+		return t.mounts()
+	}
+	return Mounts()
 }
 
 // volumeRoot returns the mount point a trash directory's put back locations sit under.
@@ -255,10 +372,11 @@ func dataVolumePath(path string) string {
 	return short
 }
 
-// deletedAt reports when an item was moved to the trash.
+// deletedAt reports when an item reached the trash. macOS records no deletion
+// time, so this takes the inode change time the rename updated.
 func deletedAt(info fs.FileInfo) time.Time {
 	if st, ok := info.Sys().(*syscall.Stat_t); ok {
-		return time.Unix(st.Ctimespec.Unix())
+		return ctime(st)
 	}
 	return info.ModTime()
 }

@@ -1,4 +1,6 @@
-//go:build unix && !linux
+//go:build unix && !linux && !darwin
+
+// daemonNice is the priority the sweep runs at: pressure arrives on a busy machine.
 
 package daemon
 

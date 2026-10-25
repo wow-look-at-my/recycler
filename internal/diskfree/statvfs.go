@@ -1,5 +1,7 @@
 //go:build netbsd || solaris
 
+// Free reports the available and total bytes of the filesystem holding path.
+
 package diskfree
 
 import "golang.org/x/sys/unix"

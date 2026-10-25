@@ -1,3 +1,5 @@
+// tryLock takes the daemon's exclusive lock without.
+
 package daemon
 
 import (
