@@ -127,6 +127,7 @@ func TestEscapeClearsTheFilter(t *testing.T) {
 	assert.Len(t, m.shown, 2)
 }
 
+// Restoring is the only thing that takes an item out of the bin, and it asks before it writes a file back.
 // Backspace takes back a letter and widens the match again, so a typo costs a
 // key rather than the whole filter.
 func TestBackspaceTakesBackALetter(t *testing.T) {
@@ -145,8 +146,8 @@ func TestBackspaceTakesBackALetter(t *testing.T) {
 	assert.Len(t, m.shown, 2)
 }
 
-// Enter leaves the filter in place and gives the keys back to the listing,
-// which is how an item is picked out of what the filter narrowed to.
+// Enter leaves the filter in place and gives the keys back to the listing.
+// This is how an item is picked out of what the filter narrowed to.
 func TestEnterKeepsTheFilterAndReturnsToTheListing(t *testing.T) {
 	m, _ := binWith(t, "notes.md", "report.pdf")
 
@@ -175,7 +176,6 @@ func TestTheCursorMovesWhileTheFilterIsBeingTyped(t *testing.T) {
 	assert.Equal(t, top.ID, back.ID)
 }
 
-// Restoring is the only thing that takes an item out of the bin, and it asks before it writes a file back.
 func TestRestoreAsksAndThenPutsTheFileBack(t *testing.T) {
 	m, work := binWith(t, "notes.md")
 	original := filepath.Join(work, "notes.md")

@@ -1,7 +1,9 @@
 package daemon
 
 import (
+	"encoding/xml"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"slices"
@@ -72,6 +74,80 @@ func readFile(t *testing.T, path string) string {
 	return string(data)
 }
 
+// launchAgentDict reads the plist as its string, array and boolean values by key.
+func launchAgentDict(t *testing.T, plist string) (map[string]string, map[string][]string, map[string]bool) {
+	t.Helper()
+	seen := map[string]string{}
+	lists := map[string][]string{}
+	flags := map[string]bool{}
+	dec := xml.NewDecoder(strings.NewReader(plist))
+	key := ""
+	for {
+		tok, err := dec.Token()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		require.NoError(t, err)
+		start, ok := tok.(xml.StartElement)
+		if !ok {
+			continue
+		}
+		switch start.Name.Local {
+		case "key":
+			require.NoError(t, dec.DecodeElement(&key, &start))
+		case "true", "false":
+			flags[key] = start.Name.Local == "true"
+			key = ""
+		case "string":
+			var value string
+			require.NoError(t, dec.DecodeElement(&value, &start))
+			if key != "" {
+				seen[key] = value
+				key = ""
+			}
+		case "array":
+			var value struct {
+				Items []string `xml:"string"`
+			}
+			require.NoError(t, dec.DecodeElement(&value, &start))
+			lists[key] = value.Items
+			key = ""
+		}
+	}
+	return seen, lists, flags
+}
+
+// scheduledTaskXML is the task definition schtasks reads, as the test decodes it.
+type scheduledTaskXML struct {
+	Triggers struct {
+		LogonTrigger *struct {
+			Enabled bool   `xml:"Enabled"`
+			UserID  string `xml:"UserId"`
+		} `xml:"LogonTrigger"`
+	} `xml:"Triggers"`
+	Actions struct {
+		Exec struct {
+			Command   string `xml:"Command"`
+			Arguments string `xml:"Arguments"`
+		} `xml:"Exec"`
+	} `xml:"Actions"`
+	Settings struct {
+		RestartOnFailure *struct {
+			Count int `xml:"Count"`
+		} `xml:"RestartOnFailure"`
+	} `xml:"Settings"`
+}
+
+// decodeTask reads the task the installer wrote, which declares UTF-16 but is a Go string here.
+func decodeTask(t *testing.T, task string) scheduledTaskXML {
+	t.Helper()
+	var out scheduledTaskXML
+	dec := xml.NewDecoder(strings.NewReader(task))
+	dec.CharsetReader = func(_ string, input io.Reader) (io.Reader, error) { return input, nil }
+	require.NoError(t, dec.Decode(&out))
+	return out
+}
+
 // An Actually Portable Executable is a shell script to the kernel, so launchd
 // has to run it through one.
 func TestTheLaunchAgentRunsAPortableExecutableThroughAShell(t *testing.T) {
@@ -84,7 +160,12 @@ func TestTheLaunchAgentRunsAPortableExecutableThroughAShell(t *testing.T) {
 	assert.Equal(t, filepath.Join(s.home, "Library", "LaunchAgents", serviceLabel+".plist"), path)
 
 	plist := readFile(t, path)
-	assert.Contains(t, plist, "<string>/bin/sh</string>\n\t\t<string>"+exe+"</string>\n\t\t<string>daemon</string>\n\t\t<string>--standby</string>")
+	// The portable executable runs through a shell, and its arguments follow in order.
+	var arguments []string
+	for _, arg := range []string{"/bin/sh", exe, "daemon", "--standby"} {
+		arguments = append(arguments, "\t\t<string>"+arg+"</string>")
+	}
+	assert.Contains(t, plist, strings.Join(arguments, "\n")+"\n")
 	assert.Contains(t, plist, "<key>KeepAlive</key>\n\t<true/>")
 	assert.Contains(t, plist, "<key>RunAtLoad</key>\n\t<true/>")
 	assert.NotContains(t, plist, "EnvironmentVariables", "the installer's environment would give the daemon its lock and bin")
@@ -115,8 +196,9 @@ func TestReinstallingTheLaunchAgentReplacesTheLoadedJob(t *testing.T) {
 	}, m.calls)
 
 	plist := readFile(t, path)
-	assert.Contains(t, plist, "<array>\n\t\t<string>"+exe+"</string>", "a native executable runs directly")
-	assert.NotContains(t, plist, "EnvironmentVariables")
+	seen, lists, _ := launchAgentDict(t, plist)
+	assert.Equal(t, []string{exe, "daemon", "--standby"}, lists["ProgramArguments"], "a native executable runs directly")
+	assert.NotContains(t, seen, "EnvironmentVariables")
 }
 
 func TestALaunchctlFailureEndsTheInstall(t *testing.T) {
@@ -182,12 +264,14 @@ func TestTheScheduledTaskStartsAtLogonAndRestartsOnFailure(t *testing.T) {
 	for i := 2; i+1 < len(raw); i += 2 {
 		units = append(units, uint16(raw[i])|uint16(raw[i+1])<<8)
 	}
-	task := string(utf16.Decode(units))
-	assert.Contains(t, task, "<Command>"+exe+"</Command>")
-	assert.Contains(t, task, "<Arguments>daemon --standby</Arguments>")
-	assert.Contains(t, task, `<UserId>HOST\me</UserId>`)
-	assert.Contains(t, task, "<LogonTrigger>")
-	assert.Contains(t, task, "<RestartOnFailure>")
+	task := decodeTask(t, string(utf16.Decode(units)))
+	require.NotNil(t, task.Triggers.LogonTrigger)
+	assert.True(t, task.Triggers.LogonTrigger.Enabled)
+	assert.Equal(t, `HOST\me`, task.Triggers.LogonTrigger.UserID)
+	assert.Equal(t, exe, task.Actions.Exec.Command)
+	assert.Equal(t, "daemon --standby", task.Actions.Exec.Arguments)
+	require.NotNil(t, task.Settings.RestartOnFailure)
+	assert.Equal(t, 999, task.Settings.RestartOnFailure.Count)
 
 	assert.Equal(t, []string{
 		"schtasks /Create /TN " + serviceLabel + " /XML " + path + " /F",

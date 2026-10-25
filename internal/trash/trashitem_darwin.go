@@ -2,12 +2,12 @@
 
 package trash
 
-// The macOS trash operation, as the system performs it. A rename into ~/.Trash
-// is a different operation: the kernel refuses a single whose source the
-// caller may not rename out of even where it may unlink it, which a sandboxed
-// process meets routinely, and a copy writes the bytes another time to reach
-// the same place. `trashItemAtURL:` is the move itself, and answers where it
-// put the item, having picked a free name in the trash on that item's own volume.
+// The macOS trash operation, as the system performs it. A rename into ~/.Trash is
+// a different operation. The kernel refuses a single whose source the caller may
+// not rename out of even where it may unlink it. Which a sandboxed process meets
+// routinely. A copy writes the bytes another time to reach the same place.
+// `trashItemAtURL:` is the move itself, and answers where it put the item, having
+// picked a free name in the trash on that item's own volume.
 
 /*
 #cgo CFLAGS: -x objective-c -fobjc-arc
@@ -23,8 +23,9 @@ import (
 )
 
 // trashItem hands path to the system's trash operation and returns the path
-// the item now sits at inside the trash.
-func trashItem(path string) (string, error) {
+// the item now sits at inside the trash. The second argument is where a build
+// with no such operation puts the item; the system picks the trash itself.
+func trashItem(path, _ string) (string, error) {
 	cPath := C.CString(path)
 	defer C.free(unsafe.Pointer(cPath))
 

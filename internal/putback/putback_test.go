@@ -3,12 +3,14 @@
 package putback
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/wow-look-at-my/go-containers/set"
 
 	"github.com/wow-look-at-my/recycler/internal/dsstore"
 )
@@ -87,7 +89,7 @@ func TestPutBackReplacesAStaleRecord(t *testing.T) {
 func TestNothingRecycledTakesTheDSStoreName(t *testing.T) {
 	dir := t.TempDir()
 	// A file can be called .DS_Store, and recycling it must not put.
-	name := TrashName(dsstore.FileName, dir)
+	name := TrashName(dsstore.FileName, dir, set.Set[string]{})
 	assert.NotEqual(t, dsstore.FileName, name)
 
 	require.NoError(t, os.WriteFile(filepath.Join(dir, name), []byte("the user's file"), 0o600))
@@ -98,6 +100,47 @@ func TestNothingRecycledTakesTheDSStoreName(t *testing.T) {
 	assert.Equal(t, "the user's file", string(kept), "the recycled file was overwritten by the put back records")
 	assert.Equal(t, Origin{Dir: "Users/ada", Name: dsstore.FileName}, Read(dir)[name],
 		"the item's real name was not recorded")
+}
+
+func TestManyPutBacksTakeOneRewrite(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, Set(dir, "stale.txt", Origin{Dir: "Users/ada/Old", Name: "stale.txt"}))
+	require.NoError(t, Set(dir, "kept.txt", Origin{Dir: "Users/ada", Name: "kept.txt"}))
+
+	origins := map[string]Origin{}
+	for i := range 500 {
+		name := fmt.Sprintf("item-%03d.o", i)
+		origins[name] = Origin{Dir: "Users/ada/target/debug/deps", Name: name}
+	}
+	origins["stale.txt"] = Origin{Dir: "Users/ada/New", Name: "stale.txt"}
+
+	before := Rewrites.Load()
+	require.NoError(t, SetAll(dir, origins))
+	assert.Equal(t, int64(1), Rewrites.Load()-before, "the batch rewrote the .DS_Store more than once")
+
+	want := map[string]Origin{"kept.txt": {Dir: "Users/ada", Name: "kept.txt"}}
+	for name, origin := range origins {
+		want[name] = origin
+	}
+	assert.Equal(t, want, Read(dir), "a record in the batch went missing, or a record outside it changed")
+}
+
+func TestRetractLeavesARecordAnotherWriterReplaced(t *testing.T) {
+	dir := t.TempDir()
+	ours := map[string]Origin{
+		"lost.txt":   {Dir: "Users/ada", Name: "lost.txt"},
+		"raced.txt":  {Dir: "Users/ada", Name: "raced.txt"},
+		"stayed.txt": {Dir: "Users/ada", Name: "stayed.txt"},
+	}
+	require.NoError(t, SetAll(dir, ours))
+	theirs := Origin{Dir: "Users/bob", Name: "raced.txt"}
+	require.NoError(t, Set(dir, "raced.txt", theirs))
+
+	require.NoError(t, Retract(dir, map[string]Origin{"lost.txt": ours["lost.txt"], "raced.txt": ours["raced.txt"]}))
+	assert.Equal(t, map[string]Origin{
+		"raced.txt":  theirs,
+		"stayed.txt": ours["stayed.txt"],
+	}, Read(dir))
 }
 
 func TestPutBackOfPathsIsRelativeToTheVolume(t *testing.T) {
