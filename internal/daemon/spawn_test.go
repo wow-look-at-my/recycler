@@ -12,34 +12,13 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-<<<<<<< HEAD
-// isolateCache points os.UserCacheDir at a temporary directory and returns what it now reports.
-// Linux reads XDG_CACHE_HOME, macOS reads HOME, and Windows reads LocalAppData.
-func isolateCache(t *testing.T) string {
-	t.Helper()
-	root := t.TempDir()
-	t.Setenv("XDG_CACHE_HOME", root)
-	t.Setenv("HOME", root)
-	t.Setenv("LocalAppData", root)
-	cache, err := os.UserCacheDir()
-	require.NoError(t, err)
-	return cache
-}
-
-// Ensure has to actually start something, so this hands it a program that exits together.
-=======
 // Ensure has to start something, so this hands it a program that exits
 // together.
->>>>>>> origin/master
 func TestEnsureStartsADaemon(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("the stand-in daemon is a shell script")
 	}
-<<<<<<< HEAD
-	isolateCache(t)
-=======
 	isolateDaemonState(t)
->>>>>>> origin/master
 
 	exe := filepath.Join(t.TempDir(), "stand-in-recycler")
 	require.NoError(t, os.WriteFile(exe, []byte("#!/bin/sh\nexit 0\n"), 0o700))
@@ -52,11 +31,7 @@ func TestEnsureStartsADaemon(t *testing.T) {
 // A daemon is the whole point of the lock: a recycle every few seconds must
 // not start a daemon every.
 func TestEnsureStandsDownWhileADaemonHoldsTheLock(t *testing.T) {
-<<<<<<< HEAD
-	isolateCache(t)
-=======
 	isolateDaemonState(t)
->>>>>>> origin/master
 	lock, err := LockPath()
 	require.NoError(t, err)
 
@@ -70,12 +45,6 @@ func TestEnsureStandsDownWhileADaemonHoldsTheLock(t *testing.T) {
 	assert.False(t, started, "a second daemon was started while one held the lock")
 }
 
-<<<<<<< HEAD
-// The lock lives under the user's cache directory, and Ensure creates it rather than failing on a
-// cache.
-func TestLockPathIsCreatedUnderTheCacheDirectory(t *testing.T) {
-	cache := isolateCache(t)
-=======
 // Racing callers must start a single daemon between them. The stand-in holds the daemon lock the
 // way a real one does, so a loser has something to stand down to.
 func TestConcurrentEnsureStartsOneDaemon(t *testing.T) {
@@ -122,7 +91,6 @@ func TestConcurrentEnsureStartsOneDaemon(t *testing.T) {
 func TestLockPathIsCreatedInTheStateDirectory(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "not", "there", "yet")
 	useStateDir(t, dir)
->>>>>>> origin/master
 
 	lock, err := LockPath()
 	require.NoError(t, err)

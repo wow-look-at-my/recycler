@@ -89,15 +89,7 @@ func dsBuildLevels(records []Record) ([][][]Record, error) {
 		if len(node) > 0 || len(next) > 0 {
 			nodes = append(nodes, node)
 		} else if len(next) > 0 {
-<<<<<<< HEAD
-			// The last record became a pivot and nothing followed it. A pivot
-			// separates children, so a single with no node to its right is not
-			// a pivot: it is the whole of the last node. Left in next, it makes
-			// a parent carrying a single more record than it has children, and
-			// the encoder then reads past the end of the level below.
-=======
 			// The last record became a pivot and nothing followed it.
->>>>>>> origin/master
 			nodes = append(nodes, []Record{next[len(next)-1]})
 			next = next[:len(next)-1]
 		}

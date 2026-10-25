@@ -204,11 +204,7 @@ func TestAnUnreadableFilesystemIsSkipped(t *testing.T) {
 
 // The lock is what makes it a daemon.
 func TestASecondDaemonStandsDown(t *testing.T) {
-<<<<<<< HEAD
-	isolateCache(t)
-=======
 	isolateDaemonState(t)
->>>>>>> origin/master
 	lock, err := LockPath()
 	require.NoError(t, err)
 

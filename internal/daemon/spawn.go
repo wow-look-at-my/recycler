@@ -14,14 +14,7 @@ import (
 // LockPath returns the file whose lock names the running daemon.
 func LockPath() (string, error) { return statePath("daemon.lock") }
 
-<<<<<<< HEAD
-// LogPath returns the file a detached daemon writes its reports to. A daemon
-// nobody started from a terminal has nowhere else to say what it destroyed or
-// what it could not keep up with, and discarding that leaves the single
-// account of both with no reader.
-=======
 // LogPath is a detached daemon's only way to say what it destroyed.
->>>>>>> origin/master
 func LogPath() (string, error) { return statePath("daemon.log") }
 
 // StateDir answers the directory that holds the daemon's lock, its identity

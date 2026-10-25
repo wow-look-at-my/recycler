@@ -142,15 +142,9 @@ func TestBuildsATreeOfManyNodes(t *testing.T) {
 // A record count where the LAST record overflows its node leaves a pivot with
 // nothing to its right. The parent then carries a single more record than it
 // has children, and the encoder reads past the end of the level below. Which
-<<<<<<< HEAD
-// count does that depends on every name and value length, so the range is
-// swept rather than guessed: recycling generated files found it, and the
-// 400-record case above does not.
-=======
 // count does that depends on every name and value length. The range is swept
 // rather than guessed: recycling generated files found it, and the 400-record
 // case above does not.
->>>>>>> origin/master
 func TestEveryRecordCountBuildsAReadableTree(t *testing.T) {
 	for n := 1; n <= 420; n++ {
 		var records []Record
@@ -170,8 +164,6 @@ func TestEveryRecordCountBuildsAReadableTree(t *testing.T) {
 	}
 }
 
-<<<<<<< HEAD
-=======
 // A record count that fills the last node exactly promotes a pivot with no
 // node after it. The level above then has fewer children than it has keys,
 // which the encoder reads past the end of. Every count in a range holding
@@ -208,7 +200,6 @@ func TestBuildsATreeWhateverTheLastNodeHolds(t *testing.T) {
 	}
 }
 
->>>>>>> origin/master
 func TestRejectsRecordsItCannotStore(t *testing.T) {
 	_, err := Build([]Record{{Name: "f", Code: "ptb", Type: "ustr", Data: []byte{0, 0, 0, 0}}})
 	assert.ErrorIs(t, err, errBadDSStore, "a structure id that is not four characters was accepted")
