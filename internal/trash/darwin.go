@@ -207,6 +207,7 @@ func recordOrigin(records map[string]map[string]putback.Origin, dir, name string
 
 func (t *macTrash) List() ([]bin.Item, error) {
 	var items []bin.Item
+	measure := newSizer()
 	for _, dir := range t.trashDirs() {
 		entries, err := os.ReadDir(dir)
 		if err != nil {
@@ -227,7 +228,7 @@ func (t *macTrash) List() ([]bin.Item, error) {
 				ID:        file,
 				Name:      entry.Name(),
 				DeletedAt: deletedAt(info),
-				Size:      fsutil.TreeSize(file),
+				Size:      measure.size(file, info),
 				IsDir:     info.IsDir(),
 			}
 			if origin, ok := origins[entry.Name()]; ok {
@@ -237,6 +238,7 @@ func (t *macTrash) List() ([]bin.Item, error) {
 			items = append(items, item)
 		}
 	}
+	measure.keep()
 	bin.Sort(items)
 	return items, nil
 }

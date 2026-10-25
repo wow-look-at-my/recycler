@@ -159,6 +159,34 @@ func TestADirectoryIsListedAsOne(t *testing.T) {
 	assert.EqualValues(t, 5, items[0].Size)
 }
 
+// The daemon lists the bin every tick, so an entry's tree is walked once. A
+// file written deep inside a trashed directory leaves the entry itself as it
+// was. A listing that walked again would see it and one that did not would
+// not.
+func TestATrashedTreeIsWalkedOncePerEntry(t *testing.T) {
+	work := isolateTrash(t)
+	dir := filepath.Join(os.Getenv("HOME"), ".Trash", "project")
+	writeFile(t, filepath.Join(dir, "src", "a.txt"), "hello")
+	require.NoError(t, putback.Set(filepath.Dir(dir), "project", putback.Of("/", filepath.Join(work, "project"))))
+
+	first := mustList(t)
+	require.Len(t, first, 1)
+	assert.EqualValues(t, 5, first[0].Size)
+
+	writeFile(t, filepath.Join(dir, "src", "b.txt"), "world!")
+	again := mustList(t)
+	require.Len(t, again, 1)
+	assert.EqualValues(t, 5, again[0].Size, "the listing walked the tree again")
+
+	// An entry the last listing never saw is measured.
+	plant(t, "notes.txt", filepath.Join(work, "notes.txt"), "abc")
+	var sizes []int64
+	for _, it := range mustList(t) {
+		sizes = append(sizes, it.Size)
+	}
+	assert.ElementsMatch(t, []int64{5, 3}, sizes)
+}
+
 // The home trash is the volume root's own, so a location recorded in it is
 // read back against "/".
 func TestTheHomeTrashRecordsLocationsAgainstTheVolumeRoot(t *testing.T) {
