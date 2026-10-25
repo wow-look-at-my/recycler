@@ -1,5 +1,7 @@
 //go:build linux || freebsd || netbsd || openbsd || dragonfly || solaris
 
+// Files recycled from the filesystem holding the home directory go to the home trash ($XDG_DATA_HOME/Trash).
+
 package trash
 
 //

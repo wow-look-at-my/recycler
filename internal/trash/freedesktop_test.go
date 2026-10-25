@@ -394,6 +394,7 @@ func TestAnUnrecordedEntryIsListedSizedAndRecorded(t *testing.T) {
 
 // An empty Path in a per-filesystem bin must not resolve to the top directory.
 func TestAnUnrecordedEntryInAVolumeBinHasNoOrigin(t *testing.T) {
+	t.Serial()
 	work := isolateTrash(t)
 	volume := filepath.Join(work, "volume")
 	dir := filepath.Join(volume, ".Trash-"+strconv.Itoa(os.Getuid()))
