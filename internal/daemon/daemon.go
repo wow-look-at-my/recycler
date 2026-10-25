@@ -263,7 +263,7 @@ func run(ctx context.Context, interval time.Duration, me Identity, standby bool,
 		}
 	}()
 
-	raisePriority()
+	schedule()
 
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
