@@ -1,12 +1,9 @@
+// Writing .DS_Store files, WHOLE and never in place: that is what lets the buddy allocator skip freeing.
+
 package dsstore
 
-// Writing .DS_Store files: packing records into B-tree nodes, and the buddy
-// allocator that decides where those nodes land in the file. See dsstore.go for
-// the format itself.
-//
-// A file is always written whole rather than edited in place, which is what
-// keeps the allocator's bookkeeping honest without having to implement freeing
-// and coalescing.
+// Writing .DS_Store files, WHOLE and never in place: that is what lets the
+// buddy allocator skip freeing. Depth: docs/ds-store-format.md
 
 import (
 	"encoding/binary"
@@ -78,8 +75,7 @@ func dsBuildLevels(records []Record) ([][][]Record, error) {
 				if len(node) == 0 {
 					return nil, fmt.Errorf("%w: the record for %q does not fit in a %d-byte node", errBadDSStore, r.Name, dsPageSize)
 				}
-				// The record that did not fit becomes the pivot between this
-				// node and the next, a level up.
+				// The record that did not fit is the pivot, a level up.
 				nodes = append(nodes, node)
 				next = append(next, r)
 				node, total = nil, 8
@@ -88,14 +84,20 @@ func dsBuildLevels(records []Record) ([][][]Record, error) {
 			total = size
 			node = append(node, r)
 		}
-		if len(node) > 0 {
+		// A pivot stands between children, so the last promoted record needs a node
+		// to its right even when nothing followed it.
+		if len(node) > 0 || len(next) > 0 {
 			nodes = append(nodes, node)
 		} else if len(next) > 0 {
+<<<<<<< HEAD
 			// The last record became a pivot and nothing followed it. A pivot
 			// separates children, so a single with no node to its right is not
 			// a pivot: it is the whole of the last node. Left in next, it makes
 			// a parent carrying a single more record than it has children, and
 			// the encoder then reads past the end of the level below.
+=======
+			// The last record became a pivot and nothing followed it.
+>>>>>>> origin/master
 			nodes = append(nodes, []Record{next[len(next)-1]})
 			next = next[:len(next)-1]
 		}
