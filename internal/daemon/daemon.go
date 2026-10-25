@@ -1,3 +1,5 @@
+// DefaultPollInterval is how often.
+
 package daemon
 
 import (
