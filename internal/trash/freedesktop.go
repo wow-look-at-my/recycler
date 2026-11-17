@@ -4,7 +4,6 @@
 
 package trash
 
-//
 // Files recycled from the filesystem holding the home directory go to the home
 // trash ($XDG_DATA_HOME/Trash). Files on any other filesystem go to a trash
 // directory on that filesystem, so recycling never has to copy data across
@@ -329,7 +328,7 @@ func (t *fdoTrash) trashDirs() []string {
 	return dirs
 }
 
-// topDirOfTrash returns the filesystem top directory a per-filesystem trash directory belongs to, or
+// topDirOfTrash returns the filesystem top directory a per-filesystem trash directory belongs to.
 // "".
 func topDirOfTrash(dir string) string {
 	base := filepath.Base(dir)
