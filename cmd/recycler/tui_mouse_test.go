@@ -3,9 +3,7 @@ package main
 import (
 	"path/filepath"
 	"testing"
-	"time"
 
-	tea "charm.land/bubbletea/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -42,31 +40,15 @@ func TestTheConfirmationButtonsRestoreOrCancel(t *testing.T) {
 	assert.Empty(t, m.shown, "the restored item is still listed")
 }
 
-// The frame counter is what animates the interface.
-func TestATickAdvancesTheFrameAndSchedulesTheNext(t *testing.T) {
-	m, _ := binWith(t, "notes.txt")
-	before := m.frame
-
-	_, cmd := m.Update(tick(time.Now()))
-	assert.Equal(t, before+1, m.frame)
-	assert.NotNil(t, cmd, "the tick scheduled no successor")
-	assert.NotNil(t, m.Init(), "the interface starts without a tick")
-}
-
-// The view is what reaches the terminal, and it has to ask for motion events: without them a click
-// never.
-func TestTheViewAsksForMouseMotion(t *testing.T) {
-	m, _ := binWith(t, "notes.txt")
-	assert.Equal(t, tea.MouseModeAllMotion, m.View().MouseMode)
-}
-
-// A page is however tall the last frame made the listing.
-func TestAPageIsTheHeightOfThePaintedListing(t *testing.T) {
+// A page is the rows the listing has room for under its header.
+func TestAPageIsTheHeightOfTheListing(t *testing.T) {
 	isolateTrash(t)
-	unpainted, err := newModel()
+	empty, err := newModel()
 	require.NoError(t, err)
-	assert.Equal(t, 1, unpainted.page())
+	assert.Equal(t, 1, empty.page(), "an empty bin has no listing to page through")
 
-	painted, _ := binWith(t, "a.txt", "b.txt", "c.txt", "d.txt")
-	assert.Equal(t, len(painted.shown), painted.page(), "a page is the rows the last frame drew")
+	m, _ := binWith(t, "a.txt")
+	short := m.page()
+	m.frameOf(testWidth, 50)
+	assert.Equal(t, short+20, m.page(), "twenty more lines of terminal are twenty more rows")
 }

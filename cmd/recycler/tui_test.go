@@ -1,6 +1,7 @@
 package main
 
 import (
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -10,6 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/wow-look-at-my/tml"
+	"github.com/wow-look-at-my/tml/input"
 )
 
 // testWidth is wide enough that a macOS temp directory under the isolated bin is not cut short.
@@ -21,11 +23,19 @@ func screen(t *testing.T, m *model) string {
 	return ansi.Strip(m.frameOf(testWidth, 30))
 }
 
-// press feeds keys through the same Update a terminal does. Painting between them is what sizes the viewport.
+// press routes keys the way the program does: to the model first, and to the view when the model leaves one. Painting
+// between them is what sizes the viewport.
 func press(t *testing.T, m *model, keys ...string) {
 	t.Helper()
+	p, err := tml.NewProgram(m.view, m, tml.ProgramOptions{NoInput: true, Output: io.Discard})
+	require.NoError(t, err)
 	for _, key := range keys {
-		_, _ = m.Update(tml.KeyMsg(key))
+		msg := input.ParseKey(key)
+		if !m.Update(p, msg) {
+			for _, event := range m.view.UI().Update(msg) {
+				m.Update(p, event)
+			}
+		}
 		screen(t, m)
 	}
 }

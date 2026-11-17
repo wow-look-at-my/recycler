@@ -10,13 +10,11 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"time"
-	"unicode"
 
-	tea "charm.land/bubbletea/v2"
 	"github.com/spf13/cobra"
 	"github.com/wow-look-at-my/recycler"
 	"github.com/wow-look-at-my/tml"
+	"github.com/wow-look-at-my/tml/inspect"
 	"github.com/wow-look-at-my/tml/sema"
 )
 
@@ -48,7 +46,9 @@ type model struct {
 	items    []recycler.Item
 	shown    []recycler.Item
 	selected int
+	// offset is the first row on screen, and viewRows how many rows the listing shows under its header.
 	offset   int
+	viewRows int
 
 	filter    string
 	filtering bool
@@ -57,16 +57,9 @@ type model struct {
 
 	status      string
 	statusStyle string
-	frame       int
 
 	width, height int
 	quitting      bool
-}
-
-type tick time.Time
-
-func ticker() tea.Cmd {
-	return tea.Tick(120*time.Millisecond, func(t time.Time) tea.Msg { return tick(t) })
 }
 
 func newModel() (*model, error) {
@@ -87,10 +80,9 @@ func newModel() (*model, error) {
 
 	m := &model{view: view, statusStyle: "muted", width: 96, height: 30}
 	m.reload()
+	m.settle()
 	return m, nil
 }
-
-func (m *model) Init() tea.Cmd { return ticker() }
 
 // reload re-reads the bin. Listing skips a directory it cannot read, so a failure here is the whole listing failing.
 func (m *model) reload() {
@@ -119,18 +111,39 @@ func (m *model) apply() {
 
 // follow scrolls the selected row into view.
 func (m *model) follow() {
-	target, ok := m.view.UI().Target("items")
-	if !ok || target.Rect.H <= 0 {
+	if m.viewRows <= 0 {
 		return
 	}
-	line := m.selected + tableHeaderLines
 	switch {
-	case line < m.offset:
-		m.offset = line
-	case line >= m.offset+target.Rect.H:
-		m.offset = line - target.Rect.H + 1
+	case m.selected < m.offset:
+		m.offset = m.selected
+	case m.selected >= m.offset+m.viewRows:
+		m.offset = m.selected - m.viewRows + 1
 	}
 	m.offset = max(0, m.offset)
+}
+
+// settle lays the frame out to learn how many rows the listing shows, and
+// keeps the scroll inside the listing.
+func (m *model) settle() {
+	if rows, ok := m.listingRows(); ok && rows != m.viewRows {
+		m.viewRows = rows
+		m.follow()
+	}
+	m.offset = clamp(m.offset, 0, len(m.shown)-m.viewRows)
+}
+
+// listingRows is how many rows the listing shows under its header at the current size. An empty bin has no listing.
+func (m *model) listingRows() (int, bool) {
+	box, err := m.view.Layout(m.Props(), m.width, m.height)
+	if err != nil {
+		return 0, false
+	}
+	items := inspect.Find(box, "items")
+	if items == nil {
+		return 0, false
+	}
+	return max(0, items.Content.H-tableHeaderLines), true
 }
 
 const tableHeaderLines = 2
@@ -187,34 +200,33 @@ func (m *model) restore() {
 	m.reload()
 }
 
-func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+// Update takes one message from the program. A key it does not claim goes on to the view, and the view's events come
+// back here.
+func (m *model) Update(p *tml.Program, msg tml.Msg) bool {
+	handled := true
 	switch msg := msg.(type) {
-	case tea.WindowSizeMsg:
+	case tml.Resize:
 		m.width, m.height = msg.Width, msg.Height
-		return m, nil
-	case tick:
-		m.frame++
-		return m, ticker()
-	case tea.KeyPressMsg:
-		if cmd, handled := m.hotkey(msg); handled {
-			return m, cmd
+	case tml.Key:
+		handled = m.hotkey(msg)
+		if m.quitting {
+			p.Quit()
 		}
-	}
-
-	for _, event := range m.view.UI().Update(msg) {
-		switch event.Kind {
+	case tml.Event:
+		switch msg.Kind {
 		case tml.Activated:
-			m.act(event.Action, event.ID, event.Y)
+			m.act(msg.Action, msg.ID, msg.Y)
 		case tml.Scrolled:
-			if event.ID == "items" {
-				m.offset = max(0, m.offset+event.Delta)
+			if msg.ID == "items" {
+				m.offset += msg.Delta
 			}
 		}
+	default:
+		// The pointer moving changes nothing here, so it costs no layout.
+		return false
 	}
-	if m.quitting {
-		return m, tea.Quit
-	}
-	return m, nil
+	m.settle()
+	return handled
 }
 
 func (m *model) act(action, id string, row int) {
@@ -224,14 +236,15 @@ func (m *model) act(action, id string, row int) {
 	case action == "cancel":
 		m.asking = false
 	case id == "rows" && row >= tableHeaderLines:
-		m.selected = clamp(row-tableHeaderLines+m.offset, 0, len(m.shown)-1)
+		m.selected = clamp(row-tableHeaderLines+m.first(), 0, len(m.shown)-1)
 	}
 }
 
-func (m *model) hotkey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
+func (m *model) hotkey(msg tml.Key) bool {
 	switch msg.String() {
 	case "ctrl+c":
-		return tea.Quit, true
+		m.quitting = true
+		return true
 	case "esc":
 		return m.escape()
 	}
@@ -244,7 +257,7 @@ func (m *model) hotkey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	return m.browsing(msg)
 }
 
-func (m *model) escape() (tea.Cmd, bool) {
+func (m *model) escape() bool {
 	switch {
 	case m.asking:
 		m.asking = false
@@ -252,49 +265,50 @@ func (m *model) escape() (tea.Cmd, bool) {
 		m.filtering, m.filter = false, ""
 		m.apply()
 	default:
-		return tea.Quit, true
+		m.quitting = true
 	}
-	return nil, true
+	return true
 }
 
-func (m *model) answer(key string) (tea.Cmd, bool) {
+func (m *model) answer(key string) bool {
 	switch key {
 	case "enter", "y":
 		m.restore()
-		return nil, true
+		return true
 	case "n":
 		m.asking = false
-		return nil, true
+		return true
 	}
-	return nil, false
+	return false
 }
 
-func (m *model) typing(msg tea.KeyPressMsg) (tea.Cmd, bool) {
+func (m *model) typing(msg tml.Key) bool {
 	switch msg.String() {
 	case "enter":
 		m.filtering = false
-		return nil, true
+		return true
 	case "backspace":
 		if m.filter != "" {
 			m.filter = m.filter[:len(m.filter)-1]
 			m.apply()
 		}
-		return nil, true
+		return true
 	case "up", "down":
 		return m.browsing(msg)
 	}
-	if r := msg.Code; unicode.IsPrint(r) && msg.Mod == 0 {
-		m.filter += string(r)
+	// Text is empty for a key that types nothing, and for a key held with ctrl or alt.
+	if msg.Text != "" {
+		m.filter += msg.Text
 		m.apply()
-		return nil, true
+		return true
 	}
-	return nil, false
+	return false
 }
 
-func (m *model) browsing(msg tea.KeyPressMsg) (tea.Cmd, bool) {
+func (m *model) browsing(msg tml.Key) bool {
 	switch msg.String() {
 	case "q":
-		return tea.Quit, true
+		m.quitting = true
 	case "up", "k":
 		m.move(-1)
 	case "down", "j":
@@ -316,34 +330,26 @@ func (m *model) browsing(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		m.reload()
 		m.say("reloaded", "muted")
 	default:
-		return nil, false
+		return false
 	}
-	return nil, true
+	return true
 }
 
-// page is a screenful of rows, taken from where the last frame put the viewport.
+// page is a screenful of rows.
 func (m *model) page() int {
-	if target, ok := m.view.UI().Target("items"); ok && target.Rect.H > tableHeaderLines {
-		return target.Rect.H - tableHeaderLines
-	}
-	return 1
-}
-
-func (m *model) View() tea.View {
-	view := tea.NewView(m.render())
-	view.MouseMode = tea.MouseModeAllMotion
-	return view
+	return max(1, m.viewRows)
 }
 
 func (m *model) render() string {
-	out, err := m.view.Render(m.props(), m.width, m.height)
+	out, err := m.view.Render(m.Props(), m.width, m.height)
 	if err != nil {
 		return "tml: " + err.Error()
 	}
 	return out
 }
 
-func (m *model) props() tml.Props {
+// Props is what the view draws from. The program reads it before every frame.
+func (m *model) Props() tml.Props {
 	item, has := m.current()
 	origin := item.OriginalPath
 	if origin == "" && has {
@@ -355,15 +361,15 @@ func (m *model) props() tml.Props {
 		"size":        sema.StringValue(totalLabel(m.shown)),
 		"status":      sema.StringValue(m.status),
 		"statusStyle": sema.StringValue(m.statusStyle),
-		"frame":       sema.StringValue(strconv.Itoa(m.frame)),
 
 		"filter":    sema.StringValue(m.filter),
 		"cursor":    sema.StringValue(strconv.Itoa(len(m.filter))),
 		"filtering": sema.BoolValue(m.filtering),
 
 		"rows":      sema.ListValue(m.rows()),
-		"selected":  sema.StringValue(strconv.Itoa(m.selected)),
+		"selected":  sema.StringValue(strconv.Itoa(m.selected - m.first())),
 		"offset":    sema.StringValue(strconv.Itoa(m.offset)),
+		"lines":     sema.StringValue(strconv.Itoa(len(m.shown) + tableHeaderLines)),
 		"empty":     sema.BoolValue(len(m.shown) == 0),
 		"emptyText": sema.StringValue(m.emptyText()),
 
@@ -376,10 +382,17 @@ func (m *model) props() tml.Props {
 	return props
 }
 
-// rows are the listing as the table's delimited cells.
+// first is the index of the first row on screen.
+func (m *model) first() int {
+	return clamp(m.offset, 0, len(m.shown))
+}
+
+// rows are the rows on screen as the table's delimited cells. The terminal's height bounds the viewport, so it is
+// enough rows before the first layout at a new size has measured the viewport.
 func (m *model) rows() []string {
-	rows := make([]string, 0, len(m.shown))
-	for _, item := range m.shown {
+	shown := m.shown[m.first():min(len(m.shown), m.first()+m.height)]
+	rows := make([]string, 0, len(shown))
+	for _, item := range shown {
 		rows = append(rows, strings.Join([]string{
 			item.Name,
 			item.DeletedAt.Local().Format("2006-01-02 15:04"),
@@ -445,12 +458,14 @@ func runTUI() error {
 	if err != nil {
 		return err
 	}
-	_, err = tml.Run(m)
-	return err
+	return tml.Run(m.view, m)
 }
 
-// frameOf renders a frame at a fixed size, for a test that has no terminal.
+// frameOf renders a frame at a fixed size, for a test that has no terminal. It resizes the way the program does.
 func (m *model) frameOf(width, height int) string {
-	m.width, m.height = width, height
+	if width != m.width || height != m.height {
+		m.width, m.height = width, height
+		m.settle()
+	}
 	return m.render()
 }

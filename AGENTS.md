@@ -17,7 +17,7 @@ A Go library and CLI that expose the operating system's recycle bin through one 
 | `internal/daemon/` | The disk-pressure daemon: `FreeTarget`, `Sweep`, the poll loop, and starting one per user. The only thing here that destroys anything. |
 | `internal/cargotarget/` | The cap on a cargo build directory: finding a validated `target` directory (including the copies an agent worktree keeps), choosing the oldest regenerable output inside it, and recycling that until the directory fits. Sizes are what the filesystem reports a file takes (`st_blocks`), not the length it states, because a compressed pool makes those differ by a multiple and the cap is on the pool. Nothing here deletes, and nothing here runs by itself. |
 | `cmd/recycler/` | Cobra CLI, one command per file, each registering itself in `init()`. |
-| `cmd/recycler/tui.go`, `cmd/recycler/ui/` | The full-screen browser: its Bubble Tea model, and the TML document and theme it renders. |
+| `cmd/recycler/tui.go`, `cmd/recycler/ui/` | The full-screen browser: the `tml.App` that holds its state, and the TML document and theme it renders. |
 
 `trash.Backend()` is defined once per platform. Every API call calls it rather than a cached value, so tests can redirect the recycle bin with `HOME` and `XDG_DATA_HOME` between calls. Keep it that way.
 
@@ -53,6 +53,8 @@ The view is [TML](https://github.com/wow-look-at-my/tml): `ui/app.tml` declares 
 
 - **The table's rows are `\x1f`-delimited cells.** Every printable delimiter is legal in a file name, so a path holding one arrives as an extra column.
 - **`wrap="false"` keeps a row to a line**, which is what lets a click's `y` and the scroll offset name a row. A wrapped cell puts every row below it out of step with its index.
+- **The table gets a screenful of rows, not the bin.** The Scrollbox takes the full height from `contentHeight`. A table of every item costs the whole bin on every frame. A resize is many frames. `TestAFrameCostsTheScreenNotTheBin` holds that down.
+- **Nothing redraws on a timer.** The program paints after input or a resize. An idle browser costs nothing.
 - **The name leads and the directory trails**, because a cut falls on the end of the row. The line below spells the path out in full, and the name is the part that has to survive a narrow terminal.
 
 The selected item costs the row it is listed on, not a panel. The table draws a bar across that row, and what sits under the listing is its full original path.
