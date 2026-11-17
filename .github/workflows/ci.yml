@@ -33,7 +33,7 @@ jobs:
   # The only job that compiles darwin.go. It waits on nothing, so a red linux build still answers for a Mac.
   macos:
     if: github.event.repository.visibility == 'public'
-    runs-on: macos-14
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/go-toolchain-cli
@@ -41,7 +41,7 @@ jobs:
   # The APE a Mac downloads, run on a Mac: it picks its bin and its lock there, and nowhere else.
   macos-ape:
     if: github.event.repository.visibility == 'public'
-    runs-on: macos-14
+    runs-on: macos-latest
     needs: build
     steps:
       - uses: actions/checkout@v4

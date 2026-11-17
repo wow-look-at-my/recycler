@@ -1,11 +1,10 @@
 //go:build unix
 
-// The "Put Back" records macOS keeps in a trash directory's .DS_Store: ptbL and ptbN.
+// putback.go holds Origin.
 
 package putback
 
-// The "Put Back" records macOS keeps in a trash directory's .DS_Store: ptbL and
-// ptbN. Depth: docs/ds-store-format.md. Built on every Unix, so Linux tests it.
+// Depth: docs/ds-store-format.md. Built on every Unix, so Linux tests it.
 
 import (
 	"io"
