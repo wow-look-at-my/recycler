@@ -55,12 +55,26 @@ func TestAFrameCostsTheScreenNotTheBin(t *testing.T) {
 	m := largeBin(t, 20000)
 	assert.LessOrEqual(t, len(m.rows()), 40, "the table is handed more rows than the terminal is tall")
 
+}
+
+// frameBudget is one frame at a set number of frames a second.
+const frameBudget = 16 * time.Millisecond
+
+// A resize is the model taking the new size and the program drawing it. Each step of a drag must fit in a frame.
+func TestAResizeFitsInAFrame(t *testing.T) {
+	m := largeBin(t, 20000)
+	p, err := tml.NewProgram(m.view, m, tml.ProgramOptions{NoInput: true})
+	require.NoError(t, err)
+
+	const steps = 40
 	start := time.Now()
-	for width := 80; width < 120; width++ {
-		m.frameOf(width, 40)
+	for step := range steps {
+		m.Update(p, tml.Resize{Width: 160 + step, Height: 50})
+		_, err := m.view.Draw(m.Props(), m.width, m.height)
+		require.NoError(t, err)
 	}
-	elapsed := time.Since(start)
-	assert.Less(t, elapsed, 2*time.Second, "40 frames of a 20000-item bin took %s", elapsed)
+	perFrame := time.Since(start) / steps
+	assert.LessOrEqual(t, perFrame, frameBudget, "a resize of a 20000-item bin took %s", perFrame)
 }
 
 // The listing scrolls to its last row and keeps its header on screen.
