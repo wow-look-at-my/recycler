@@ -6,7 +6,6 @@
 	<Property name="size" type="string" default=""/>
 	<Property name="status" type="string" default=""/>
 	<Property name="statusStyle" type="string" default="muted"/>
-	<Property name="frame" type="int" default="0"/>
 
 	<Property name="filter" type="string" default=""/>
 	<Property name="cursor" type="int" default="0"/>

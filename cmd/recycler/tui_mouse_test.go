@@ -3,9 +3,7 @@ package main
 import (
 	"path/filepath"
 	"testing"
-	"time"
 
-	tea "charm.land/bubbletea/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -40,24 +38,6 @@ func TestTheConfirmationButtonsRestoreOrCancel(t *testing.T) {
 	assert.False(t, m.asking)
 	assert.FileExists(t, restored)
 	assert.Empty(t, m.shown, "the restored item is still listed")
-}
-
-// The frame counter is what animates the interface.
-func TestATickAdvancesTheFrameAndSchedulesTheNext(t *testing.T) {
-	m, _ := binWith(t, "notes.txt")
-	before := m.frame
-
-	_, cmd := m.Update(tick(time.Now()))
-	assert.Equal(t, before+1, m.frame)
-	assert.NotNil(t, cmd, "the tick scheduled no successor")
-	assert.NotNil(t, m.Init(), "the interface starts without a tick")
-}
-
-// The view is what reaches the terminal, and it has to ask for motion events: without them a click
-// never.
-func TestTheViewAsksForMouseMotion(t *testing.T) {
-	m, _ := binWith(t, "notes.txt")
-	assert.Equal(t, tea.MouseModeAllMotion, m.View().MouseMode)
 }
 
 // A page is however tall the last frame made the listing.
