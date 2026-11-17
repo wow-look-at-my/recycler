@@ -39,6 +39,11 @@ empty. A filesystem left under its target is named, because a bin holds only
 what was recycled: a disk filling with files nobody recycled leaves this running
 and unable to help, and that is the state worth hearing about.
 
+The bin itself is listed only when that can change something: on the tick a
+filesystem runs short, when a short bin changes, and after an eviction. A bin
+that changed on a filesystem with room is listed within a minute, which is when
+build output past its budget goes.
+
 Sizes are the ones recorded when each item was recycled, so a sweep does not
 walk the bin to measure it. An item whose size is unknown is left alone.
 
