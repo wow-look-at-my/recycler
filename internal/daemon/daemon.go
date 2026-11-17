@@ -19,7 +19,7 @@ import (
 )
 
 const (
-	// DefaultPollInterval is how often. A tick costs a statfs per filesystem.
+	// DefaultPollInterval is how often the daemon reads free space. A tick costs a statfs per filesystem.
 	DefaultPollInterval = time.Second
 
 	// freeTargetFraction and freeTargetCeiling.
@@ -89,16 +89,31 @@ func Sweep() ([]Eviction, []Pressure, error) {
 	if err != nil {
 		return nil, nil, err
 	}
+	evicted, pressures, _, err := sweepBin(b, b.Dirs(), freeAt)
+	return evicted, pressures, err
+}
+
+// freeAt reads free space at the nearest existing ancestor of dir.
+func freeAt(dir string) (uint64, uint64, error) {
+	return diskfree.Free(probePath(dir))
+}
+
+// sweepBin lists b and sweeps it. It also returns the directory of every
+// group the sweep looked at.
+func sweepBin(b bin.Backend, dirs []string, free func(string) (uint64, uint64, error),
+) ([]Eviction, []Pressure, []string, error) {
 	items, err := b.List()
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	budgeted, items := settleBuildOutput(b, items, cargotarget.CapFromEnv(cargotarget.DefaultCap))
-	// Resolving the probe here keeps sweepItems off the filesystem it decides about.
-	evicted, pressures, err := sweepItems(b, items, b.Dirs(), func(dir string) (uint64, uint64, error) {
-		return diskfree.Free(probePath(dir))
-	})
-	return append(budgeted, evicted...), pressures, err
+	groups := groupByFilesystem(items, dirs)
+	evicted, pressures := sweepGroups(b, groups, free)
+	looked := make([]string, 0, len(groups))
+	for _, group := range groups {
+		looked = append(looked, group.dir)
+	}
+	return append(budgeted, evicted...), pressures, looked, nil
 }
 
 // settleBuildOutput gives back the build output the bin holds past budget,
@@ -133,9 +148,17 @@ func settleBuildOutput(b bin.Backend, items []bin.Item, budget int64) ([]Evictio
 func sweepItems(b bin.Backend, items []bin.Item, dirs []string,
 	free func(string) (uint64, uint64, error),
 ) ([]Eviction, []Pressure, error) {
+	evicted, pressures := sweepGroups(b, groupByFilesystem(items, dirs), free)
+	return evicted, pressures, nil
+}
+
+// sweepGroups evicts from each group whose filesystem is under its trigger.
+func sweepGroups(b bin.Backend, groups []filesystemGroup,
+	free func(string) (uint64, uint64, error),
+) ([]Eviction, []Pressure) {
 	var evicted []Eviction
 	var pressures []Pressure
-	for _, group := range groupByFilesystem(items, dirs) {
+	for _, group := range groups {
 		avail, total, err := free(group.probe)
 		if err != nil {
 			// An unreadable filesystem must not stop.
@@ -181,7 +204,7 @@ func sweepItems(b bin.Backend, items []bin.Item, dirs []string,
 			})
 		}
 	}
-	return evicted, pressures, nil
+	return evicted, pressures
 }
 
 // filesystemGroup is the items sharing a bin directory, plus the probe path.
@@ -269,8 +292,9 @@ func run(ctx context.Context, interval time.Duration, me Identity, standby bool,
 
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
+	w := newWatch()
 	for {
-		evicted, pressures, err := Sweep()
+		evicted, pressures, err := w.tick()
 		if report != nil {
 			report(evicted, pressures, err)
 		}

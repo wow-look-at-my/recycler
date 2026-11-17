@@ -4,14 +4,12 @@
 
 package trash
 
-//
 // Files recycled from the filesystem holding the home directory go to the home
 // trash ($XDG_DATA_HOME/Trash). Files on any other filesystem go to a trash
 // directory on that filesystem, so recycling never has to copy data across
 // filesystems.
 
 import (
-	"bufio"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -20,6 +18,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/wow-look-at-my/go-containers/set"
@@ -59,6 +58,7 @@ type trashInfo struct {
 	origPath  string // as written in the file, possibly relative to a top directory
 	deletedAt time.Time
 	size      int64 // bin.SizeUnknown when the file records none
+	measured  bool  // the file carries a Size line, so the tree was walked
 }
 
 func (t *fdoTrash) Recycle(paths []string) ([]bin.Disposal, error) {
@@ -176,7 +176,7 @@ func (t *fdoTrash) List() ([]bin.Item, error) {
 			}
 			size := info.size
 			infoPath := filepath.Join(dir, trashInfoDir, entry.Name())
-			if size == bin.SizeUnknown && sizeIsRecordable(infoPath) {
+			if !info.measured && sizeIsRecordable(infoPath) {
 				// An entry another implementation wrote records no size.
 				size = fsutil.TreeSize(file)
 				if err := recordSize(infoPath, size); err != nil {
@@ -328,7 +328,7 @@ func (t *fdoTrash) trashDirs() []string {
 	return dirs
 }
 
-// topDirOfTrash returns the filesystem top directory a per-filesystem trash directory belongs to, or
+// topDirOfTrash returns the filesystem top directory a per-filesystem trash directory belongs to.
 // "".
 func topDirOfTrash(dir string) string {
 	base := filepath.Base(dir)
@@ -381,16 +381,14 @@ func createInfoFile(dir, want string) (string, *os.File, error) {
 }
 
 func readInfoFile(path string) (trashInfo, error) {
-	f, err := os.Open(path)
+	data, err := readWhole(path)
 	if err != nil {
 		return trashInfo{}, err
 	}
-	defer f.Close()
 
 	info := trashInfo{size: bin.SizeUnknown}
-	scanner := bufio.NewScanner(f)
-	for scanner.Scan() {
-		key, value, ok := strings.Cut(scanner.Text(), "=")
+	for line := range strings.SplitSeq(string(data), "\n") {
+		key, value, ok := strings.Cut(strings.TrimSuffix(line, "\r"), "=")
 		if !ok {
 			continue
 		}
@@ -406,21 +404,53 @@ func readInfoFile(path string) (trashInfo, error) {
 		case "Size":
 			if n, err := strconv.ParseInt(strings.TrimSpace(value), 10, 64); err == nil {
 				info.size = n
+				info.measured = true
 			}
 		}
-	}
-	if err := scanner.Err(); err != nil {
-		return trashInfo{}, err
 	}
 	return info, nil
 }
 
-// recordSize appends a Size line to a .trashinfo file that has none, so the tree behind it is not
-// walked again. A failure is returned rather than swallowed: a swallowed failure repeats the walk.
-func recordSize(infoPath string, size int64) error {
-	if size == bin.SizeUnknown {
-		return nil
+// readWhole reads a small file through bare system calls. A listing reads one
+// record for each item, and os.Open offers every file to the poller first.
+func readWhole(path string) ([]byte, error) {
+	fd, err := openRetry(path)
+	if err != nil {
+		return nil, &os.PathError{Op: "open", Path: path, Err: err}
 	}
+	defer syscall.Close(fd)
+
+	buf := make([]byte, 0, 512)
+	for {
+		if len(buf) == cap(buf) {
+			buf = append(buf, 0)[:len(buf)]
+		}
+		n, err := syscall.Read(fd, buf[len(buf):cap(buf)])
+		switch {
+		case err == syscall.EINTR:
+		case err != nil:
+			return nil, &os.PathError{Op: "read", Path: path, Err: err}
+		case n == 0:
+			return buf, nil
+		default:
+			buf = buf[:len(buf)+n]
+		}
+	}
+}
+
+// openRetry opens path to read, and repeats a call a signal interrupted.
+func openRetry(path string) (int, error) {
+	for {
+		fd, err := syscall.Open(path, syscall.O_RDONLY|syscall.O_CLOEXEC, 0)
+		if err != syscall.EINTR {
+			return fd, err
+		}
+	}
+}
+
+// recordSize appends a Size line, so the tree is not walked again. An unknown
+// size is recorded too: an absent line repeats the walk on every listing.
+func recordSize(infoPath string, size int64) error {
 	f, err := os.OpenFile(infoPath, os.O_WRONLY|os.O_APPEND, 0o600)
 	if err != nil {
 		return err
