@@ -225,6 +225,50 @@ func TestAnUnwritableForeignEntryIsNotWalked(t *testing.T) {
 	assert.NotContains(t, string(raw), "Size=", "nothing may be written to a read-only record")
 }
 
+// The daemon lists on a timer, so a listing that walks such a tree again
+// walks it without end.
+func TestAnUnmeasurableEntryIsNotWalkedAgain(t *testing.T) {
+	isolateTrash(t)
+	trash := homeTrash(t)
+	require.NoError(t, ensureTrashDir(trash))
+
+	name := "unreadable"
+	require.NoError(t, os.WriteFile(filepath.Join(trash, trashFilesDir, name),
+		[]byte(strings.Repeat("u", 512)), 0o600))
+	infoPath := filepath.Join(trash, trashInfoDir, name+trashInfoExt)
+	record := "[Trash Info]\nPath=/home/ada/unreadable\nDeletionDate=2026-01-02T03:04:05\nSize=-1\n"
+	require.NoError(t, os.WriteFile(infoPath, []byte(record), 0o600))
+
+	items, err := fdoList()
+	require.NoError(t, err)
+	require.Len(t, items, 1)
+	assert.Equal(t, int64(bin.SizeUnknown), items[0].Size, "the entry was measured a second time")
+
+	raw, err := os.ReadFile(infoPath)
+	require.NoError(t, err)
+	assert.Equal(t, record, string(raw), "a record that already states its size was written to")
+}
+
+// The first walk of a foreign entry has to leave a line behind even when it
+// fails. Otherwise, the next listing has nothing that tells it the walk
+// happened.
+func TestAFailedMeasurementIsRecorded(t *testing.T) {
+	infoPath := filepath.Join(t.TempDir(), "foreign.trashinfo")
+	require.NoError(t, os.WriteFile(infoPath, []byte(
+		"[Trash Info]\nPath=/home/ada/foreign\nDeletionDate=2026-01-02T03:04:05\n"), 0o600))
+
+	before, err := readInfoFile(infoPath)
+	require.NoError(t, err)
+	assert.False(t, before.measured, "a record with no Size line reads as measured")
+
+	require.NoError(t, recordSize(infoPath, bin.SizeUnknown))
+
+	after, err := readInfoFile(infoPath)
+	require.NoError(t, err)
+	assert.True(t, after.measured, "the failed measurement left no line, so the walk repeats")
+	assert.Equal(t, int64(bin.SizeUnknown), after.size)
+}
+
 // TestReadsForeignTrashEntries checks that another implementation's entries read back.
 func TestReadsForeignTrashEntries(t *testing.T) {
 	work := isolateTrash(t)
