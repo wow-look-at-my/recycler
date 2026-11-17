@@ -40,13 +40,15 @@ func TestTheConfirmationButtonsRestoreOrCancel(t *testing.T) {
 	assert.Empty(t, m.shown, "the restored item is still listed")
 }
 
-// A page is however tall the last frame made the listing.
-func TestAPageIsTheHeightOfThePaintedListing(t *testing.T) {
+// A page is the rows the listing has room for under its header.
+func TestAPageIsTheHeightOfTheListing(t *testing.T) {
 	isolateTrash(t)
-	unpainted, err := newModel()
+	empty, err := newModel()
 	require.NoError(t, err)
-	assert.Equal(t, 1, unpainted.page())
+	assert.Equal(t, 1, empty.page(), "an empty bin has no listing to page through")
 
-	painted, _ := binWith(t, "a.txt", "b.txt", "c.txt", "d.txt")
-	assert.Equal(t, len(painted.shown), painted.page(), "a page is the rows the last frame drew")
+	m, _ := binWith(t, "a.txt")
+	short := m.page()
+	m.frameOf(testWidth, 50)
+	assert.Equal(t, short+20, m.page(), "twenty more lines of terminal are twenty more rows")
 }

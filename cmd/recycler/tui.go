@@ -14,6 +14,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/wow-look-at-my/recycler"
 	"github.com/wow-look-at-my/tml"
+	"github.com/wow-look-at-my/tml/inspect"
 	"github.com/wow-look-at-my/tml/sema"
 )
 
@@ -45,7 +46,9 @@ type model struct {
 	items    []recycler.Item
 	shown    []recycler.Item
 	selected int
+	// offset is the first row on screen, and viewRows how many rows the listing shows under its header.
 	offset   int
+	viewRows int
 
 	filter    string
 	filtering bool
@@ -77,6 +80,7 @@ func newModel() (*model, error) {
 
 	m := &model{view: view, statusStyle: "muted", width: 96, height: 30}
 	m.reload()
+	m.settle()
 	return m, nil
 }
 
@@ -107,18 +111,39 @@ func (m *model) apply() {
 
 // follow scrolls the selected row into view.
 func (m *model) follow() {
-	target, ok := m.view.UI().Target("items")
-	if !ok || target.Rect.H <= 0 {
+	if m.viewRows <= 0 {
 		return
 	}
-	line := m.selected + tableHeaderLines
 	switch {
-	case line < m.offset:
-		m.offset = line
-	case line >= m.offset+target.Rect.H:
-		m.offset = line - target.Rect.H + 1
+	case m.selected < m.offset:
+		m.offset = m.selected
+	case m.selected >= m.offset+m.viewRows:
+		m.offset = m.selected - m.viewRows + 1
 	}
 	m.offset = max(0, m.offset)
+}
+
+// settle lays the frame out to learn how many rows the listing shows, and
+// keeps the scroll inside the listing.
+func (m *model) settle() {
+	if rows, ok := m.listingRows(); ok && rows != m.viewRows {
+		m.viewRows = rows
+		m.follow()
+	}
+	m.offset = clamp(m.offset, 0, len(m.shown)-m.viewRows)
+}
+
+// listingRows is how many rows the listing shows under its header at the current size. An empty bin has no listing.
+func (m *model) listingRows() (int, bool) {
+	box, err := m.view.Layout(m.Props(), m.width, m.height)
+	if err != nil {
+		return 0, false
+	}
+	items := inspect.Find(box, "items")
+	if items == nil {
+		return 0, false
+	}
+	return max(0, items.Content.H-tableHeaderLines), true
 }
 
 const tableHeaderLines = 2
@@ -178,28 +203,30 @@ func (m *model) restore() {
 // Update takes one message from the program. A key it does not claim goes on to the view, and the view's events come
 // back here.
 func (m *model) Update(p *tml.Program, msg tml.Msg) bool {
+	handled := true
 	switch msg := msg.(type) {
 	case tml.Resize:
 		m.width, m.height = msg.Width, msg.Height
-		return true
 	case tml.Key:
-		handled := m.hotkey(msg)
+		handled = m.hotkey(msg)
 		if m.quitting {
 			p.Quit()
 		}
-		return handled
 	case tml.Event:
 		switch msg.Kind {
 		case tml.Activated:
 			m.act(msg.Action, msg.ID, msg.Y)
 		case tml.Scrolled:
 			if msg.ID == "items" {
-				m.offset = max(0, m.offset+msg.Delta)
+				m.offset += msg.Delta
 			}
 		}
-		return true
+	default:
+		// The pointer moving changes nothing here, so it costs no layout.
+		return false
 	}
-	return false
+	m.settle()
+	return handled
 }
 
 func (m *model) act(action, id string, row int) {
@@ -209,7 +236,7 @@ func (m *model) act(action, id string, row int) {
 	case action == "cancel":
 		m.asking = false
 	case id == "rows" && row >= tableHeaderLines:
-		m.selected = clamp(row-tableHeaderLines+m.offset, 0, len(m.shown)-1)
+		m.selected = clamp(row-tableHeaderLines+m.first(), 0, len(m.shown)-1)
 	}
 }
 
@@ -308,12 +335,9 @@ func (m *model) browsing(msg tml.Key) bool {
 	return true
 }
 
-// page is a screenful of rows, taken from where the last frame put the viewport.
+// page is a screenful of rows.
 func (m *model) page() int {
-	if target, ok := m.view.UI().Target("items"); ok && target.Rect.H > tableHeaderLines {
-		return target.Rect.H - tableHeaderLines
-	}
-	return 1
+	return max(1, m.viewRows)
 }
 
 func (m *model) render() string {
@@ -343,8 +367,9 @@ func (m *model) Props() tml.Props {
 		"filtering": sema.BoolValue(m.filtering),
 
 		"rows":      sema.ListValue(m.rows()),
-		"selected":  sema.StringValue(strconv.Itoa(m.selected)),
+		"selected":  sema.StringValue(strconv.Itoa(m.selected - m.first())),
 		"offset":    sema.StringValue(strconv.Itoa(m.offset)),
+		"lines":     sema.StringValue(strconv.Itoa(len(m.shown) + tableHeaderLines)),
 		"empty":     sema.BoolValue(len(m.shown) == 0),
 		"emptyText": sema.StringValue(m.emptyText()),
 
@@ -357,10 +382,17 @@ func (m *model) Props() tml.Props {
 	return props
 }
 
-// rows are the listing as the table's delimited cells.
+// first is the index of the first row on screen.
+func (m *model) first() int {
+	return clamp(m.offset, 0, len(m.shown))
+}
+
+// rows are the rows on screen as the table's delimited cells. The terminal's height bounds the viewport, so it is
+// enough rows before the first layout at a new size has measured the viewport.
 func (m *model) rows() []string {
-	rows := make([]string, 0, len(m.shown))
-	for _, item := range m.shown {
+	shown := m.shown[m.first():min(len(m.shown), m.first()+m.height)]
+	rows := make([]string, 0, len(shown))
+	for _, item := range shown {
 		rows = append(rows, strings.Join([]string{
 			item.Name,
 			item.DeletedAt.Local().Format("2006-01-02 15:04"),
@@ -429,8 +461,11 @@ func runTUI() error {
 	return tml.Run(m.view, m)
 }
 
-// frameOf renders a frame at a fixed size, for a test that has no terminal.
+// frameOf renders a frame at a fixed size, for a test that has no terminal. It resizes the way the program does.
 func (m *model) frameOf(width, height int) string {
-	m.width, m.height = width, height
+	if width != m.width || height != m.height {
+		m.width, m.height = width, height
+		m.settle()
+	}
 	return m.render()
 }

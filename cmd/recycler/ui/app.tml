@@ -16,6 +16,7 @@
 	<Property name="rows" type="string[]" default=""/>
 	<Property name="selected" type="int" default="0"/>
 	<Property name="offset" type="int" default="0"/>
+	<Property name="lines" type="int" default="0"/>
 	<Property name="empty" type="bool" default="false"/>
 	<Property name="emptyText" type="string" default="the recycle bin is empty"/>
 
@@ -45,7 +46,10 @@
 
 				<Border title="Items" color="{theme.line}" width="*" height="*">
 					<Text style="muted" if="{empty}">{emptyText}</Text>
-					<Scrollbox id="items" offset="{offset}" if="{not empty}">
+					<!-- rows is a screenful from offset on, and lines is the height of
+					     the whole listing. A table of the whole bin costs the whole bin
+					     on every frame. -->
+					<Scrollbox id="items" offset="{offset}" contentHeight="{lines}" height="*" if="{not empty}">
 						<!-- The unit separator splits the cells because they hold file
 						     paths, and every printable delimiter is legal in a name.
 						     wrap="false" keeps a row to a line, which is what lets a
