@@ -59,6 +59,7 @@ type trashInfo struct {
 	origPath  string // as written in the file, possibly relative to a top directory
 	deletedAt time.Time
 	size      int64 // bin.SizeUnknown when the file records none
+	measured  bool  // the file carries a Size line, so the tree was walked
 }
 
 func (t *fdoTrash) Recycle(paths []string) ([]bin.Disposal, error) {
@@ -176,7 +177,7 @@ func (t *fdoTrash) List() ([]bin.Item, error) {
 			}
 			size := info.size
 			infoPath := filepath.Join(dir, trashInfoDir, entry.Name())
-			if size == bin.SizeUnknown && sizeIsRecordable(infoPath) {
+			if !info.measured && sizeIsRecordable(infoPath) {
 				// An entry another implementation wrote records no size.
 				size = fsutil.TreeSize(file)
 				if err := recordSize(infoPath, size); err != nil {
@@ -406,6 +407,7 @@ func readInfoFile(path string) (trashInfo, error) {
 		case "Size":
 			if n, err := strconv.ParseInt(strings.TrimSpace(value), 10, 64); err == nil {
 				info.size = n
+				info.measured = true
 			}
 		}
 	}
@@ -415,12 +417,9 @@ func readInfoFile(path string) (trashInfo, error) {
 	return info, nil
 }
 
-// recordSize appends a Size line to a .trashinfo file that has none, so the tree behind it is not
-// walked again. A failure is returned rather than swallowed: a swallowed failure repeats the walk.
+// recordSize appends a Size line, so the tree is not walked again. An unknown
+// size is recorded too: an absent line repeats the walk on every listing.
 func recordSize(infoPath string, size int64) error {
-	if size == bin.SizeUnknown {
-		return nil
-	}
 	f, err := os.OpenFile(infoPath, os.O_WRONLY|os.O_APPEND, 0o600)
 	if err != nil {
 		return err
