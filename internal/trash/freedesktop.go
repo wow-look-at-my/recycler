@@ -10,7 +10,6 @@ package trash
 // filesystems.
 
 import (
-	"bufio"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -19,6 +18,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/wow-look-at-my/go-containers/set"
@@ -381,16 +381,14 @@ func createInfoFile(dir, want string) (string, *os.File, error) {
 }
 
 func readInfoFile(path string) (trashInfo, error) {
-	f, err := os.Open(path)
+	data, err := readWhole(path)
 	if err != nil {
 		return trashInfo{}, err
 	}
-	defer f.Close()
 
 	info := trashInfo{size: bin.SizeUnknown}
-	scanner := bufio.NewScanner(f)
-	for scanner.Scan() {
-		key, value, ok := strings.Cut(scanner.Text(), "=")
+	for line := range strings.SplitSeq(string(data), "\n") {
+		key, value, ok := strings.Cut(strings.TrimSuffix(line, "\r"), "=")
 		if !ok {
 			continue
 		}
@@ -410,10 +408,44 @@ func readInfoFile(path string) (trashInfo, error) {
 			}
 		}
 	}
-	if err := scanner.Err(); err != nil {
-		return trashInfo{}, err
-	}
 	return info, nil
+}
+
+// readWhole reads a small file through bare system calls. A listing reads one
+// record for each item, and os.Open offers every file to the poller first.
+func readWhole(path string) ([]byte, error) {
+	fd, err := openRetry(path)
+	if err != nil {
+		return nil, &os.PathError{Op: "open", Path: path, Err: err}
+	}
+	defer syscall.Close(fd)
+
+	buf := make([]byte, 0, 512)
+	for {
+		if len(buf) == cap(buf) {
+			buf = append(buf, 0)[:len(buf)]
+		}
+		n, err := syscall.Read(fd, buf[len(buf):cap(buf)])
+		switch {
+		case err == syscall.EINTR:
+		case err != nil:
+			return nil, &os.PathError{Op: "read", Path: path, Err: err}
+		case n == 0:
+			return buf, nil
+		default:
+			buf = buf[:len(buf)+n]
+		}
+	}
+}
+
+// openRetry opens path to read, and repeats a call a signal interrupted.
+func openRetry(path string) (int, error) {
+	for {
+		fd, err := syscall.Open(path, syscall.O_RDONLY|syscall.O_CLOEXEC, 0)
+		if err != syscall.EINTR {
+			return fd, err
+		}
+	}
 }
 
 // recordSize appends a Size line, so the tree is not walked again. An unknown

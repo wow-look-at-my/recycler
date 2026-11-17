@@ -353,6 +353,16 @@ func TestReadInfoFile(t *testing.T) {
 
 	_, err = readInfoFile(filepath.Join(dir, "missing"+trashInfoExt))
 	assert.Error(t, err)
+
+	// A record longer than one read comes back whole, and a line ending some other tool wrote does not reach the value.
+	deep := "/" + strings.Repeat("deep/", 400) + "file.txt"
+	long := writeFile(t, filepath.Join(dir, "long"+trashInfoExt),
+		"[Trash Info]\r\nPath="+deep+"\r\nDeletionDate=2026-07-26T11:24:09\r\nSize=7\r\n")
+	info, err = readInfoFile(long)
+	require.NoError(t, err)
+	assert.Equal(t, deep, info.origPath)
+	assert.Equal(t, int64(7), info.size)
+	assert.True(t, info.deletedAt.Equal(time.Date(2026, 7, 26, 11, 24, 9, 0, time.Local)))
 }
 
 func TestEscapePath(t *testing.T) {
