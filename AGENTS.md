@@ -12,16 +12,16 @@ A Go library and CLI that expose the operating system's recycle bin through one 
 | `internal/dsstore/` | Codec for the `.DS_Store` files Finder's put back records live in: the B-tree parser, and the writer with its buddy allocator. Deliberately **not** build-constrained, so it is testable on any platform. |
 | `internal/putback/` | Finder's `ptbL`/`ptbN` put back records: reading them out of a trash directory's `.DS_Store` and editing them back in under a lock. Built on every Unix so the test suite covers it on Linux. |
 | `internal/winbin/` | Codec for the Windows `$I` metadata files. Deliberately **not** build-constrained, so it is testable on any platform. |
-| `internal/fsutil/` | Filesystem helpers the backends share: `Move` (rename with a copy fallback), `CopyTree`, `TreeSize`, `UniqueName`, `PrepareDest`, and the Unix-only `DeviceOf`/`TopDirOf`/`IsStickyDir`. |
-| `internal/diskfree/` | `Free`, what the daemon polls - `statfs`, `statvfs` and `GetDiskFreeSpaceEx`, the same numbers `df` reports. One file per spelling, because the BSDs disagree about all three. |
-| `internal/daemon/` | The disk-pressure daemon: `FreeTarget`, `Sweep`, the poll loop, and starting one per user (`spawn.go`, `account_*.go`, `lock_*.go`, `detach_*.go`, `reap_*.go`). The only thing here that destroys anything. |
+| `internal/fsutil/` | Filesystem helpers the backends share. |
+| `internal/diskfree/` | One file per spelling, because the BSDs disagree about all three. |
+| `internal/daemon/` | The disk-pressure daemon: `FreeTarget`, `Sweep`, the poll loop, and starting one per user. The only thing here that destroys anything. |
 | `internal/cargotarget/` | The cap on a cargo build directory: finding a validated `target` directory (including the copies an agent worktree keeps), choosing the oldest regenerable output inside it, and recycling that until the directory fits. Sizes are what the filesystem reports a file takes (`st_blocks`), not the length it states, because a compressed pool makes those differ by a multiple and the cap is on the pool. Nothing here deletes, and nothing here runs by itself. |
 | `cmd/recycler/` | Cobra CLI, one command per file, each registering itself in `init()`. |
 | `cmd/recycler/tui.go`, `cmd/recycler/ui/` | The full-screen browser: its Bubble Tea model, and the TML document and theme it renders. |
 
 `trash.Backend()` is defined once per platform. Every API call calls it rather than a cached value, so tests can redirect the recycle bin with `HOME` and `XDG_DATA_HOME` between calls. Keep it that way.
 
-Nothing under `internal/` imports the root package. The root package imports only `bin`, `trash` and `daemon`. `bin` is what keeps that acyclic: the helpers, the backends and the daemon all name an `Item` without naming each other.
+Nothing under `internal/` imports the root package. `bin` is what keeps that acyclic: the helpers, the backends and the daemon all name an `Item` without naming each other.
 
 ## Invariants
 
