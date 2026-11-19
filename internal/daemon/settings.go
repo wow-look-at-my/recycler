@@ -25,10 +25,62 @@ type Settings struct {
 
 	// Verbose makes the daemon log each sweep, and why each item went.
 	Verbose bool `json:"verbose,omitempty"`
+
+	// Folders are the directories the daemon keeps under a size.
+	Folders []Folder `json:"folders,omitempty"`
+}
+
+// Flags are settings given on the daemon command line.
+var Flags Settings
+
+// withFlags answers s with Flags laid over it.
+func (s Settings) withFlags() Settings {
+	if Flags.MinFree != "" {
+		s.MinFree = Flags.MinFree
+	}
+	for _, f := range Flags.Folders {
+		s = s.WithFolder(f)
+	}
+	return s
+}
+
+// WithFolder answers s with f in place of any folder with the same directory.
+func (s Settings) WithFolder(f Folder) Settings {
+	s = s.WithoutFolder(f.Dir)
+	s.Folders = append(s.Folders, f)
+	return s
+}
+
+// WithoutFolder answers s with no folder for dir.
+func (s Settings) WithoutFolder(dir string) Settings {
+	var kept []Folder
+	for _, f := range s.Folders {
+		if filepath.Clean(f.Dir) != filepath.Clean(dir) {
+			kept = append(kept, f)
+		}
+	}
+	s.Folders = kept
+	return s
+}
+
+// ValidateFlags checks the settings given on the command line. An AI agent
+// session may not give any that make the daemon delete more.
+func ValidateFlags(s Settings) error {
+	if s.MinFree != "" || len(s.Folders) > 0 {
+		if err := refuseAgent("change what the daemon deletes"); err != nil {
+			return err
+		}
+	}
+	return s.Validate()
 }
 
 // Validate checks every field a person can set.
 func (s Settings) Validate() error {
+	for _, f := range s.Folders {
+		if err := f.Validate(); err != nil {
+			return err
+		}
+	}
 	if s.MinFree == "" {
 		return nil
 	}
@@ -190,7 +242,9 @@ func (c *settingsCache) load() Settings {
 	if err != nil {
 		notef("%v; the daemon uses its built-in settings until the file is fixed", err)
 		s = Settings{}
-	} else {
+	}
+	s = s.withFlags()
+	if err == nil {
 		notef("settings: %s", s.describe())
 	}
 	c.s = s
@@ -203,7 +257,11 @@ func (s Settings) describe() string {
 	if s.MinFree != "" {
 		free = s.MinFree + fmt.Sprintf(" of each filesystem, at least the built-in floor and at most 1/%d of it", MaxFreeFraction)
 	}
-	return fmt.Sprintf("keep %s free; verbose %t", free, s.Verbose)
+	line := fmt.Sprintf("keep %s free; verbose %t", free, s.Verbose)
+	for _, f := range s.Folders {
+		line += "; keep " + f.String()
+	}
+	return line
 }
 
 // active is the settings the daemon last loaded, which decide whether a trace line prints.

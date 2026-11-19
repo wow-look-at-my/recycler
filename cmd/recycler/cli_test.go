@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -67,11 +68,21 @@ func run(t *testing.T, stdin string, args ...string) (string, error) {
 
 func resetCommands() {
 	rootCmd.SetArgs(nil)
-	for _, cmd := range rootCmd.Commands() {
-		cmd.Flags().VisitAll(func(f *pflag.Flag) {
-			_ = f.Value.Set(f.DefValue)
+	resetFlags(rootCmd)
+}
+
+// resetFlags puts every flag of cmd and of each command under it back to its default.
+func resetFlags(cmd *cobra.Command) {
+	for _, sub := range cmd.Commands() {
+		sub.Flags().VisitAll(func(f *pflag.Flag) {
+			if s, ok := f.Value.(pflag.SliceValue); ok {
+				_ = s.Replace(nil)
+			} else {
+				_ = f.Value.Set(f.DefValue)
+			}
 			f.Changed = false
 		})
+		resetFlags(sub)
 	}
 }
 

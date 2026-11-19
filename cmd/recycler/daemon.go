@@ -64,7 +64,13 @@ and the rule that chose it. --verbose, or "recycler config set verbose true"
 for the daemon the tool starts by itself, also logs each sweep: the free space
 it found, the goal it swept to and each item it had to keep. "recycler daemon
 log" prints what a detached daemon wrote. "recycler config" sets how much free
-space the daemon keeps.`,
+space the daemon keeps.
+
+--folder DIR:SIZE also keeps a directory under SIZE, giving back its least
+recently used files first: to the recycle bin, or permanently with
+DIR:SIZE:delete. "recycler config folder add" does the same for the daemon
+the tool starts by itself. No folder is capped unless one is named. An AI
+agent session cannot name one.`,
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		interval, _ := cmd.Flags().GetDuration("interval")
@@ -72,6 +78,20 @@ space the daemon keeps.`,
 		standby, _ := cmd.Flags().GetBool("standby")
 		out := cmd.OutOrStdout()
 		daemon.Verbose, _ = cmd.Flags().GetBool("verbose")
+		folders, _ := cmd.Flags().GetStringArray("folder")
+		var flags daemon.Settings
+		for _, spec := range folders {
+			f, err := daemon.ParseFolder(spec)
+			if err != nil {
+				return err
+			}
+			flags = flags.WithFolder(f)
+		}
+		if err := daemon.ValidateFlags(flags); err != nil {
+			return err
+		}
+		daemon.Flags = flags
+		defer func() { daemon.Flags = daemon.Settings{} }()
 		daemon.Logf = func(format string, args ...any) {
 			fmt.Fprintf(out, "%s %s\n", time.Now().Format(time.RFC3339), fmt.Sprintf(format, args...))
 		}
@@ -154,7 +174,11 @@ func describeEviction(ev recycler.Eviction) string {
 	if where == "" {
 		where = ev.Item.Name
 	}
-	line := fmt.Sprintf("%s (%s, recycled %s)", where, humanSize(ev.Item.Size),
+	when := "recycled"
+	if ev.LastUsed {
+		when = "last used"
+	}
+	line := fmt.Sprintf("%s (%s, %s %s)", where, humanSize(ev.Item.Size), when,
 		ev.Item.DeletedAt.Local().Format(time.RFC3339))
 	if ev.Reason != "" {
 		line += ": " + ev.Reason
@@ -318,6 +342,8 @@ func init() {
 	daemonCmd.Flags().Bool("once", false, "sweep once and exit")
 	daemonCmd.Flags().Bool("standby", false, "wait for a running daemon to stop instead of exiting")
 	daemonCmd.Flags().BoolP("verbose", "v", false, "log each sweep, and why each item went or stayed")
+	daemonCmd.Flags().StringArray("folder", nil,
+		"keep DIR:SIZE[:delete|:recycle] under SIZE, least recently used files first (repeatable; recycles unless :delete)")
 	daemonCmd.AddCommand(daemonUpCmd)
 	daemonCmd.AddCommand(daemonLogCmd)
 	daemonCmd.AddCommand(daemonInstallCmd)

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"time"
 
@@ -63,6 +64,9 @@ type Eviction struct {
 
 	// Reason says which rule chose the item.
 	Reason string
+
+	// LastUsed marks a file from the temporary directory, which was never in the bin.
+	LastUsed bool
 }
 
 // Pressure is a filesystem left under its target after a sweep did what it
@@ -101,10 +105,14 @@ func Sweep() ([]Eviction, []Pressure, error) {
 	if err != nil {
 		return nil, nil, err
 	}
+	s = s.withFlags()
 	active.Store(&s)
 	tracef("settings: %s", s.describe())
 	evicted, pressures, _, err := sweepBin(b, b.Dirs(), freeAt, s)
-	return evicted, pressures, err
+	if err != nil {
+		return evicted, pressures, err
+	}
+	return append(evicted, newFolderWatch().tick(s, time.Now())...), pressures, nil
 }
 
 // freeAt reads free space at the nearest existing ancestor of dir.
@@ -191,28 +199,9 @@ func sweepGroups(b bin.Backend, groups []filesystemGroup,
 		reason := fmt.Sprintf("disk pressure: %s had %s free, under its %s trigger",
 			group.dir, formatBytes(avail), formatBytes(trigger))
 
-		// The oldest goes at the front: the longer something.
-		sort.Slice(group.items, func(i, j int) bool {
-			return group.items[i].DeletedAt.Before(group.items[j].DeletedAt)
-		})
-		var stranded uint64
-		for _, it := range group.items {
-			if avail >= target {
-				break
-			}
-			if it.Size == bin.SizeUnknown || it.Size < 0 {
-				tracef("kept %s: its size is unknown, so giving it back cannot be accounted for", describeItem(it))
-				continue
-			}
-			ev := Eviction{Item: it, Reason: reason}
-			if err := b.Evict(it.ID); err != nil {
-				ev.Error = fmt.Errorf("evicting %s: %w", it.ID, err)
-				stranded += uint64(it.Size)
-			} else {
-				avail += uint64(it.Size)
-			}
-			evicted = append(evicted, ev)
-		}
+		gone, freed, stranded := drain(group.items, target-avail, everything, evictFrom(b), reason)
+		evicted = append(evicted, gone...)
+		avail += freed
 		tracef("%s: %s free after the sweep", group.dir, formatBytes(avail))
 		// Reported against the trigger, not the recovery target: stopping short
 		// of the runway is ordinary, sitting under the trigger is not.
@@ -227,6 +216,55 @@ func sweepGroups(b bin.Backend, groups []filesystemGroup,
 		}
 	}
 	return evicted, pressures
+}
+
+// drain gives back the oldest items take accepts until need bytes are freed.
+// Every rule that deletes by size goes through it: disk pressure, the
+// selectors of an empty, and the cap on the temporary directory.
+//
+// An item of unknown size is kept, because giving it back cannot be accounted
+// for. An item give fails on counts as stranded, not freed, and the next
+// item takes its place. It answers what it gave back, the bytes freed and the
+// bytes stranded.
+func drain(items []bin.Item, need uint64, take func(bin.Item) bool, give func(bin.Item) error, reason string,
+) (evicted []Eviction, freed, stranded uint64) {
+	oldest := slices.Clone(items)
+	// The oldest goes first: the longer something has gone unwanted, the less it is missed.
+	sort.SliceStable(oldest, func(i, j int) bool { return oldest[i].DeletedAt.Before(oldest[j].DeletedAt) })
+	for _, it := range oldest {
+		if freed >= need {
+			break
+		}
+		if !take(it) {
+			continue
+		}
+		if it.Size < 0 {
+			tracef("kept %s: its size is unknown, so giving it back cannot be accounted for", describeItem(it))
+			continue
+		}
+		ev := Eviction{Item: it, Reason: reason}
+		if err := give(it); err != nil {
+			ev.Error = err
+			stranded += uint64(it.Size)
+		} else {
+			freed += uint64(it.Size)
+		}
+		evicted = append(evicted, ev)
+	}
+	return evicted, freed, stranded
+}
+
+// everything is the take of a rule that may give back any item.
+func everything(bin.Item) bool { return true }
+
+// evictFrom answers a give that evicts from b.
+func evictFrom(b bin.Backend) func(bin.Item) error {
+	return func(it bin.Item) error {
+		if err := b.Evict(it.ID); err != nil {
+			return fmt.Errorf("evicting %s: %w", it.ID, err)
+		}
+		return nil
+	}
 }
 
 // describeItem names an item by where it came from, or by its name when that is unknown.
@@ -323,8 +361,10 @@ func run(ctx context.Context, interval time.Duration, me Identity, standby bool,
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 	w := newWatch()
+	folders := newFolderWatch()
 	for {
 		evicted, pressures, err := w.tick()
+		evicted = append(evicted, folders.tick(w.s, time.Now())...)
 		if report != nil {
 			report(evicted, pressures, err)
 		}

@@ -36,6 +36,7 @@ type watch struct {
 
 	// settings is nil in a test that drives the built-in settings.
 	settings *settingsCache
+	s        Settings // what the last tick ran.
 
 	listed   time.Time // when the bin was last listed
 	groups   []string
@@ -69,6 +70,7 @@ func (w *watch) tick() ([]Eviction, []Pressure, error) {
 	if w.settings != nil {
 		s = w.settings.load()
 	}
+	w.s = s
 	now := w.now()
 	age := now.Sub(w.listed)
 	list := w.listed.IsZero() || age >= relistInterval

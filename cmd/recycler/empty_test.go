@@ -11,15 +11,19 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	agent "github.com/wow-look-at-my/is-this-an-agent"
 	"github.com/wow-look-at-my/recycler"
 	"github.com/wow-look-at-my/recycler/internal/daemon"
 )
 
-// noAgent removes every agent variable for the test, so it runs the same
-// inside an agent session and outside one.
+// noAgent runs the test as a person: it removes every agent variable and the
+// detection of an agent process. It runs the same inside an agent session.
 func noAgent(t *testing.T) {
 	t.Helper()
-	for _, name := range daemon.AgentVars {
+	detect := daemon.DetectAgent
+	daemon.DetectAgent = func() (agent.Agent, bool) { return agent.Agent{}, false }
+	t.Cleanup(func() { daemon.DetectAgent = detect })
+	for _, name := range daemon.AgentVars() {
 		if old, ok := os.LookupEnv(name); ok {
 			require.NoError(t, os.Unsetenv(name))
 			t.Cleanup(func() { os.Setenv(name, old) })
@@ -186,6 +190,85 @@ func TestConfigSetsWhatTheDaemonKeepsFree(t *testing.T) {
 	s, err = recycler.LoadDaemonSettings()
 	require.NoError(t, err)
 	assert.Equal(t, recycler.DaemonSettings{}, s)
+}
+
+func TestConfigAddsAndRemovesFolders(t *testing.T) {
+	noAgent(t)
+	isolateTrash(t)
+	isolateState(t)
+	dir := t.TempDir()
+
+	out, err := run(t, "", "config")
+	require.NoError(t, err)
+	assert.Contains(t, out, "folders: none", "no folder is capped until one is added")
+
+	_, err = run(t, "", "config", "folder", "add", dir, "10GB", "--delete")
+	require.NoError(t, err)
+	_, err = run(t, "", "config", "folder", "add", "/var/tmp", "2GiB")
+	require.NoError(t, err)
+	s, err := recycler.LoadDaemonSettings()
+	require.NoError(t, err)
+	assert.ElementsMatch(t, []daemon.Folder{{Dir: dir, Max: "10GB", Delete: true}, {Dir: "/var/tmp", Max: "2GiB"}}, s.Folders)
+
+	out, err = run(t, "", "config")
+	require.NoError(t, err)
+	assert.Contains(t, out, "folder: "+dir+" under 10GB, deleting permanently")
+	assert.Contains(t, out, "folder: /var/tmp under 2GiB, recycling")
+
+	for _, args := range [][]string{
+		{"config", "folder", "add", dir, "100MB"},
+		{"config", "folder", "add", "/", "10GB"},
+		{"config", "folder", "remove", "/nowhere"},
+	} {
+		_, err := run(t, "", args...)
+		assert.Error(t, err, "%v", args)
+	}
+
+	_, err = run(t, "", "config", "folder", "remove", dir)
+	require.NoError(t, err)
+	s, err = recycler.LoadDaemonSettings()
+	require.NoError(t, err)
+	assert.Equal(t, []daemon.Folder{{Dir: "/var/tmp", Max: "2GiB"}}, s.Folders)
+}
+
+func TestAnAgentSessionCannotCapAFolder(t *testing.T) {
+	noAgent(t)
+	isolateTrash(t)
+	isolateState(t)
+	t.Setenv("GROK_BUILD", "1")
+
+	_, err := run(t, "", "config", "folder", "add", t.TempDir(), "10GB", "--delete")
+	require.ErrorIs(t, err, recycler.ErrAgentSession)
+	_, err = run(t, "", "daemon", "--once", "--folder", t.TempDir()+":10GB:delete")
+	require.ErrorIs(t, err, recycler.ErrAgentSession)
+}
+
+// A folder named on the daemon command line is swept, and each file it gives back is named.
+func TestTheDaemonSweepsAFolderItWasGiven(t *testing.T) {
+	noAgent(t)
+	isolateTrash(t)
+	isolateState(t)
+	dir := t.TempDir()
+	keep := writeFile(t, filepath.Join(dir, "fresh.txt"), "fresh")
+
+	out, err := run(t, "", "daemon", "--once", "--verbose", "--folder", dir+":1GiB:delete")
+	require.NoError(t, err)
+	assert.Contains(t, out, "keep "+dir+" under 1GiB, deleting permanently")
+	assert.FileExists(t, keep, "a folder under its cap loses nothing")
+
+	_, err = run(t, "", "daemon", "--once", "--folder", dir+":1MB")
+	require.Error(t, err, "a cap under the floor is refused")
+}
+
+func TestAFolderEvictionSaysWhenTheFileWasLastUsed(t *testing.T) {
+	when := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
+	line := describeEviction(recycler.Eviction{
+		Item:     recycler.Item{Name: "x", OriginalPath: "/tmp/x", Size: 1024, DeletedAt: when},
+		Reason:   "least recently used in /tmp",
+		LastUsed: true,
+	})
+	assert.Contains(t, line, "/tmp/x (1.0 KiB, last used ")
+	assert.Contains(t, line, "): least recently used in /tmp")
 }
 
 func TestTheDaemonLogIsPrinted(t *testing.T) {

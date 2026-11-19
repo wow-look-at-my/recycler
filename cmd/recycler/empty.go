@@ -34,9 +34,8 @@ This lists what it would delete and asks first. --dry-run only lists it, and
 or a like variable set) cannot empty the bin.`,
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		if name, ok := recycler.AgentSession(); ok {
-			return fmt.Errorf("%w: %s is set, so this looks like an AI agent session, and only a person may empty the recycle bin",
-				recycler.ErrAgentSession, name)
+		if why, ok := recycler.AgentSession(); ok {
+			return fmt.Errorf("%w: %s, so only a person may empty the recycle bin", recycler.ErrAgentSession, why)
 		}
 		c, err := emptyCriteria(cmd)
 		if err != nil {

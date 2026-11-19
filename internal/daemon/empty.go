@@ -115,10 +115,12 @@ func emptyBin(b bin.Backend, c EmptyCriteria, free func(string) (uint64, uint64,
 		return !taken && now.Sub(it.DeletedAt) >= EmptyGrace
 	}
 	known := func(it bin.Item) bool { return it.Size >= 0 }
-	for i := range groups {
-		sort.SliceStable(groups[i].items, func(a, b int) bool {
-			return groups[i].items[a].DeletedAt.Before(groups[i].items[b].DeletedAt)
-		})
+	// choose is the give of a planned empty: nothing goes until the plan is whole.
+	choose := func(reason string) func(bin.Item) error {
+		return func(it bin.Item) error {
+			chosen[it.ID] = reason
+			return nil
+		}
 	}
 
 	if c.OlderThan != 0 {
@@ -140,15 +142,10 @@ func emptyBin(b bin.Backend, c EmptyCriteria, free func(string) (uint64, uint64,
 					avail += uint64(it.Size)
 				}
 			}
-			reason := fmt.Sprintf("to bring %s to %s free", group.dir, formatBytes(space[i].want))
-			for _, it := range group.items {
-				if avail >= space[i].want {
-					break
-				}
-				if eligible(it) && known(it) {
-					chosen[it.ID] = reason
-					avail += uint64(it.Size)
-				}
+			if avail < space[i].want {
+				reason := fmt.Sprintf("to bring %s to %s free", group.dir, formatBytes(space[i].want))
+				_, freed, _ := drain(group.items, space[i].want-avail, eligible, choose(reason), reason)
+				avail += freed
 			}
 			if avail < space[i].want {
 				report.Unmet = append(report.Unmet, fmt.Sprintf("%s stays at %s free, under the %s asked for: what is left is live files, items recycled in the last %s, or items of unknown size",
@@ -159,25 +156,19 @@ func emptyBin(b bin.Backend, c EmptyCriteria, free func(string) (uint64, uint64,
 
 	if c.MaxSize != 0 {
 		var weight uint64
-		var oldest []bin.Item
+		var all []bin.Item
 		for _, group := range groups {
 			for _, it := range group.items {
 				if _, taken := chosen[it.ID]; !taken && known(it) {
 					weight += uint64(it.Size)
 				}
-				oldest = append(oldest, it)
+				all = append(all, it)
 			}
 		}
-		sort.SliceStable(oldest, func(a, b int) bool { return oldest[a].DeletedAt.Before(oldest[b].DeletedAt) })
-		reason := "to bring the bin to " + formatBytes(c.MaxSize)
-		for _, it := range oldest {
-			if weight <= c.MaxSize {
-				break
-			}
-			if eligible(it) && known(it) {
-				chosen[it.ID] = reason
-				weight -= uint64(it.Size)
-			}
+		if weight > c.MaxSize {
+			reason := "to bring the bin to " + formatBytes(c.MaxSize)
+			_, freed, _ := drain(all, weight-c.MaxSize, eligible, choose(reason), reason)
+			weight -= freed
 		}
 		if weight > c.MaxSize {
 			report.Unmet = append(report.Unmet, fmt.Sprintf("the bin stays at %s, over the %s asked for: what is left was recycled in the last %s",
@@ -196,10 +187,9 @@ func emptyBin(b bin.Backend, c EmptyCriteria, free func(string) (uint64, uint64,
 	if dryRun {
 		return report, nil
 	}
+	evict := evictFrom(b)
 	for i := range report.Evicted {
-		if err := b.Evict(report.Evicted[i].Item.ID); err != nil {
-			report.Evicted[i].Error = fmt.Errorf("evicting %s: %w", report.Evicted[i].Item.ID, err)
-		}
+		report.Evicted[i].Error = evict(report.Evicted[i].Item)
 	}
 	return report, nil
 }

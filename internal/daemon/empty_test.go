@@ -8,6 +8,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	agent "github.com/wow-look-at-my/is-this-an-agent"
 
 	"github.com/wow-look-at-my/recycler/internal/bin"
 )
@@ -20,11 +21,15 @@ type listing struct {
 
 func (l *listing) List() ([]bin.Item, error) { return l.items, nil }
 
-// noAgent removes every agent variable for the test, so the test runs the same
-// inside an agent session and outside one.
+// noAgent runs the test as a person: it removes every agent variable and the
+// detection of an agent process. The test runs the same inside an agent session.
 func noAgent(t *testing.T) {
 	t.Helper()
-	for _, name := range AgentVars {
+	t.Serial()
+	detect := DetectAgent
+	DetectAgent = func() (agent.Agent, bool) { return agent.Agent{}, false }
+	t.Cleanup(func() { DetectAgent = detect })
+	for _, name := range AgentVars() {
 		if old, ok := os.LookupEnv(name); ok {
 			require.NoError(t, os.Unsetenv(name))
 			t.Cleanup(func() { os.Setenv(name, old) })
@@ -126,6 +131,7 @@ func TestAFreeSpaceGoalOverHalfTheFilesystemIsRefused(t *testing.T) {
 }
 
 func TestAnAgentCannotEmptyTheBin(t *testing.T) {
+	t.Serial()
 	noAgent(t)
 	for _, name := range []string{"CLAUDECODE", "GROK_BUILD"} {
 		t.Run(name, func(t *testing.T) {
@@ -135,7 +141,23 @@ func TestAnAgentCannotEmptyTheBin(t *testing.T) {
 			assert.Contains(t, err.Error(), name)
 
 			require.ErrorIs(t, SaveSettings(Settings{MinFree: "5GiB"}), bin.ErrAgentSession)
+			folder := Folder{Dir: t.TempDir(), Max: "2GiB", Delete: true}
+			require.ErrorIs(t, ValidateFlags(Settings{Folders: []Folder{folder}}), bin.ErrAgentSession)
 		})
+	}
+
+	// A process under an agent is refused with no variable set at all.
+	DetectAgent = func() (agent.Agent, bool) { return agent.Agent{Name: "Claude"}, true }
+	_, err := Empty(EmptyCriteria{OlderThan: days(30)}, true)
+	require.ErrorIs(t, err, bin.ErrAgentSession)
+	assert.Contains(t, err.Error(), "runs under Claude")
+}
+
+// The shared roster and the markers named here both count.
+func TestAgentVarsCoverTheRosterAndTheNamedMarkers(t *testing.T) {
+	vars := AgentVars()
+	for _, name := range []string{"CLAUDECODE", "GROK_BUILD", "GROK_AGENT", "CODEX_SANDBOX", "GEMINI_CLI", "OPENCODE"} {
+		assert.Contains(t, vars, name)
 	}
 }
 
