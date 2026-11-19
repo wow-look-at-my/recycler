@@ -25,7 +25,7 @@ func (l *listing) List() ([]bin.Item, error) { return l.items, nil }
 // detection of an agent process. The test runs the same inside an agent session.
 func noAgent(t *testing.T) {
 	t.Helper()
-	t.Serial()
+	t.Serial("replaces DetectAgent and unsets the agent variables of the process")
 	detect := DetectAgent
 	DetectAgent = func() (agent.Agent, bool) { return agent.Agent{}, false }
 	t.Cleanup(func() { DetectAgent = detect })
@@ -131,7 +131,7 @@ func TestAFreeSpaceGoalOverHalfTheFilesystemIsRefused(t *testing.T) {
 }
 
 func TestAnAgentCannotEmptyTheBin(t *testing.T) {
-	t.Serial()
+	t.Serial("replaces DetectAgent and sets agent variables")
 	noAgent(t)
 	for _, name := range []string{"CLAUDECODE", "GROK_BUILD"} {
 		t.Run(name, func(t *testing.T) {
@@ -217,7 +217,7 @@ func TestASweepFollowsMinFree(t *testing.T) {
 }
 
 func TestSettingsRoundTrip(t *testing.T) {
-	t.Serial()
+	t.Serial("replaces StateDir")
 	noAgent(t)
 	dir := t.TempDir()
 	old := StateDir
@@ -241,7 +241,7 @@ func TestSettingsRoundTrip(t *testing.T) {
 
 // A verbose daemon says what it found and what it kept, not only what went.
 func TestAVerboseSweepTracesItsWork(t *testing.T) {
-	t.Serial()
+	t.Serial("replaces Logf and Verbose")
 	var lines []string
 	Logf = func(format string, args ...any) { lines = append(lines, format) }
 	Verbose = true

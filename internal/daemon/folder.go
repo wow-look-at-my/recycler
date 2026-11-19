@@ -235,7 +235,13 @@ func walkFolder(dir string, bins []string, now time.Time) ([]bin.Item, uint64, e
 		size := max(fsutil.Allocated(info), 0)
 		total += uint64(size)
 		if mine && now.Sub(used) >= FolderGrace {
-			files = append(files, bin.Item{ID: path, Name: d.Name(), OriginalPath: path, Size: size, DeletedAt: used})
+			// Name the file under the folder as the person spelled it.
+			rel, err := filepath.Rel(root, path)
+			if err != nil {
+				return nil
+			}
+			named := filepath.Join(dir, rel)
+			files = append(files, bin.Item{ID: named, Name: d.Name(), OriginalPath: named, Size: size, DeletedAt: used})
 		}
 		return nil
 	})

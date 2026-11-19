@@ -28,7 +28,7 @@ func aFolder(t *testing.T, ages map[string]time.Duration) string {
 // isolateBin moves this user's recycle bin into a temporary directory.
 func isolateBin(t *testing.T) string {
 	t.Helper()
-	t.Serial()
+	t.Serial("moves HOME and replaces trash.Mounts")
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("XDG_DATA_HOME", filepath.Join(home, "share"))
@@ -115,6 +115,21 @@ func TestAFolderUnderItsCapIsLeftAlone(t *testing.T) {
 	assert.FileExists(t, filepath.Join(dir, "a"))
 }
 
+// A folder reached through a link names its files the way the folder was named.
+func TestAFolderBehindALinkKeepsItsName(t *testing.T) {
+	isolateBin(t)
+	real := aFolder(t, map[string]time.Duration{"a": 3 * time.Hour, "b": 2 * time.Hour})
+	link := filepath.Join(t.TempDir(), "tmp")
+	require.NoError(t, os.Symlink(real, link))
+	total := folderTotal(t, link)
+
+	evicted, _, err := sweepFolderTo(Folder{Dir: link, Delete: true}, total-1, time.Now())
+	require.NoError(t, err)
+	require.Len(t, evicted, 1)
+	assert.Equal(t, filepath.Join(link, "a"), evicted[0].Item.OriginalPath)
+	assert.NoFileExists(t, filepath.Join(real, "a"))
+}
+
 // The walk never reaches through a symbolic link.
 func TestAFolderSweepDoesNotFollowLinks(t *testing.T) {
 	isolateBin(t)
@@ -164,7 +179,7 @@ func TestAFolderCannotHoldTheHomeDirectory(t *testing.T) {
 
 // A folder named on the command line takes the place of the one in the file.
 func TestAFolderFlagReplacesTheSameFolderInTheFile(t *testing.T) {
-	t.Serial()
+	t.Serial("replaces Flags")
 	Flags = Settings{Folders: []Folder{{Dir: "/tmp", Max: "5GB", Delete: true}}}
 	t.Cleanup(func() { Flags = Settings{} })
 
