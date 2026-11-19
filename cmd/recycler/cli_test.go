@@ -52,6 +52,8 @@ func writeFile(t *testing.T, path, content string) string {
 // run executes the command line and returns everything it printed.
 func run(t *testing.T, stdin string, args ...string) (string, error) {
 	t.Helper()
+	// Cobra keeps a flag set from one run to the next.
+	resetCommands()
 	t.Cleanup(resetCommands)
 
 	out := &bytes.Buffer{}

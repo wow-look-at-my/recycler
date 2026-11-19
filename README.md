@@ -17,11 +17,18 @@ recycler list                       # what is in there, newest first
 recycler restore notes.txt          # put it back where it came from
 recycler daemon                     # watch free space (started for you)
 recycler trim --dry-run             # cargo build output over its size cap
+recycler daemon -v                  # also log each sweep and each item it keeps
+recycler daemon log                 # what the background daemon deleted, and why
+recycler config set min-free 20GB   # free space the daemon keeps (or 15%)
+recycler empty --older-than 30d     # delete old items, after asking
+recycler empty --min-free 50GB --max-size 20GB --dry-run
 ```
 
-No command of yours deletes anything: an item leaves the bin by being restored, and emptying the bin is left to the desktop environment.
+`recycler empty` is the only command of yours that deletes. It takes items recycled longer ago than an age, the oldest items until a filesystem has some free space. Otherwise, it takes the oldest items until the bin weighs at most a size. It lists them and asks first. It refuses an age under a day, a bin size under 1 GiB and a free-space goal over half the filesystem. It never takes anything recycled in the last day.
 
-Disk pressure is the exception, because a bin nobody empties fills the disk and the recycled copy is what holds the space. Recycling something starts a daemon that reads free space every few seconds. It gives back the oldest items when a filesystem drops under a tenth free, or 1 GiB, whichever is smaller. It uses the size recorded when each item was recycled, so it never walks the bin to measure it. There is one daemon per user. This holds per system.
+It cannot empty the whole bin. An AI agent session (with `CLAUDECODE`, `GROK_BUILD` or a like variable set) can neither empty the bin nor change `min-free`.
+
+The daemon also deletes, because a bin nobody empties fills the disk and the recycled copy is what holds the space. Recycling something starts a daemon that reads free space every few seconds. It gives back the oldest items when a filesystem drops under a tenth free, or 1 GiB, whichever is smaller. `min-free` raises that, up to half the filesystem, and it logs every item it deletes and the rule that chose it. It uses the size recorded when each item was recycled, so it never walks the bin to measure it. There is one daemon per user. This holds per system.
 
 Its lock and home bin come from the account database, so a script that exports its own `HOME` or `XDG_*` directories reaches the same daemon. Set `RECYCLER_NO_DAEMON=1` to run it yourself instead, or not at all.
 

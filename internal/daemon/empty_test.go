@@ -195,6 +195,7 @@ func TestASweepFollowsMinFree(t *testing.T) {
 }
 
 func TestSettingsRoundTrip(t *testing.T) {
+	t.Serial()
 	noAgent(t)
 	dir := t.TempDir()
 	old := StateDir
@@ -218,6 +219,7 @@ func TestSettingsRoundTrip(t *testing.T) {
 
 // A verbose daemon says what it found and what it kept, not only what went.
 func TestAVerboseSweepTracesItsWork(t *testing.T) {
+	t.Serial()
 	var lines []string
 	Logf = func(format string, args ...any) { lines = append(lines, format) }
 	Verbose = true
