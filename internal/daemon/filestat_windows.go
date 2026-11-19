@@ -1,6 +1,6 @@
 //go:build windows
 
-// tmpstat_windows.go holds statOf.
+// filestat_windows.go holds statOf.
 
 package daemon
 

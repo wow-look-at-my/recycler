@@ -1,6 +1,6 @@
-//go:build (darwin || ios || freebsd || netbsd || dragonfly) && !cosmo
+//go:build (darwin || ios || freebsd || netbsd) && !cosmo
 
-// tmpstat_atimespec.go holds accessTime.
+// These systems spell the access time Atimespec.
 
 package daemon
 

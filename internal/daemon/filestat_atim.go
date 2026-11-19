@@ -1,6 +1,6 @@
-//go:build linux || android || openbsd || solaris || illumos || cosmo
+//go:build linux || android || openbsd || solaris || illumos || dragonfly || cosmo
 
-// tmpstat_atim.go holds accessTime.
+// These systems spell the access time Atim.
 
 package daemon
 

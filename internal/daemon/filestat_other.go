@@ -1,6 +1,6 @@
 //go:build !unix && !windows
 
-// tmpstat_other.go holds statOf.
+// filestat_other.go holds statOf.
 
 package daemon
 

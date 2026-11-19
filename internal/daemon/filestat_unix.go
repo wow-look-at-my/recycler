@@ -1,6 +1,6 @@
 //go:build unix
 
-// tmpstat_unix.go holds statOf.
+// filestat_unix.go holds statOf.
 
 package daemon
 

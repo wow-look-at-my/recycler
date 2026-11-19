@@ -1,6 +1,6 @@
 //go:build (aix || hurd) && !cosmo
 
-// tmpstat_noatime.go holds accessTime.
+// These systems give no access time this package reads.
 
 package daemon
 

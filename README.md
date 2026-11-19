@@ -22,11 +22,16 @@ recycler daemon log                 # what the background daemon deleted, and wh
 recycler config set min-free 20GB   # free space the daemon keeps (or 15%)
 recycler empty --older-than 30d     # delete old items, after asking
 recycler empty --min-free 50GB --max-size 20GB --dry-run
+recycler config folder add /tmp 10GB --delete       # keep /tmp under 10GB
+recycler config folder add ~/scratch 20GB           # same, but to the bin
+recycler daemon --folder /tmp:10GB:delete           # a folder for one run
 ```
 
-`recycler empty` is the only command of yours that deletes. It takes items recycled longer ago than an age, the oldest items until a filesystem has some free space. Otherwise, it takes the oldest items until the bin weighs at most a size. It lists them and asks first. It refuses an age under a day, a bin size under 1 GiB and a free-space goal over half the filesystem. It never takes anything recycled in the last day.
+A capped folder loses its least recently used files first once it is over its size: to the recycle bin, or permanently with `--delete`. Only your own files go, and only those not used in the last hour. No folder is capped until you add one, a cap is at least 1 GiB. A folder cannot hold your home directory.
 
-It cannot empty the whole bin. An AI agent session (with `CLAUDECODE`, `GROK_BUILD` or a like variable set) can neither empty the bin nor change `min-free`.
+`recycler empty` is the only command of yours that deletes from the bin. It takes items recycled longer ago than an age, the oldest items until a filesystem has some free space. Otherwise, it takes the oldest items until the bin weighs at most a size. It lists them and asks first. It refuses an age under a day, a bin size under 1 GiB and a free-space goal over half the filesystem. It never takes anything recycled in the last day.
+
+It cannot empty the whole bin. An AI agent session (with `CLAUDECODE`, `GROK_BUILD` or a like variable set) can neither empty the bin, change `min-free`, nor cap a folder. A process running under a known agent is refused the same way, whatever its variables say.
 
 The daemon also deletes, because a bin nobody empties fills the disk and the recycled copy is what holds the space. Recycling something starts a daemon that reads free space every few seconds. It gives back the oldest items when a filesystem drops under a tenth free, or 1 GiB, whichever is smaller. `min-free` raises that, up to half the filesystem, and it logs every item it deletes and the rule that chose it. It uses the size recorded when each item was recycled, so it never walks the bin to measure it. There is one daemon per user. This holds per system.
 
