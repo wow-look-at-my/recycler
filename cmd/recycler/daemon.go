@@ -57,13 +57,25 @@ A user has one daemon per system. Its lock and its home recycle bin come from
 the account database, so a caller that exports another HOME, XDG_CACHE_HOME or
 XDG_DATA_HOME reaches the same daemon as every other caller. On Linux the
 daemon also stops any other daemon of the same user that holds a different
-lock, which is what an older build left behind under such a caller.`,
+lock, which is what an older build left behind under such a caller.
+
+Every item the daemon gives back is logged with where it came from, its size
+and the rule that chose it. --verbose, or "recycler config set verbose true"
+for the daemon the tool starts by itself, also logs each sweep: the free space
+it found, the goal it swept to and each item it had to keep. "recycler daemon
+log" prints what a detached daemon wrote. "recycler config" sets how much free
+space the daemon keeps.`,
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		interval, _ := cmd.Flags().GetDuration("interval")
 		once, _ := cmd.Flags().GetBool("once")
 		standby, _ := cmd.Flags().GetBool("standby")
 		out := cmd.OutOrStdout()
+		daemon.Verbose, _ = cmd.Flags().GetBool("verbose")
+		daemon.Logf = func(format string, args ...any) {
+			fmt.Fprintf(out, "%s %s\n", time.Now().Format(time.RFC3339), fmt.Sprintf(format, args...))
+		}
+		defer func() { daemon.Logf, daemon.Verbose = nil, false }()
 
 		if once {
 			evicted, pressures, err := recycler.Sweep()
@@ -131,9 +143,23 @@ func reportEvictions(out io.Writer, evicted []recycler.Eviction, err error) {
 			fmt.Fprintf(out, "could not evict %s: %v\n", ev.Item.Name, ev.Error)
 			continue
 		}
-		fmt.Fprintf(out, "evicted %s (%d bytes, recycled %s)\n",
-			ev.Item.Name, ev.Item.Size, ev.Item.DeletedAt.Format(time.RFC3339))
+		fmt.Fprintf(out, "evicted %s\n", describeEviction(ev))
 	}
+}
+
+// describeEviction names an item by where it came from, what it weighed, when
+// it was recycled and what chose it.
+func describeEviction(ev recycler.Eviction) string {
+	where := ev.Item.OriginalPath
+	if where == "" {
+		where = ev.Item.Name
+	}
+	line := fmt.Sprintf("%s (%s, recycled %s)", where, humanSize(ev.Item.Size),
+		ev.Item.DeletedAt.Local().Format(time.RFC3339))
+	if ev.Reason != "" {
+		line += ": " + ev.Reason
+	}
+	return line
 }
 
 // reportSweep is a single sweep's whole account, for a run that ends after it.
@@ -211,6 +237,34 @@ returns rather than sweeping alongside the first.`,
 	},
 }
 
+var daemonLogCmd = &cobra.Command{
+	Use:   "log",
+	Short: "Print what the detached daemon wrote, and where",
+	Long: `Print the log of the daemon the tool starts by itself.
+
+Every item that daemon gives back is in here. A daemon a service manager runs
+writes to that manager's log instead, such as journalctl --user -u recycler.`,
+	Args: cobra.NoArgs,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		path, err := daemon.LogPath()
+		if err != nil {
+			return err
+		}
+		f, err := os.Open(path)
+		if errors.Is(err, os.ErrNotExist) {
+			fmt.Fprintf(cmd.ErrOrStderr(), "%s: no detached daemon has written a log yet\n", path)
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		defer f.Close()
+		fmt.Fprintf(cmd.ErrOrStderr(), "%s:\n", path)
+		_, err = io.Copy(cmd.OutOrStdout(), f)
+		return err
+	},
+}
+
 var daemonInstallCmd = &cobra.Command{
 	Use:   "install",
 	Short: "Have the service manager start the daemon at login and restart it when it exits",
@@ -263,7 +317,9 @@ func init() {
 	daemonCmd.Flags().Duration("interval", recycler.DefaultPollInterval, "how often to read free space")
 	daemonCmd.Flags().Bool("once", false, "sweep once and exit")
 	daemonCmd.Flags().Bool("standby", false, "wait for a running daemon to stop instead of exiting")
+	daemonCmd.Flags().BoolP("verbose", "v", false, "log each sweep, and why each item went or stayed")
 	daemonCmd.AddCommand(daemonUpCmd)
+	daemonCmd.AddCommand(daemonLogCmd)
 	daemonCmd.AddCommand(daemonInstallCmd)
 	rootCmd.AddCommand(daemonCmd)
 }

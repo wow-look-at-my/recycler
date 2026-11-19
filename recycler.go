@@ -128,5 +128,44 @@ type DaemonIdentity = daemon.Identity
 // SetDaemonVersion names the build this program's daemon reports when it takes the lock.
 func SetDaemonVersion(v string) { daemon.Version = v }
 
+// ErrAgentSession is returned when an AI agent session asks to empty the bin or to change the daemon settings.
+var ErrAgentSession = bin.ErrAgentSession
+
+// AgentSession answers the agent variable this process has, if it has one.
+func AgentSession() (string, bool) { return daemon.AgentSession() }
+
+// An Amount is a byte count or a percentage of a filesystem.
+type Amount = daemon.Amount
+
+// ParseAmount reads "20GB", "5GiB" or "15%".
+func ParseAmount(s string) (Amount, error) { return daemon.ParseAmount(s) }
+
+// DaemonSettings are what a person can change about the daemon.
+type DaemonSettings = daemon.Settings
+
+// LoadDaemonSettings reads the daemon settings.
+func LoadDaemonSettings() (DaemonSettings, error) { return daemon.LoadSettings() }
+
+// SaveDaemonSettings writes the daemon settings, which a running daemon reads on its next tick.
+func SaveDaemonSettings(s DaemonSettings) error { return daemon.SaveSettings(s) }
+
+// DaemonSettingsPath answers the file the daemon settings live in.
+func DaemonSettingsPath() (string, error) { return daemon.SettingsPath() }
+
+// A DaemonTarget is what the settings mean on one filesystem holding a bin.
+type DaemonTarget = daemon.Target
+
+// DaemonTargets answers what s means on every filesystem holding a bin.
+func DaemonTargets(s DaemonSettings) ([]DaemonTarget, error) { return daemon.Targets(s) }
+
+// EmptyCriteria select what [Empty] gives back.
+type EmptyCriteria = daemon.EmptyCriteria
+
+// An EmptyReport is what [Empty] gave back, or would give back.
+type EmptyReport = daemon.EmptyReport
+
+// Empty permanently deletes what c selects from the recycle bin, oldest first.
+func Empty(c EmptyCriteria, dryRun bool) (EmptyReport, error) { return daemon.Empty(c, dryRun) }
+
 // RunningDaemon returns the build of the daemon holding the lock, and whether one recorded a build at all.
 func RunningDaemon() (DaemonIdentity, bool) { return daemon.Running() }

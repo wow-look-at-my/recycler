@@ -34,6 +34,9 @@ type watch struct {
 	free    func(dir string) (avail, total uint64, err error)
 	now     func() time.Time
 
+	// settings is nil in a test that drives the built-in settings.
+	settings *settingsCache
+
 	listed   time.Time // when the bin was last listed
 	groups   []string
 	stamps   map[string]stamp // group -> the change times that listing covers
@@ -49,6 +52,8 @@ func newWatch() *watch {
 		now:     time.Now,
 		short:   set.New[string](),
 		freed:   set.New[string](),
+
+		settings: &settingsCache{path: SettingsPath},
 	}
 }
 
@@ -60,6 +65,10 @@ func (w *watch) tick() ([]Eviction, []Pressure, error) {
 		return nil, nil, err
 	}
 	dirs := b.Dirs()
+	s := Settings{}
+	if w.settings != nil {
+		s = w.settings.load()
+	}
 	now := w.now()
 	age := now.Sub(w.listed)
 	list := w.listed.IsZero() || age >= relistInterval
@@ -72,13 +81,13 @@ func (w *watch) tick() ([]Eviction, []Pressure, error) {
 		stamps[group] = stampOf(group)
 		changed := stamps[group] != w.stamps[group]
 		under := false
-		if avail, total, err := w.free(group); err == nil && avail < FreeTarget(total) {
+		if avail, total, err := w.free(group); err == nil && avail < s.Trigger(total) {
 			under = true
 			short.Add(group)
 			pressures = append(pressures, Pressure{
 				Dir:      group,
 				Avail:    avail,
-				Target:   FreeTarget(total),
+				Target:   s.Trigger(total),
 				Total:    total,
 				Stranded: w.stranded[group],
 			})
@@ -95,7 +104,7 @@ func (w *watch) tick() ([]Eviction, []Pressure, error) {
 		return nil, pressures, nil
 	}
 
-	evicted, pressures, looked, err := sweepBin(b, dirs, w.free)
+	evicted, pressures, looked, err := sweepBin(b, dirs, w.free, s)
 	if err != nil {
 		// Nothing is recorded, so the next tick lists again.
 		return nil, nil, err

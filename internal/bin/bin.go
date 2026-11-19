@@ -24,6 +24,9 @@ var (
 
 	// ErrDaemonRunning is returned when another daemon already holds.
 	ErrDaemonRunning = errors.New("recycler: a daemon is already running")
+
+	// ErrAgentSession is returned when an AI agent asks to empty the bin or change the daemon settings.
+	ErrAgentSession = errors.New("recycler: refused for an AI agent session")
 )
 
 const SizeUnknown int64 = -1

@@ -44,17 +44,25 @@ func FreeTarget(total uint64) uint64 {
 // RecoverTarget is what a sweep frees up to after FreeTarget is crossed, bounded
 // so a small filesystem is not emptied.
 func RecoverTarget(total uint64) uint64 {
-	recover := FreeTarget(total) * recoverMultiple
+	return recoverFrom(FreeTarget(total), total)
+}
+
+// recoverFrom is the runway past trigger, never under the trigger itself.
+func recoverFrom(trigger, total uint64) uint64 {
+	recover := trigger * recoverMultiple
 	if ceiling := total / recoverCeilingFraction; recover > ceiling {
-		return ceiling
+		recover = ceiling
 	}
-	return recover
+	return max(recover, trigger)
 }
 
 // An Eviction records an item the daemon destroyed to reclaim space.
 type Eviction struct {
 	Item  bin.Item
 	Error error // non-nil when the item could not be removed
+
+	// Reason says which rule chose the item.
+	Reason string
 }
 
 // Pressure is a filesystem left under its target after a sweep did what it
@@ -89,7 +97,13 @@ func Sweep() ([]Eviction, []Pressure, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	evicted, pressures, _, err := sweepBin(b, b.Dirs(), freeAt)
+	s, err := LoadSettings()
+	if err != nil {
+		return nil, nil, err
+	}
+	active.Store(&s)
+	tracef("settings: %s", s.describe())
+	evicted, pressures, _, err := sweepBin(b, b.Dirs(), freeAt, s)
 	return evicted, pressures, err
 }
 
@@ -100,7 +114,7 @@ func freeAt(dir string) (uint64, uint64, error) {
 
 // sweepBin lists b and sweeps it. It also returns the directory of every
 // group the sweep looked at.
-func sweepBin(b bin.Backend, dirs []string, free func(string) (uint64, uint64, error),
+func sweepBin(b bin.Backend, dirs []string, free func(string) (uint64, uint64, error), s Settings,
 ) ([]Eviction, []Pressure, []string, error) {
 	items, err := b.List()
 	if err != nil {
@@ -108,7 +122,7 @@ func sweepBin(b bin.Backend, dirs []string, free func(string) (uint64, uint64, e
 	}
 	budgeted, items := settleBuildOutput(b, items, cargotarget.CapFromEnv(cargotarget.DefaultCap))
 	groups := groupByFilesystem(items, dirs)
-	evicted, pressures := sweepGroups(b, groups, free)
+	evicted, pressures := sweepGroups(b, groups, free, s)
 	looked := make([]string, 0, len(groups))
 	for _, group := range groups {
 		looked = append(looked, group.dir)
@@ -126,8 +140,10 @@ func settleBuildOutput(b bin.Backend, items []bin.Item, budget int64) ([]Evictio
 	}
 	gone := set.New[string]()
 	evicted := make([]Eviction, 0, len(over))
+	reason := "build output past the " + formatBytes(uint64(budget)) + " the bin keeps of it"
+	tracef("the bin holds build output past its %s budget; giving back %d items", formatBytes(uint64(budget)), len(over))
 	for _, it := range over {
-		ev := Eviction{Item: it}
+		ev := Eviction{Item: it, Reason: reason}
 		if err := b.Evict(it.ID); err != nil {
 			ev.Error = fmt.Errorf("evicting %s: %w", it.ID, err)
 		} else {
@@ -146,15 +162,15 @@ func settleBuildOutput(b bin.Backend, items []bin.Item, budget int64) ([]Evictio
 
 // sweepItems is Sweep's body against an already-read listing and an injected free-space probe.
 func sweepItems(b bin.Backend, items []bin.Item, dirs []string,
-	free func(string) (uint64, uint64, error),
+	free func(string) (uint64, uint64, error), s Settings,
 ) ([]Eviction, []Pressure, error) {
-	evicted, pressures := sweepGroups(b, groupByFilesystem(items, dirs), free)
+	evicted, pressures := sweepGroups(b, groupByFilesystem(items, dirs), free, s)
 	return evicted, pressures, nil
 }
 
 // sweepGroups evicts from each group whose filesystem is under its trigger.
 func sweepGroups(b bin.Backend, groups []filesystemGroup,
-	free func(string) (uint64, uint64, error),
+	free func(string) (uint64, uint64, error), s Settings,
 ) ([]Eviction, []Pressure) {
 	var evicted []Eviction
 	var pressures []Pressure
@@ -164,12 +180,16 @@ func sweepGroups(b bin.Backend, groups []filesystemGroup,
 			// An unreadable filesystem must not stop.
 			continue
 		}
-		trigger := FreeTarget(total)
+		trigger := s.Trigger(total)
 		if avail >= trigger {
 			continue
 		}
 		// Crossing the target starts the sweep. Reaching it does not stop it.
-		target := RecoverTarget(total)
+		target := s.Recover(total)
+		tracef("%s: %s free of %s, under the %s trigger; giving back the oldest items until %s is free",
+			group.dir, formatBytes(avail), formatBytes(total), formatBytes(trigger), formatBytes(target))
+		reason := fmt.Sprintf("disk pressure: %s had %s free, under its %s trigger",
+			group.dir, formatBytes(avail), formatBytes(trigger))
 
 		// The oldest goes at the front: the longer something.
 		sort.Slice(group.items, func(i, j int) bool {
@@ -181,9 +201,10 @@ func sweepGroups(b bin.Backend, groups []filesystemGroup,
 				break
 			}
 			if it.Size == bin.SizeUnknown || it.Size < 0 {
+				tracef("kept %s: its size is unknown, so giving it back cannot be accounted for", describeItem(it))
 				continue
 			}
-			ev := Eviction{Item: it}
+			ev := Eviction{Item: it, Reason: reason}
 			if err := b.Evict(it.ID); err != nil {
 				ev.Error = fmt.Errorf("evicting %s: %w", it.ID, err)
 				stranded += uint64(it.Size)
@@ -192,6 +213,7 @@ func sweepGroups(b bin.Backend, groups []filesystemGroup,
 			}
 			evicted = append(evicted, ev)
 		}
+		tracef("%s: %s free after the sweep", group.dir, formatBytes(avail))
 		// Reported against the trigger, not the recovery target: stopping short
 		// of the runway is ordinary, sitting under the trigger is not.
 		if avail < trigger {
@@ -205,6 +227,14 @@ func sweepGroups(b bin.Backend, groups []filesystemGroup,
 		}
 	}
 	return evicted, pressures
+}
+
+// describeItem names an item by where it came from, or by its name when that is unknown.
+func describeItem(it bin.Item) string {
+	if it.OriginalPath != "" {
+		return it.OriginalPath
+	}
+	return it.Name
 }
 
 // filesystemGroup is the items sharing a bin directory, plus the probe path.

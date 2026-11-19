@@ -90,7 +90,7 @@ func TestASweepKeepsEvictingPastTheTrigger(t *testing.T) {
 	}
 
 	// Under the trigger, where recovering has to evict further than it.
-	_, _, err := sweepItems(b, items, dirs, freeSpace(gib-1, total))
+	_, _, err := sweepItems(b, items, dirs, freeSpace(gib-1, total), Settings{})
 	require.NoError(t, err)
 	assert.Greater(t, len(b.evicted), 1, "stopping at the trigger leaves no runway")
 }
@@ -99,7 +99,7 @@ func TestASweepLeavesAFilesystemWithRoomAlone(t *testing.T) {
 	b := &fakeBackend{}
 	items := []bin.Item{item("old.txt", 500, 48), item("new.txt", 500, 1)}
 
-	evicted, _, err := sweepItems(b, items, dirs, freeSpace(1000, 2000))
+	evicted, _, err := sweepItems(b, items, dirs, freeSpace(1000, 2000), Settings{})
 	require.NoError(t, err)
 	assert.Empty(t, evicted)
 	assert.Empty(t, b.evicted, "nothing may go while there is room")
@@ -114,7 +114,7 @@ func TestASweepTakesTheOldestFirstAndStopsAtTheTarget(t *testing.T) {
 		item("middle.txt", 400, 24),
 	}
 
-	evicted, _, err := sweepItems(b, items, dirs, freeSpace(50, 2000))
+	evicted, _, err := sweepItems(b, items, dirs, freeSpace(50, 2000), Settings{})
 	require.NoError(t, err)
 	assert.Equal(t, []string{filepath.Join("/trash", "files", "oldest.txt")}, b.evicted)
 	require.Len(t, evicted, 1)
@@ -131,7 +131,7 @@ func TestASweepKeepsGoingUntilTheTargetIsMet(t *testing.T) {
 	}
 
 	// Wants a target it has none of, so the oldest go and the newest survives.
-	_, _, err := sweepItems(b, items, dirs, freeSpace(0, 2000))
+	_, _, err := sweepItems(b, items, dirs, freeSpace(0, 2000), Settings{})
 	require.NoError(t, err)
 	assert.Equal(t, []string{
 		filepath.Join("/trash", "files", "a.txt"),
@@ -147,7 +147,7 @@ func TestAnItemOfUnknownSizeIsNeverEvicted(t *testing.T) {
 		item("known.txt", 300, 1),
 	}
 
-	_, _, err := sweepItems(b, items, dirs, freeSpace(0, 2000))
+	_, _, err := sweepItems(b, items, dirs, freeSpace(0, 2000), Settings{})
 	require.NoError(t, err)
 	assert.Equal(t, []string{filepath.Join("/trash", "files", "known.txt")}, b.evicted,
 		"the unsized item must survive even though it is older")
@@ -162,7 +162,7 @@ func TestAFailedEvictionDoesNotCountAsSpaceReclaimed(t *testing.T) {
 		item("next.txt", 200, 24),
 	}
 
-	evicted, _, err := sweepItems(b, items, dirs, freeSpace(0, 2000))
+	evicted, _, err := sweepItems(b, items, dirs, freeSpace(0, 2000), Settings{})
 	require.NoError(t, err)
 	assert.Equal(t, []string{filepath.Join("/trash", "files", "next.txt")}, b.evicted)
 	require.Len(t, evicted, 2)
@@ -184,7 +184,7 @@ func TestEachFilesystemIsSweptOnItsOwnPressure(t *testing.T) {
 		return 2000, 2000, nil // empty
 	}
 
-	_, _, err := sweepItems(b, items, dirs, free)
+	_, _, err := sweepItems(b, items, dirs, free, Settings{})
 	require.NoError(t, err)
 	assert.Equal(t, []string{"/trash/files/a.txt"}, b.evicted)
 }
@@ -196,7 +196,7 @@ func TestAnUnreadableFilesystemIsSkipped(t *testing.T) {
 
 	evicted, _, err := sweepItems(b, items, dirs, func(string) (uint64, uint64, error) {
 		return 0, 0, errors.New("no such filesystem")
-	})
+	}, Settings{})
 	require.NoError(t, err)
 	assert.Empty(t, evicted)
 	assert.Empty(t, b.evicted)
