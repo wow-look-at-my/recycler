@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -199,6 +200,11 @@ func TestAVerboseOnceSweepSaysWhatItLoaded(t *testing.T) {
 	out, err = run(t, "", "daemon", "--once")
 	require.NoError(t, err)
 	assert.NotContains(t, out, "settings:")
+}
+
+func TestAnErrorIsPrefixedOnce(t *testing.T) {
+	assert.Equal(t, "recycler: boom", errorLine(errors.New("boom")))
+	assert.Equal(t, "recycler: item not found", errorLine(errors.New("recycler: item not found")))
 }
 
 func TestParseAge(t *testing.T) {
