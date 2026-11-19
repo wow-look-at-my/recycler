@@ -181,7 +181,7 @@ func TestBackendDestroysOnlyUnderDiskPressure(t *testing.T) {
 		got = append(got, iface.Method(i).Name)
 	}
 	sort.Strings(got)
-	// Evict is the only method here that destroys anything, and only the daemon calls it.
+	// Evict is the only method here that destroys anything, and only internal/daemon calls it.
 	assert.Equal(t, []string{"Dirs", "Evict", "List", "Recycle", "Restore"}, got)
 }
 

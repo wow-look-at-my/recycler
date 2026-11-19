@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -52,6 +53,8 @@ func writeFile(t *testing.T, path, content string) string {
 // run executes the command line and returns everything it printed.
 func run(t *testing.T, stdin string, args ...string) (string, error) {
 	t.Helper()
+	// Cobra keeps a flag set from one run to the next.
+	resetCommands()
 	t.Cleanup(resetCommands)
 
 	out := &bytes.Buffer{}
@@ -65,11 +68,21 @@ func run(t *testing.T, stdin string, args ...string) (string, error) {
 
 func resetCommands() {
 	rootCmd.SetArgs(nil)
-	for _, cmd := range rootCmd.Commands() {
-		cmd.Flags().VisitAll(func(f *pflag.Flag) {
-			_ = f.Value.Set(f.DefValue)
+	resetFlags(rootCmd)
+}
+
+// resetFlags puts every flag of cmd and of each command under it back to its default.
+func resetFlags(cmd *cobra.Command) {
+	for _, sub := range cmd.Commands() {
+		sub.Flags().VisitAll(func(f *pflag.Flag) {
+			if s, ok := f.Value.(pflag.SliceValue); ok {
+				_ = s.Replace(nil)
+			} else {
+				_ = f.Value.Set(f.DefValue)
+			}
 			f.Changed = false
 		})
+		resetFlags(sub)
 	}
 }
 
@@ -207,11 +220,15 @@ func TestEvictionsAreReported(t *testing.T) {
 	when := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
 	reportEvictions(&out, []recycler.Eviction{
 		{Item: recycler.Item{Name: "gone.txt", Size: 4096, DeletedAt: when}},
+		{Item: recycler.Item{Name: "kept.txt", OriginalPath: "/home/ada/kept.txt", Size: 1 << 20, DeletedAt: when},
+			Reason: "disk pressure"},
 		{Item: recycler.Item{Name: "stuck.txt"}, Error: errors.New("permission denied")},
 	}, nil)
 
 	got := out.String()
-	assert.Contains(t, got, "evicted gone.txt (4096 bytes")
+	assert.Contains(t, got, "evicted gone.txt (4.0 KiB")
+	assert.Contains(t, got, "evicted /home/ada/kept.txt (1.0 MiB", "the original path names what went")
+	assert.Contains(t, got, "): disk pressure\n", "the reason says which rule chose it")
 	assert.Contains(t, got, "could not evict stuck.txt: permission denied")
 }
 
@@ -221,9 +238,10 @@ func TestASweepFailureIsReported(t *testing.T) {
 	assert.Contains(t, out.String(), "sweep failed: no such filesystem")
 }
 
-// TestNoDestructiveCommands locks down what this CLI must never grow back: a way to destroy.
+// TestNoDestructiveCommands locks down what this CLI must never grow: a way to destroy that skips
+// the selectors and the agent check of "empty".
 func TestNoDestructiveCommands(t *testing.T) {
-	for _, name := range []string{"purge", "empty", "remove", "destroy", "shred", "wipe"} {
+	for _, name := range []string{"purge", "remove", "destroy", "shred", "wipe"} {
 		for _, cmd := range rootCmd.Commands() {
 			assert.NotEqual(t, name, cmd.Name(), "the CLI grew a %q command", name)
 			assert.NotContains(t, cmd.Aliases, name, "%q is an alias of %q", name, cmd.Name())

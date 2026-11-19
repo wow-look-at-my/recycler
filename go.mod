@@ -7,6 +7,7 @@ require (
 	github.com/spf13/pflag v1.0.9
 	github.com/stretchr/testify v1.12.1
 	github.com/wow-look-at-my/go-containers v0.0.0 // go-toolchain:auto-branch
+	github.com/wow-look-at-my/is-this-an-agent v0.0.0 // go-toolchain:auto-branch
 	golang.org/x/sys v0.47.0
 )
 

@@ -22,7 +22,7 @@ func TestAFilesystemIsReadEvenWhenItsBinIsEmpty(t *testing.T) {
 		return 0, 2000, nil
 	}
 
-	evicted, pressures, err := sweepItems(b, nil, dirs, free)
+	evicted, pressures, err := sweepItems(b, nil, dirs, free, Settings{})
 	require.NoError(t, err)
 	assert.Positive(t, probed, "an empty bin left the filesystem unread")
 	assert.Empty(t, evicted, "an empty bin has nothing to give back")
@@ -41,7 +41,7 @@ func TestPressureIsReportedWhenNothingRecycledIsLeftToGiveBack(t *testing.T) {
 	// A single small item against a filesystem far below its target.
 	items := []bin.Item{item("crumb.txt", 10, 72)}
 
-	evicted, pressures, err := sweepItems(b, items, dirs, freeSpace(0, 20000))
+	evicted, pressures, err := sweepItems(b, items, dirs, freeSpace(0, 20000), Settings{})
 	require.NoError(t, err)
 	require.Len(t, evicted, 1, "it gives back what it has")
 
@@ -56,7 +56,7 @@ func TestAFilesystemBroughtBackAboveItsTriggerIsNotReported(t *testing.T) {
 	b := &fakeBackend{}
 	items := []bin.Item{item("big.bin", 1000, 72)}
 
-	_, pressures, err := sweepItems(b, items, dirs, freeSpace(0, 2000))
+	_, pressures, err := sweepItems(b, items, dirs, freeSpace(0, 2000), Settings{})
 	require.NoError(t, err)
 	assert.Empty(t, pressures, "a sweep that cleared the trigger has nothing to complain about")
 }
@@ -67,7 +67,7 @@ func TestFallingShortOfTheRunwayAloneIsNotPressure(t *testing.T) {
 	b := &fakeBackend{}
 	items := []bin.Item{item("some.bin", 250, 72)}
 
-	_, pressures, err := sweepItems(b, items, dirs, freeSpace(0, 2000))
+	_, pressures, err := sweepItems(b, items, dirs, freeSpace(0, 2000), Settings{})
 	require.NoError(t, err)
 	require.Greater(t, RecoverTarget(2000), uint64(250))
 	assert.Empty(t, pressures, "reaching the trigger is enough to stop complaining")
@@ -80,7 +80,7 @@ func TestPressureCountsWhatWouldNotBeEvicted(t *testing.T) {
 	b := &fakeBackend{fail: map[string]error{stuck: errors.New("permission denied")}}
 	items := []bin.Item{item("stuck.bin", 5000, 72)}
 
-	_, pressures, err := sweepItems(b, items, dirs, freeSpace(0, 20000))
+	_, pressures, err := sweepItems(b, items, dirs, freeSpace(0, 20000), Settings{})
 	require.NoError(t, err)
 	require.Len(t, pressures, 1)
 	assert.Equal(t, uint64(5000), pressures[0].Stranded,
