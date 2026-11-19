@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"testing"
 	"time"
 
@@ -36,11 +37,21 @@ func isolateState(t *testing.T) string {
 	return dir
 }
 
-// recycleAged recycles a file and backdates its record by age.
-func recycleAged(t *testing.T, work, name string, age time.Duration) {
+// recycle puts a new file named name in the bin.
+func recycle(t *testing.T, work, name string) {
 	t.Helper()
 	_, err := run(t, "", "trash", writeFile(t, filepath.Join(work, name), name))
 	require.NoError(t, err)
+}
+
+// recycleAged recycles a file and backdates its FreeDesktop record by age.
+// The macOS Trash takes the time from the inode change time, which a test cannot move back.
+func recycleAged(t *testing.T, work, name string, age time.Duration) {
+	t.Helper()
+	if runtime.GOOS == "darwin" {
+		t.Skip("the macOS Trash records no deletion time a test can backdate")
+	}
+	recycle(t, work, name)
 	info := filepath.Join(os.Getenv("XDG_DATA_HOME"), "Trash", "info", name+".trashinfo")
 	data, err := os.ReadFile(info)
 	require.NoError(t, err)
@@ -91,7 +102,7 @@ func TestEmptyDeletesWhatIsOlderAndKeepsTheRest(t *testing.T) {
 func TestEmptyRefusesValuesThatWouldTakeEverything(t *testing.T) {
 	noAgent(t)
 	work := isolateTrash(t)
-	recycleAged(t, work, "kept.txt", time.Hour)
+	recycle(t, work, "kept.txt")
 
 	for _, args := range [][]string{
 		{"empty", "--yes"},
@@ -117,7 +128,7 @@ func TestAnAgentSessionCannotEmptyOrConfigure(t *testing.T) {
 	noAgent(t)
 	work := isolateTrash(t)
 	isolateState(t)
-	recycleAged(t, work, "old.txt", 60*24*time.Hour)
+	recycle(t, work, "old.txt")
 
 	for _, name := range []string{"CLAUDECODE", "GROK_BUILD", "CODEX_SANDBOX"} {
 		t.Run(name, func(t *testing.T) {
