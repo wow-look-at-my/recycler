@@ -18,7 +18,7 @@ A Go library and CLI that expose the operating system's recycle bin through one 
 | `internal/daemon/` | The disk-pressure daemon: `FreeTarget`, `Sweep`, the poll loop, and starting one per user. Also `Settings` (`settings.go`), `Empty` (`empty.go`), the folder caps (`folder.go`, `filestat_*.go`) and the agent check (`agent.go`). `drain` is the one size rule all of them share. The only thing here that destroys anything. |
 | `internal/cargotarget/` | The cap on a cargo build directory: finding a validated `target` directory (including the copies an agent worktree keeps), choosing the oldest regenerable output inside it, and recycling that until the directory fits. Sizes are what the filesystem reports a file takes (`st_blocks`), not the length it states, because a compressed pool makes those differ by a multiple and the cap is on the pool. Nothing here deletes, and nothing here runs by itself. |
 | `cmd/recycler/` | Cobra CLI, one command per file, each registering itself in `init()`. |
-| `cmd/recycler/tui.go`, `cmd/recycler/ui/` | The full-screen browser: the `tml.App` that holds its state, and the TML document and theme it renders. |
+| `cmd/recycler/tui_*.go`, `cmd/recycler/ui/` | The full-screen browser: the command (`tui_command.go`), the model that holds its state (`tui_model.go`), what keys and the pointer do to it (`tui_input.go`), and the TML document and theme it renders. |
 
 `trash.Backend()` is defined once per platform. Every API call calls it rather than a cached value, so tests can redirect the recycle bin with `HOME` and `XDG_DATA_HOME` between calls. Keep it that way.
 
@@ -26,7 +26,7 @@ Nothing under `internal/` imports the root package. `bin` is what keeps that acy
 
 ## Invariants
 
-- **`recycler empty` is the way a person deletes. It cannot empty the whole bin.** It deletes what its selectors pick. Nothing recycled in the last `EmptyGrace` (a day) goes, whatever the selectors say. It lists the items and asks first. Do not add a purge command, a `--force` that removes an entry, or a second backend method that unlinks anything. `TestNoDestructiveCommands` locks the CLI down, `TestUnreasonableSelectorsAreRefused` holds the bounds, and `TestBackendDestroysOnlyUnderDiskPressure` pins the interface to exactly one destructive method.
+- **A person deletes in multiple ways, and each asks first.** The browser's delete (`recycler.Delete`) takes the items a person picked. `recycler empty` cannot empty the whole bin. It deletes what its selectors pick. Nothing recycled in the last `EmptyGrace` (a day) goes, whatever the selectors say. It lists the items and asks first. Do not add a purge command, a `--force` that removes an entry, or a second backend method that unlinks anything. `TestNoDestructiveCommands` locks the CLI down, `TestUnreasonableSelectorsAreRefused` holds the bounds, and `TestBackendDestroysOnlyUnderDiskPressure` pins the interface to exactly one destructive method.
 - **An AI agent session cannot empty the bin, change the daemon settings, or name a folder on the daemon command line.** `daemon.AgentSession` asks [is-this-an-agent](https://github.com/wow-look-at-my/is-this-an-agent) (process ancestry, then its roster of markers). It then counts every variable in `daemon.AgentVars()` (that roster plus `CLAUDECODE`, `GROK_BUILD` and others) when defined, whatever its value. The check sits, so the library refuses too. Tests replace `daemon.DetectAgent` to run as a person. `TestAnAgentSessionCannotEmptyOrConfigure` holds that down.
 - **Every rule that deletes by size goes through `drain`:** disk pressure, `empty --min-free` and `--max-size`, and the folder caps. It takes the oldest first, keeps an item of unknown size, and counts a failed give as stranded. Do not write a second loop.
 - **No folder is capped until a person names one.** `recycler config folder add DIR SIZE [--delete]` or `daemon --folder DIR:SIZE[:delete]`. The daemon walks each folder once a minute and gives back the least recently used files: to the bin, or permanently with delete. Only this user's files not used within `FolderGrace` go. The walk follows no symbolic link, enters no other filesystem and no bin. A cap is at least `MinFolderMax`. A folder is never a filesystem root or an ancestor of the home directory. `TestNoFolderIsCappedByDefault` holds the default down.
@@ -57,7 +57,7 @@ Nothing under `internal/` imports the root package. `bin` is what keeps that acy
 
 `recycler` with no arguments on a terminal opens the bin on a full screen, and `recycler tui` opens it anywhere. Routing lives in `execute` in `main.go` rather than on the root command. That leaves cobra's handling of an unknown command intact. Redirected, the bare invocation prints the help a script asked for.
 
-The view is [TML](https://github.com/wow-look-at-my/tml): `ui/app.tml` declares it, the model in `tui.go` holds every piece of state, and TML draws what the properties say. Things there are load-bearing:
+The view is [TML](https://github.com/wow-look-at-my/tml): `ui/app.tml` declares it, the model in `tui_model.go` holds every piece of state, and TML draws what the properties say. Things there are load-bearing:
 
 - **The table's rows are `\x1f`-delimited cells.** Every printable delimiter is legal in a file name, so a path holding one arrives as an extra column.
 - **`wrap="false"` keeps a row to a line**, which is what lets a click's `y` and the scroll offset name a row. A wrapped cell puts every row below it out of step with its index.
@@ -67,7 +67,11 @@ The view is [TML](https://github.com/wow-look-at-my/tml): `ui/app.tml` declares 
 
 The selected item costs the row it is listed on, not a panel. The table draws a bar across that row, and what sits under the listing is its full original path.
 
-Restoring is the only thing the browser can do to an item, and it asks first. `TestTheInterfaceOffersNoWayToDeleteAnything` holds every key against a full bin and fails if any of them removes anything.
+An action takes the marked items when any are marked, and the selected item otherwise. Restore, restore to a directory and delete each ask first. Delete opens on Cancel, and an AI agent session is refused before it is asked. `TestNothingIsDeletedWithoutAConfirmation` holds every key against a full bin.
+
+The pointer goes through TML, and never around it. A click names its part through `tml.Event.Part`, so the model never counts lines. A right click raises `tml.Menu`. The context menu is a `Canvas` child at the click. A press outside it closes it and goes no further. The wheel and a drag on the scrollbar both arrive as `tml.Scrolled`.
+
+Where TML lacks a capability, add it to TML rather than parse the terminal here.
 
 ## Platform notes
 

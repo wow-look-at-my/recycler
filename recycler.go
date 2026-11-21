@@ -167,5 +167,8 @@ type EmptyReport = daemon.EmptyReport
 // Empty permanently deletes what c selects from the recycle bin, oldest first.
 func Empty(c EmptyCriteria, dryRun bool) (EmptyReport, error) { return daemon.Empty(c, dryRun) }
 
+// Delete permanently removes the items with the given IDs from the recycle bin, and reports what became of each.
+func Delete(ids ...string) ([]Eviction, error) { return daemon.Delete(ids) }
+
 // RunningDaemon returns the build of the daemon holding the lock, and whether one recorded a build at all.
 func RunningDaemon() (DaemonIdentity, bool) { return daemon.Running() }
