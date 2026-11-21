@@ -5,6 +5,7 @@ package trash
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 	"time"
 
@@ -20,6 +21,24 @@ func watchTheBin(t *testing.T) *fdoIndex {
 	require.NoError(t, err)
 	t.Cleanup(func() { index.Close() })
 	return index.(*fdoIndex)
+}
+
+// refreshUntil refreshes until done holds, and answers every directory the
+// refreshes reported. Some file systems deliver an event a few milliseconds
+// after the change that caused it.
+func refreshUntil(t *testing.T, index *fdoIndex, done func() bool) []string {
+	t.Helper()
+	var changed []string
+	for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); time.Sleep(5 * time.Millisecond) {
+		these, err := index.Refresh()
+		require.NoError(t, err)
+		changed = append(changed, these...)
+		if done() {
+			return changed
+		}
+	}
+	t.Fatalf("the index never caught up: it lists %v", names(index.List()))
+	return nil
 }
 
 func names(items []bin.Item) []string {
@@ -43,17 +62,15 @@ func TestTheIndexFollowsTheBin(t *testing.T) {
 	assert.Empty(t, changed, "nothing changed, so nothing may be read again")
 
 	require.NoError(t, fdoRecycle(writeFile(t, filepath.Join(work, "after.txt"), "more bytes")))
-	changed, err = index.Refresh()
-	require.NoError(t, err)
-	assert.Equal(t, []string{homeTrash(t)}, changed)
+	changed = refreshUntil(t, index, func() bool { return len(index.List()) == 2 })
+	assert.Contains(t, changed, homeTrash(t))
 	want, err := fdoList()
 	require.NoError(t, err)
 	assert.Equal(t, want, index.List())
+	assert.Equal(t, 1, index.reads, "a recycle read the whole bin again")
 
 	require.NoError(t, testFdo().Evict(want[0].ID))
-	_, err = index.Refresh()
-	require.NoError(t, err)
-	assert.Len(t, index.List(), 1, "an evicted item stays in the index")
+	refreshUntil(t, index, func() bool { return len(index.List()) == 1 })
 }
 
 // A files/ or info/ removed and made again must not leave the index blind.
@@ -64,14 +81,10 @@ func TestTheIndexSurvivesABinMadeAgain(t *testing.T) {
 	require.Len(t, index.List(), 1)
 
 	require.NoError(t, os.RemoveAll(homeTrash(t)))
-	_, err := index.Refresh()
-	require.NoError(t, err)
-	assert.Empty(t, index.List())
+	refreshUntil(t, index, func() bool { return len(index.List()) == 0 })
 
 	require.NoError(t, fdoRecycle(writeFile(t, filepath.Join(work, "two.txt"), "bytes")))
-	_, err = index.Refresh()
-	require.NoError(t, err)
-	assert.Equal(t, []string{"two.txt"}, names(index.List()))
+	refreshUntil(t, index, func() bool { return slices.Equal(names(index.List()), []string{"two.txt"}) })
 }
 
 // An unrecorded entry the watch sees gets a record, as a listing gives it one.
@@ -81,9 +94,7 @@ func TestTheIndexAdoptsAnUnrecordedEntry(t *testing.T) {
 	index := watchTheBin(t)
 
 	writeFile(t, filepath.Join(homeTrash(t), trashFilesDir, "stray"), "abc")
-	_, err := index.Refresh()
-	require.NoError(t, err)
-	require.Equal(t, []string{"stray"}, names(index.List()))
+	refreshUntil(t, index, func() bool { return slices.Equal(names(index.List()), []string{"stray"}) })
 	assert.FileExists(t, filepath.Join(homeTrash(t), trashInfoDir, "stray"+trashInfoExt))
 }
 
@@ -95,9 +106,10 @@ func TestTheDirectorySizesCacheDoesNotReadTheBin(t *testing.T) {
 	index := watchTheBin(t)
 
 	writeFile(t, filepath.Join(homeTrash(t), "directorysizes"), "1 2 x\n")
-	changed, err := index.Refresh()
-	require.NoError(t, err)
-	assert.Empty(t, changed)
+	// A recycle after it, so the refresh below has seen both.
+	require.NoError(t, fdoRecycle(writeFile(t, filepath.Join(work, "two.txt"), "bytes")))
+	refreshUntil(t, index, func() bool { return len(index.List()) == 2 })
+	assert.Equal(t, 1, index.reads, "the directorysizes cache read the whole bin again")
 }
 
 // A record whose file has been gone for long is removed, so no listing reads it

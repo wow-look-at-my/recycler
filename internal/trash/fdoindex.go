@@ -32,6 +32,7 @@ type fdoIndex struct {
 	read  time.Time                      // when dirs was last read
 	items map[string]map[string]bin.Item // trash directory -> entry name -> item
 	list  []bin.Item
+	reads int // full reads of a trash directory
 }
 
 // Watch answers an index of this user's bin, which inotify keeps current.
@@ -176,6 +177,7 @@ func (x *fdoIndex) readAll(d string) error {
 			return err
 		}
 	}
+	x.reads++
 	items := map[string]bin.Item{}
 	for _, it := range x.t.listDir(d) {
 		items[filepath.Base(it.ID)] = it

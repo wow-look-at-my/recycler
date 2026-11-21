@@ -31,19 +31,35 @@ func TestAnUnchangedFolderIsNotWalkedAgain(t *testing.T) {
 
 	// A change deep in the folder, in a directory the walk entered.
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "a", "new.bin"), []byte("x"), 0o600))
+	w.waitForChange(t, s, dir)
 	now = now.Add(folderInterval)
 	w.tick(s, now)
 	assert.Equal(t, 2, w.walks, "a change the watch saw was never walked")
 
 	// A directory made after the walk is watched by the walk that follows.
 	require.NoError(t, os.MkdirAll(filepath.Join(dir, "b"), 0o700))
+	w.waitForChange(t, s, dir)
 	now = now.Add(folderInterval)
 	w.tick(s, now)
 	require.Equal(t, 3, w.walks)
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "b", "later.bin"), []byte("x"), 0o600))
+	w.waitForChange(t, s, dir)
 	now = now.Add(folderInterval)
 	w.tick(s, now)
 	assert.Equal(t, 4, w.walks, "a change in a directory made after the first walk was missed")
+}
+
+// waitForChange drains the watch until it marks dir. Some file systems deliver
+// an event a few milliseconds after the change that caused it.
+func (w *folderWatch) waitForChange(t *testing.T, s Settings, dir string) {
+	t.Helper()
+	for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); time.Sleep(5 * time.Millisecond) {
+		w.drain(s.Folders)
+		if w.dirty.Contains(dir) {
+			return
+		}
+	}
+	t.Fatalf("the watch never saw %s change", dir)
 }
 
 // A folder over its cap is walked again, because its files age past FolderGrace.
