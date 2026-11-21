@@ -49,9 +49,8 @@ func (t *fdoTrash) Watch() (bin.Index, error) {
 	return x, nil
 }
 
-func (x *fdoIndex) List() []bin.Item { return x.list }
-func (x *fdoIndex) Dirs() []string   { return x.dirs }
-func (x *fdoIndex) Close() error     { return x.w.Close() }
+func (x *fdoIndex) Dirs() []string { return x.dirs }
+func (x *fdoIndex) Close() error   { return x.w.Close() }
 
 func (x *fdoIndex) Refresh() ([]string, error) {
 	full := set.New[string]()
@@ -131,16 +130,34 @@ func (x *fdoIndex) Refresh() ([]string, error) {
 		changed = append(changed, d)
 	}
 	if len(changed) > 0 {
-		// A new slice, so a listing a caller still holds does not change under it.
-		x.list = make([]bin.Item, 0, len(x.list))
-		for _, d := range x.dirs {
-			for _, it := range x.items[d] {
-				x.list = append(x.list, it)
-			}
-		}
-		bin.Sort(x.list)
+		x.list = nil
 	}
 	return changed, nil
+}
+
+// List builds the listing the first time it is asked for after a change. A
+// sort of a large bin on every change is what a busy bin cannot afford.
+func (x *fdoIndex) List() []bin.Item {
+	if x.list == nil {
+		// A new slice, so a listing a caller still holds does not change under it.
+		list := make([]bin.Item, 0, x.count())
+		for _, d := range x.dirs {
+			for _, it := range x.items[d] {
+				list = append(list, it)
+			}
+		}
+		bin.Sort(list)
+		x.list = list
+	}
+	return x.list
+}
+
+func (x *fdoIndex) count() int {
+	n := 0
+	for _, d := range x.dirs {
+		n += len(x.items[d])
+	}
+	return n
 }
 
 func addName(names map[string]map[string]bool, dir, name string) {
