@@ -13,6 +13,7 @@ import (
 
 	"github.com/wow-look-at-my/go-containers/set"
 	"github.com/wow-look-at-my/recycler/internal/bin"
+	"github.com/wow-look-at-my/recycler/internal/dirwatch"
 	"github.com/wow-look-at-my/recycler/internal/fsutil"
 	"github.com/wow-look-at-my/recycler/internal/trash"
 )
@@ -108,21 +109,134 @@ func within(path, dir string) bool {
 type folderWatch struct {
 	last map[string]time.Time
 	over set.Set[string] // folders the last walk could not get under their cap
+
+	// watch is nil when every due folder is walked.
+	watch     *dirwatch.Watcher
+	watchedBy map[string]string // watched directory -> the folder.
+	walked    set.Set[string]
+	dirty     set.Set[string]
+	blind     set.Set[string] // folders with a directory the watch could not take
+	walks     int
 }
 
+// newFolderWatch walks each capped folder every folderInterval. It keeps
+// nothing between calls that needs closing.
 func newFolderWatch() *folderWatch {
 	return &folderWatch{last: map[string]time.Time{}, over: set.New[string]()}
 }
 
+// newWatchedFolders walks a capped folder only when a directory watch saw it
+// change, or while it is over its cap. A system with no directory watch walks
+// each folder every folderInterval, and says so once.
+func newWatchedFolders() *folderWatch {
+	w := newFolderWatch()
+	watch, err := dirwatch.New()
+	if err != nil {
+		notef("cannot watch capped folders (%v); each is walked every %s", err, folderInterval)
+		return w
+	}
+	w.watch = watch
+	w.watchedBy = map[string]string{}
+	w.walked, w.dirty, w.blind = set.New[string](), set.New[string](), set.New[string]()
+	return w
+}
+
+// drain marks each folder a watch saw change since the last tick.
+func (w *folderWatch) drain(folders []Folder) {
+	if w.watch == nil {
+		return
+	}
+	batch, err := w.watch.Read()
+	if err != nil || batch.Overflow {
+		for _, f := range folders {
+			w.dirty.Add(f.Dir)
+		}
+		return
+	}
+	for _, ev := range batch.Events {
+		folder, ok := w.watchedBy[ev.Dir]
+		if !ok {
+			continue
+		}
+		w.dirty.Add(folder)
+		if ev.Name == "" {
+			// The directory is gone, and the kernel dropped its watch.
+			delete(w.watchedBy, ev.Dir)
+		}
+	}
+}
+
+// due reports whether f needs a walk now.
+func (w *folderWatch) due(f Folder, now time.Time) bool {
+	if now.Sub(w.last[f.Dir]) < folderInterval {
+		return false
+	}
+	if w.watch == nil {
+		return true
+	}
+	// A folder over its cap is walked again because its files age past FolderGrace.
+	return !w.walked.Contains(f.Dir) || w.dirty.Contains(f.Dir) || w.over.Contains(f.Dir) || w.blind.Contains(f.Dir)
+}
+
+// onDir answers what a walk of f calls on each directory it enters: it watches
+// the directory. It answers nil when there is no watch.
+func (w *folderWatch) onDir(f Folder) func(string) {
+	if w.watch == nil {
+		return nil
+	}
+	return func(dir string) {
+		if err := w.watch.Add(dir); err != nil {
+			if !w.blind.Contains(f.Dir) {
+				notef("cannot watch %s (%v); %s is walked every %s", dir, err, f.Dir, folderInterval)
+			}
+			w.blind.Add(f.Dir)
+			return
+		}
+		w.watchedBy[filepath.Clean(dir)] = f.Dir
+	}
+}
+
+// close releases the watch.
+func (w *folderWatch) close() {
+	if w.watch != nil {
+		w.watch.Close()
+	}
+}
+
+// forget drops the watches of every folder no longer capped.
+func (w *folderWatch) forget(folders []Folder) {
+	if w.watch == nil {
+		return
+	}
+	capped := set.New[string]()
+	for _, f := range folders {
+		capped.Add(f.Dir)
+	}
+	for dir, folder := range w.watchedBy {
+		if !capped.Contains(folder) {
+			w.watch.Remove(dir)
+			delete(w.watchedBy, dir)
+		}
+	}
+}
+
 // tick walks each capped folder that is due for a walk.
 func (w *folderWatch) tick(s Settings, now time.Time) []Eviction {
+	w.drain(s.Folders)
+	w.forget(s.Folders)
 	var evicted []Eviction
 	for _, f := range s.Folders {
-		if now.Sub(w.last[f.Dir]) < folderInterval {
+		if !w.due(f, now) {
 			continue
 		}
 		w.last[f.Dir] = now
-		gone, left, err := sweepFolder(f, now)
+		w.walks++
+		if w.watch != nil {
+			// Cleared before the walk, so a change during it marks the folder again.
+			w.dirty.Remove(f.Dir)
+			w.walked.Add(f.Dir)
+		}
+		gone, left, err := sweepFolderTo(f, f.limit(), now, w.onDir(f))
 		evicted = append(evicted, gone...)
 		if err != nil {
 			notef("%s: %v", f.Dir, err)
@@ -141,11 +255,6 @@ func (w *folderWatch) tick(s Settings, now time.Time) []Eviction {
 	return evicted
 }
 
-// sweepFolder holds f.Dir to its cap.
-func sweepFolder(f Folder, now time.Time) ([]Eviction, uint64, error) {
-	return sweepFolderTo(f, f.limit(), now)
-}
-
 // sweepFolderTo gives back. The least recently used files under f.Dir until
 // the files there take at most limit, which a test can set under MinFolderMax.
 // It answers what it gave back and what the files there take afterwards.
@@ -153,7 +262,7 @@ func sweepFolder(f Folder, now time.Time) ([]Eviction, uint64, error) {
 // Every regular file counts toward the cap. Only this user's files that were
 // not used within FolderGrace go. The walk never follows a symbolic link,
 // never enters another filesystem, and never enters a recycle bin.
-func sweepFolderTo(f Folder, limit uint64, now time.Time) ([]Eviction, uint64, error) {
+func sweepFolderTo(f Folder, limit uint64, now time.Time, onDir func(string)) ([]Eviction, uint64, error) {
 	b, err := trash.Backend()
 	if err != nil && !f.Delete {
 		return nil, 0, err
@@ -162,7 +271,7 @@ func sweepFolderTo(f Folder, limit uint64, now time.Time) ([]Eviction, uint64, e
 	if b != nil {
 		bins = b.Dirs()
 	}
-	files, total, err := walkFolder(f.Dir, bins, now)
+	files, total, err := walkFolder(f.Dir, bins, now, onDir)
 	if err != nil {
 		return nil, total, err
 	}
@@ -189,8 +298,9 @@ func sweepFolderTo(f Folder, limit uint64, now time.Time) ([]Eviction, uint64, e
 
 // walkFolder answers this user's files under dir not used within FolderGrace, as
 // items whose DeletedAt is the last use. walkFolder also answers what every regular
-// file there takes.
-func walkFolder(dir string, bins []string, now time.Time) ([]bin.Item, uint64, error) {
+// file there takes. onDir, when not nil, is called on each directory the walk
+// enters.
+func walkFolder(dir string, bins []string, now time.Time, onDir func(string)) ([]bin.Item, uint64, error) {
 	root, err := filepath.EvalSymlinks(dir)
 	if err != nil {
 		return nil, 0, err
@@ -226,6 +336,9 @@ func walkFolder(dir string, bins []string, now time.Time) ([]bin.Item, uint64, e
 		if d.IsDir() {
 			if path != root && (dev != rootDev || skip.Contains(path)) {
 				return fs.SkipDir
+			}
+			if onDir != nil {
+				onDir(path)
 			}
 			return nil
 		}

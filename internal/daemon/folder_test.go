@@ -40,7 +40,7 @@ func isolateBin(t *testing.T) string {
 
 func folderTotal(t *testing.T, dir string) uint64 {
 	t.Helper()
-	_, total, err := walkFolder(dir, nil, time.Now())
+	_, total, err := walkFolder(dir, nil, time.Now(), nil)
 	require.NoError(t, err)
 	return total
 }
@@ -61,7 +61,7 @@ func TestAFolderLosesItsLeastRecentlyUsedFilesFirst(t *testing.T) {
 	dir := aFolder(t, map[string]time.Duration{"a": 3 * time.Hour, "sub/b": 2 * time.Hour, "c": 10 * time.Minute})
 	total := folderTotal(t, dir)
 
-	evicted, left, err := sweepFolderTo(Folder{Dir: dir, Delete: true}, total-1, time.Now())
+	evicted, left, err := sweepFolderTo(Folder{Dir: dir, Delete: true}, total-1, time.Now(), nil)
 	require.NoError(t, err)
 	require.Len(t, evicted, 1)
 	assert.Equal(t, filepath.Join(dir, "a"), evicted[0].Item.OriginalPath)
@@ -77,7 +77,7 @@ func TestAFolderKeepsWhatWasUsedRecently(t *testing.T) {
 	isolateBin(t)
 	dir := aFolder(t, map[string]time.Duration{"a": 3 * time.Hour, "b": 2 * time.Hour, "c": 10 * time.Minute})
 
-	evicted, left, err := sweepFolderTo(Folder{Dir: dir, Delete: true}, 1, time.Now())
+	evicted, left, err := sweepFolderTo(Folder{Dir: dir, Delete: true}, 1, time.Now(), nil)
 	require.NoError(t, err)
 	assert.Len(t, evicted, 2)
 	assert.FileExists(t, filepath.Join(dir, "c"))
@@ -90,7 +90,7 @@ func TestAFolderRecyclesByDefault(t *testing.T) {
 	dir := aFolder(t, map[string]time.Duration{"old": 3 * time.Hour, "new": 2 * time.Hour})
 	total := folderTotal(t, dir)
 
-	evicted, _, err := sweepFolderTo(Folder{Dir: dir}, total-1, time.Now())
+	evicted, _, err := sweepFolderTo(Folder{Dir: dir}, total-1, time.Now(), nil)
 	require.NoError(t, err)
 	require.Len(t, evicted, 1)
 	require.NoError(t, evicted[0].Error)
@@ -109,7 +109,7 @@ func TestAFolderRecyclesByDefault(t *testing.T) {
 func TestAFolderUnderItsCapIsLeftAlone(t *testing.T) {
 	isolateBin(t)
 	dir := aFolder(t, map[string]time.Duration{"a": 3 * time.Hour})
-	evicted, _, err := sweepFolderTo(Folder{Dir: dir, Delete: true}, 1<<30, time.Now())
+	evicted, _, err := sweepFolderTo(Folder{Dir: dir, Delete: true}, 1<<30, time.Now(), nil)
 	require.NoError(t, err)
 	assert.Empty(t, evicted)
 	assert.FileExists(t, filepath.Join(dir, "a"))
@@ -123,7 +123,7 @@ func TestAFolderBehindALinkKeepsItsName(t *testing.T) {
 	require.NoError(t, os.Symlink(real, link))
 	total := folderTotal(t, link)
 
-	evicted, _, err := sweepFolderTo(Folder{Dir: link, Delete: true}, total-1, time.Now())
+	evicted, _, err := sweepFolderTo(Folder{Dir: link, Delete: true}, total-1, time.Now(), nil)
 	require.NoError(t, err)
 	require.Len(t, evicted, 1)
 	assert.Equal(t, filepath.Join(link, "a"), evicted[0].Item.OriginalPath)
@@ -137,7 +137,7 @@ func TestAFolderSweepDoesNotFollowLinks(t *testing.T) {
 	dir := aFolder(t, map[string]time.Duration{"a": 3 * time.Hour})
 	require.NoError(t, os.Symlink(outside, filepath.Join(dir, "link")))
 
-	_, _, err := sweepFolderTo(Folder{Dir: dir, Delete: true}, 1, time.Now())
+	_, _, err := sweepFolderTo(Folder{Dir: dir, Delete: true}, 1, time.Now(), nil)
 	require.NoError(t, err)
 	assert.FileExists(t, filepath.Join(outside, "precious"))
 }

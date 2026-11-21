@@ -86,3 +86,23 @@ type Backend interface {
 	// Dirs answers this user's bin directories, empty ones included.
 	Dirs() []string
 }
+
+// An Index is a listing that directory watches keep current. Reading it costs
+// no file system access.
+type Index interface {
+	// Refresh applies the changes seen since the last call. It answers the bin directories whose contents changed.
+	Refresh() ([]string, error)
+
+	// List answers the items, newest first, as of the last Refresh.
+	List() []Item
+
+	// Dirs answers the bin directories, as of the last Refresh.
+	Dirs() []string
+
+	Close() error
+}
+
+// A Watchable backend can keep an Index.
+type Watchable interface {
+	Watch() (Index, error)
+}
