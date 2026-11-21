@@ -482,7 +482,8 @@ func (m *model) rows() []string {
 	shown := m.shown[m.first():min(len(m.shown), m.first()+m.height)]
 	rows := make([]string, 0, len(shown))
 	for _, item := range shown {
-		mark := "  "
+		// The table trims a cell's blanks, so an unmarked row needs a glyph of its own to stay aligned.
+		mark := "○ "
 		if m.marks[item.ID] {
 			mark = "● "
 		}
