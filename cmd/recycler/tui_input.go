@@ -14,6 +14,7 @@ import (
 	"github.com/wow-look-at-my/recycler"
 	"github.com/wow-look-at-my/tml"
 	"github.com/wow-look-at-my/tml/input"
+	"github.com/wow-look-at-my/tml/layout"
 )
 
 // Update takes one message from the program. A key or a click it does not claim goes on to the view, and the view's
@@ -55,7 +56,7 @@ func (m *model) pointer(msg tml.Mouse) bool {
 	return msg.Button != input.ButtonRight
 }
 
-func inside(r tml.Rect, x, y int) bool {
+func inside(r layout.Rect, x, y int) bool {
 	return x >= r.X && x < r.X+r.W && y >= r.Y && y < r.Y+r.H
 }
 

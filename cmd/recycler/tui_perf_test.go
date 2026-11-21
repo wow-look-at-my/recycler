@@ -103,7 +103,8 @@ func TestGrowingAtTheEndFillsTheListing(t *testing.T) {
 func TestAClickWhileScrolledSelectsTheRowUnderIt(t *testing.T) {
 	m := largeBin(t, 500)
 	press(t, m, "end")
-	m.act("", "rows", tableHeaderLines+1)
+	x, y := rowPoint(t, m, 1)
+	click(t, m, x, y, 0)
 	assert.Equal(t, m.first()+1, m.selected)
 }
 
