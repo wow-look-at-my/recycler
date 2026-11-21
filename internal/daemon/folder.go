@@ -116,6 +116,7 @@ type folderWatch struct {
 	walked    set.Set[string]
 	dirty     set.Set[string]
 	blind     set.Set[string] // folders with a directory the watch could not take
+	wantWatch bool            // open a watch once a folder is capped
 	walks     int
 }
 
@@ -126,23 +127,32 @@ func newFolderWatch() *folderWatch {
 }
 
 // newWatchedFolders walks a capped folder only when a directory watch saw it
-// change, or while it is over its cap. A system with no directory watch walks
-// each folder every folderInterval, and says so once.
+// change, or while it is over its cap.
 func newWatchedFolders() *folderWatch {
 	w := newFolderWatch()
+	w.wantWatch = true
+	return w
+}
+
+// openWatch opens the directory watch the first time a folder is capped.
+func (w *folderWatch) openWatch(folders []Folder) {
+	if !w.wantWatch || len(folders) == 0 {
+		return
+	}
+	w.wantWatch = false
 	watch, err := dirwatch.New()
 	if err != nil {
 		notef("cannot watch capped folders (%v); each is walked every %s", err, folderInterval)
-		return w
+		return
 	}
 	w.watch = watch
 	w.watchedBy = map[string]string{}
 	w.walked, w.dirty, w.blind = set.New[string](), set.New[string](), set.New[string]()
-	return w
 }
 
 // drain marks each folder a watch saw change since the last tick.
 func (w *folderWatch) drain(folders []Folder) {
+	w.openWatch(folders)
 	if w.watch == nil {
 		return
 	}

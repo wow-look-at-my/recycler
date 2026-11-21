@@ -18,10 +18,12 @@ func TestAnUnchangedFolderIsNotWalkedAgain(t *testing.T) {
 	s := Settings{Folders: []Folder{{Dir: dir, Max: "1GiB", Delete: true}}}
 	w := newWatchedFolders()
 	t.Cleanup(w.close)
-	require.NotNil(t, w.watch)
+	w.tick(Settings{}, time.Now())
+	assert.Nil(t, w.watch, "a watch opened with no folder capped")
 
 	now := time.Now()
 	w.tick(s, now)
+	require.NotNil(t, w.watch)
 	require.Equal(t, 1, w.walks, "the first tick has to walk")
 	for range 3 {
 		now = now.Add(folderInterval)
