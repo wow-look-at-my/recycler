@@ -58,6 +58,8 @@ type watched struct {
 	clock time.Time
 	avail uint64
 	total uint64
+
+	sweepCount int
 }
 
 // watchABin builds a bin whose directories last changed an hour ago, on a
@@ -113,8 +115,12 @@ func (w *watched) age(t *testing.T) {
 func (w *watched) after(t *testing.T, d time.Duration) ([]Eviction, []Pressure) {
 	t.Helper()
 	w.clock = w.clock.Add(d)
+	before := w.listed
 	evicted, pressures, err := w.tick()
 	require.NoError(t, err)
+	if w.listed != before {
+		w.sweepCount++
+	}
 	return evicted, pressures
 }
 

@@ -361,7 +361,9 @@ func run(ctx context.Context, interval time.Duration, me Identity, standby bool,
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 	w := newWatch()
-	folders := newFolderWatch()
+	defer w.close()
+	folders := newWatchedFolders()
+	defer folders.close()
 	for {
 		evicted, pressures, err := w.tick()
 		evicted = append(evicted, folders.tick(w.s, time.Now())...)

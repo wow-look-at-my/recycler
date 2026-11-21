@@ -27,8 +27,10 @@ const (
 type stamp [3]int64
 
 // A watch is what the daemon keeps between ticks. Every tick reads free space
-// on every filesystem holding a bin. A listing costs several system calls for
-// each recycled item, so a tick lists only when that can change the sweep.
+// on every filesystem holding a bin. Where the backend keeps an index, the
+// directory watches feed it and a listing reads nothing. Elsewhere a listing
+// costs several system calls for each recycled item. A tick lists only when
+// that can change the sweep.
 type watch struct {
 	backend func() (bin.Backend, error)
 	free    func(dir string) (avail, total uint64, err error)
@@ -44,6 +46,11 @@ type watch struct {
 	short    set.Set[string]  // groups under their trigger when it started
 	freed    set.Set[string]
 	stranded map[string]uint64 // group -> bytes it could not evict
+
+	// index is the listing directory watches keep current.
+	index   bin.Index
+	noIndex bool
+	pending set.Set[string] // groups the index saw change since the last sweep
 }
 
 func newWatch() *watch {
@@ -53,9 +60,61 @@ func newWatch() *watch {
 		now:     time.Now,
 		short:   set.New[string](),
 		freed:   set.New[string](),
+		pending: set.New[string](),
 
 		settings: &settingsCache{path: SettingsPath},
 	}
+}
+
+// close releases the directory watches.
+func (w *watch) close() {
+	if w.index != nil {
+		w.index.Close()
+	}
+}
+
+// indexed lists the bin from an index, and reads nothing to do it.
+type indexed struct {
+	bin.Backend
+	index bin.Index
+}
+
+func (x indexed) List() ([]bin.Item, error) { return x.index.List(), nil }
+func (x indexed) Dirs() []string            { return x.index.Dirs() }
+
+// watchBin answers b listed from directory watches. It answers b itself where
+// the backend keeps no index, or the watches failed.
+func (w *watch) watchBin(b bin.Backend) bin.Backend {
+	if w.index == nil && !w.noIndex {
+		wb, ok := b.(bin.Watchable)
+		if !ok {
+			w.noIndex = true
+			return b
+		}
+		index, err := wb.Watch()
+		if err != nil {
+			w.noIndex = true
+			notef("cannot watch the recycle bin (%v); it reads the bin again each time its directories change", err)
+			return b
+		}
+		w.index = index
+	}
+	if w.index == nil {
+		return b
+	}
+	changed, err := w.index.Refresh()
+	if err != nil {
+		notef("lost the watch on the recycle bin (%v); it reads the bin again each time its directories change", err)
+		w.index.Close()
+		w.index, w.noIndex = nil, true
+		// What the index held can no longer be trusted, so the next tick lists.
+		w.listed = time.Time{}
+		return b
+	}
+	for _, dir := range changed {
+		w.pending.Add(filepath.Join(dir, "files"))
+	}
+	return indexed{Backend: b, index: w.index}
 }
 
 // tick is one pass of the daemon loop. It reports the same things [Sweep]
@@ -65,6 +124,8 @@ func (w *watch) tick() ([]Eviction, []Pressure, error) {
 	if err != nil {
 		return nil, nil, err
 	}
+	b = w.watchBin(b)
+	watched := w.index != nil
 	dirs := b.Dirs()
 	s := Settings{}
 	if w.settings != nil {
@@ -73,15 +134,21 @@ func (w *watch) tick() ([]Eviction, []Pressure, error) {
 	w.s = s
 	now := w.now()
 	age := now.Sub(w.listed)
-	list := w.listed.IsZero() || age >= relistInterval
+	// The watches see every change, so an unchanged bin is never listed again.
+	list := w.listed.IsZero() || (!watched && age >= relistInterval)
 
 	// The stamps are read before the listing. A change during the listing then shows on the next tick.
 	stamps := map[string]stamp{}
 	short := set.New[string]()
 	var pressures []Pressure
 	for _, group := range w.groupsNow(dirs) {
-		stamps[group] = stampOf(group)
-		changed := stamps[group] != w.stamps[group]
+		var changed bool
+		if watched {
+			changed = w.pending.Contains(group)
+		} else {
+			stamps[group] = stampOf(group)
+			changed = stamps[group] != w.stamps[group]
+		}
 		under := false
 		if avail, total, err := w.free(group); err == nil && avail < s.Trigger(total) {
 			under = true
@@ -112,6 +179,7 @@ func (w *watch) tick() ([]Eviction, []Pressure, error) {
 		return nil, nil, err
 	}
 	w.listed, w.groups, w.short = now, looked, short
+	w.pending = set.New[string]()
 	w.stamps = map[string]stamp{}
 	for group, s := range stamps {
 		// A second change inside the clock's grain leaves a new stamp as it
