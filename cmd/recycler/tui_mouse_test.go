@@ -159,13 +159,16 @@ func TestARightClickOnAHeadingOffersSorting(t *testing.T) {
 
 // A click outside the menu closes it and does nothing else.
 func TestAClickOutsideTheMenuClosesIt(t *testing.T) {
-	m, _ := binWith(t, "a.txt", "b.txt")
+	m, _ := binWith(t, "a.txt", "b.txt", "c.txt", "d.txt", "e.txt", "f.txt", "g.txt", "h.txt", "i.txt", "j.txt")
 
 	x, y := rowPoint(t, m, 0)
 	rightClick(t, m, x, y)
 	require.NotEmpty(t, m.menu)
 
-	x, y = rowPoint(t, m, 1)
+	menu, ok := m.view.UI().Target("menu")
+	require.True(t, ok)
+	x, y = rowPoint(t, m, menu.Rect.Y+menu.Rect.H-y+1)
+	require.False(t, inside(menu.Rect, x, y), "the row under the menu is outside it")
 	click(t, m, x, y, 0)
 	assert.Empty(t, m.menu)
 	assert.Equal(t, 0, m.selected, "the click that closed the menu did not also select")

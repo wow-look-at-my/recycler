@@ -43,7 +43,20 @@ The copies under `.claude/worktrees` and `.grok/worktrees` are found too. `--dry
 
 What a run takes goes to the recycle bin as one item per target directory. The bin keeps build output to the same cap. The bin gives the rest back to the filesystem, oldest first, so a trim returns the space it took. The daemon holds the bin to that cap between runs. Your own recycled files never count against it.
 
-Run on a terminal with no arguments, `recycler` opens the bin in a browser: arrows move, `/` filters, `enter` restores what is selected. Redirected, it prints the help instead, and `recycler tui` opens the browser either way.
+Run on a terminal with no arguments, `recycler` opens the bin in a browser. Redirected, it prints the help instead, and `recycler tui` opens the browser either way.
+
+| Keys | Mouse | Does |
+|---|---|---|
+| arrows, `pgup`/`pgdown`, `home`/`end` | click a row, wheel, drag the scrollbar | move and scroll |
+| `enter` | double-click | restore, after asking |
+| `t` | | restore into a directory you type |
+| `d` | | delete permanently, after asking |
+| `space`, `a` | ctrl+click, shift+click | mark one, mark all, mark a range |
+| `s`, `S` | click a heading | change the sort column, reverse it |
+| `/` | | filter by name or path, `esc` clears |
+| `m` | right-click | a menu of what can be done to the item |
+
+An action takes every marked item, or the selected one when nothing is marked. An AI agent session cannot delete from the browser.
 
 `restore` takes the ID from `recycler list`, or a name or original path when it matches exactly one item. `list --json` prints the same data for scripts.
 

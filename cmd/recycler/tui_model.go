@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/wow-look-at-my/go-containers/set"
 	"github.com/wow-look-at-my/recycler"
 	"github.com/wow-look-at-my/tml"
 	"github.com/wow-look-at-my/tml/inspect"
@@ -126,12 +127,12 @@ func (m *model) reload() {
 		return
 	}
 	m.items = items
-	present := map[string]bool{}
+	present := set.New[string]()
 	for _, item := range items {
-		present[item.ID] = true
+		present.Add(item.ID)
 	}
 	for id := range m.marks {
-		if !present[id] {
+		if !present.Contains(id) {
 			delete(m.marks, id)
 		}
 	}
