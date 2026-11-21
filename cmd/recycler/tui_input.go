@@ -210,6 +210,8 @@ func (m *model) openMenu(x, y int, entries []menuEntry) {
 		y = y - height + 1
 	}
 	m.menu, m.menuSelected = entries, 0
+	// A focused list draws its marked line reversed, which is how the menu shows the line enter runs.
+	m.focusNext = "menuList"
 	m.menuX = clamp(x, 0, m.width-width)
 	m.menuY = clamp(y, 0, m.height-height)
 }
