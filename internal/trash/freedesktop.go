@@ -138,65 +138,107 @@ func (t *fdoTrash) recycleOne(path string) (bin.Disposal, error) {
 func (t *fdoTrash) List() ([]bin.Item, error) {
 	var items []bin.Item
 	for _, dir := range t.trashDirs() {
-		entries, err := os.ReadDir(filepath.Join(dir, trashInfoDir))
-		if err != nil {
-			continue // unreadable or absent trash directories are skipped
-		}
-		top := ""
-		if dir != t.home {
-			top = topDirOfTrash(dir)
-		}
-		recorded := set.New[string]()
-		for _, entry := range entries {
-			if entry.IsDir() || !strings.HasSuffix(entry.Name(), trashInfoExt) {
-				continue
-			}
-			name := strings.TrimSuffix(entry.Name(), trashInfoExt)
-			recorded.Add(name)
-			file := filepath.Join(dir, trashFilesDir, name)
-			st, err := os.Lstat(file)
-			if err != nil {
-				continue // orphaned .trashinfo with no matching file
-			}
-			info, err := readInfoFile(filepath.Join(dir, trashInfoDir, entry.Name()))
-			if err != nil {
-				continue
-			}
-			orig := info.origPath
-			if orig != "" && !filepath.IsAbs(orig) && top != "" {
-				orig = filepath.Join(top, orig)
-			}
-			display := name
-			if orig != "" {
-				display = filepath.Base(orig)
-			}
-			deletedAt := info.deletedAt
-			if deletedAt.IsZero() {
-				deletedAt = st.ModTime()
-			}
-			size := info.size
-			infoPath := filepath.Join(dir, trashInfoDir, entry.Name())
-			if !info.measured && sizeIsRecordable(infoPath) {
-				// An entry another implementation wrote records no size.
-				size = fsutil.TreeSize(file)
-				if err := recordSize(infoPath, size); err != nil {
-					// The number did not land, so nothing may be evicted on it.
-					size = bin.SizeUnknown
-				}
-			}
-			items = append(items, bin.Item{
-				ID:           file,
-				Name:         display,
-				OriginalPath: orig,
-				DeletedAt:    deletedAt,
-				Size:         size,
-				IsDir:        st.IsDir(),
-			})
-		}
-		items = append(items, t.adoptUnrecorded(dir, recorded)...)
+		items = append(items, t.listDir(dir)...)
 	}
 	bin.Sort(items)
 	return items, nil
+}
+
+// listDir lists one trash directory. An unreadable or absent one lists
+// nothing.
+func (t *fdoTrash) listDir(dir string) []bin.Item {
+	entries, err := os.ReadDir(filepath.Join(dir, trashInfoDir))
+	if err != nil {
+		return nil
+	}
+	top := t.topOf(dir)
+	recorded := set.New[string]()
+	var items []bin.Item
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), trashInfoExt) {
+			continue
+		}
+		name := strings.TrimSuffix(entry.Name(), trashInfoExt)
+		recorded.Add(name)
+		if it, ok := readEntry(dir, top, name); ok {
+			items = append(items, it)
+		}
+	}
+	return append(items, t.adoptUnrecorded(dir, recorded)...)
+}
+
+// topOf answers the top directory the paths a trash directory records are
+// relative to. The home trash records absolute paths.
+func (t *fdoTrash) topOf(dir string) string {
+	if dir == t.home {
+		return ""
+	}
+	return topDirOfTrash(dir)
+}
+
+// orphanGrace is how old a record with no file must be before it is removed.
+const orphanGrace = time.Hour
+
+// readEntry reads the item recorded as name in the trash directory dir. It
+// answers false when there is no such item. A record whose file has been gone
+// longer than orphanGrace is removed. It describes nothing a restore can
+// bring back, and every listing would read it again.
+func readEntry(dir, top, name string) (bin.Item, bool) {
+	file := filepath.Join(dir, trashFilesDir, name)
+	infoPath := filepath.Join(dir, trashInfoDir, name+trashInfoExt)
+	st, err := os.Lstat(file)
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			reapOrphan(infoPath)
+		}
+		return bin.Item{}, false
+	}
+	info, err := readInfoFile(infoPath)
+	if err != nil {
+		return bin.Item{}, false
+	}
+	orig := info.origPath
+	if orig != "" && !filepath.IsAbs(orig) && top != "" {
+		orig = filepath.Join(top, orig)
+	}
+	display := name
+	if orig != "" {
+		display = filepath.Base(orig)
+	}
+	deletedAt := info.deletedAt
+	if deletedAt.IsZero() {
+		deletedAt = st.ModTime()
+	}
+	size := info.size
+	if !info.measured && sizeIsRecordable(infoPath) {
+		// An entry another implementation wrote records no size.
+		size = fsutil.TreeSize(file)
+		if err := recordSize(infoPath, size); err != nil {
+			// The number did not land, so nothing may be evicted on it.
+			size = bin.SizeUnknown
+		}
+	}
+	return bin.Item{
+		ID:           file,
+		Name:         display,
+		OriginalPath: orig,
+		DeletedAt:    deletedAt,
+		Size:         size,
+		IsDir:        st.IsDir(),
+	}, true
+}
+
+// reapOrphan removes the record at infoPath when it has had no file for
+// longer than orphanGrace. It answers whether the record is still there.
+func reapOrphan(infoPath string) bool {
+	st, err := os.Lstat(infoPath)
+	if err != nil {
+		return false
+	}
+	if time.Since(st.ModTime()) < orphanGrace {
+		return true
+	}
+	return os.Remove(infoPath) != nil
 }
 
 func (t *fdoTrash) Restore(id, dest string) (string, error) {
