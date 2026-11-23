@@ -1,6 +1,7 @@
 package dsstore
 
 import (
+	"encoding/binary"
 	"fmt"
 	"math/rand"
 	"strings"
@@ -16,6 +17,32 @@ func TestAPivotWithoutARightChildIsAnErrorNotAPanic(t *testing.T) {
 	levels := [][][]Record{{leaf}, {{Ustr("b", "ptbL", "y")}}}
 	_, err := dsEncodeNodes(levels)
 	require.ErrorIs(t, err, errBadDSStore)
+}
+
+// A Finder trash store mixes small put back records with large blobs. Large
+// records move the node boundaries far more than path records do.
+func TestMixedRecordSizesBuildAReadableTree(t *testing.T) {
+	rng := rand.New(rand.NewSource(2))
+	for iter := 0; iter < 300; iter++ {
+		n := rng.Intn(400) + 1
+		records := make([]Record, 0, n)
+		for i := range n {
+			name := fmt.Sprintf("wc-%s-%04d.ivf", strings.Repeat("m", rng.Intn(40)), i)
+			if rng.Intn(4) == 0 {
+				blob := make([]byte, 4+rng.Intn(2500))
+				rng.Read(blob[4:])
+				binary.BigEndian.PutUint32(blob, uint32(len(blob)-4))
+				records = append(records, Record{Name: name, Code: "bwsp", Type: "blob", Data: blob})
+				continue
+			}
+			records = append(records, Ustr(name, "ptbL", strings.Repeat("p", rng.Intn(120))), Ustr(name, "ptbN", name))
+		}
+		data, err := Build(records)
+		require.NoError(t, err, "case %d, %d names", iter, n)
+		parsed, err := Parse(data)
+		require.NoError(t, err, "case %d, %d names", iter, n)
+		require.ElementsMatch(t, records, parsed, "case %d, %d names", iter, n)
+	}
 }
 
 // Random name and value lengths reach node boundaries that a fixed record
