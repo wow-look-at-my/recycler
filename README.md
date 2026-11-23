@@ -33,7 +33,9 @@ A capped folder loses its least recently used files first once it is over its si
 
 It cannot empty the whole bin. An AI agent session (with `CLAUDECODE`, `GROK_BUILD` or a like variable set) can neither empty the bin, change `min-free`, nor cap a folder. A process running under a known agent is refused the same way, whatever its variables say.
 
-The daemon also deletes, because a bin nobody empties fills the disk and the recycled copy is what holds the space. Recycling something starts a daemon that reads free space every few seconds. It gives back the oldest items when a filesystem drops under a tenth free, or 1 GiB, whichever is smaller. `min-free` raises that, up to half the filesystem, and it logs every item it deletes and the rule that chose it. It uses the size recorded when each item was recycled, so it never walks the bin to measure it. There is one daemon per user. This holds per system.
+The daemon also deletes, because a bin nobody empties fills the disk and the recycled copy is what holds the space. Recycling something starts a daemon that reads free space every few seconds. It gives back the oldest items when a filesystem drops under a tenth free, or 1 GiB, whichever is smaller. `min-free` raises that, up to half the filesystem, and it logs every item it deletes and the rule that chose it. It uses the size recorded when each item was recycled, so it never walks the bin to measure it. There is one daemon per user.
+
+This holds per system.
 
 Its lock and home bin come from the account database, so a script that exports its own `HOME` or `XDG_*` directories reaches the same daemon. Set `RECYCLER_NO_DAEMON=1` to run it yourself instead, or not at all.
 
