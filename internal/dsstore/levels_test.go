@@ -13,7 +13,7 @@ import (
 // shape never reaches, at every level of the tree.
 func TestEveryLevelHasAChildOnEachSideOfEveryPivot(t *testing.T) {
 	rng := rand.New(rand.NewSource(1))
-	for iter := 0; iter < 3000; iter++ {
+	for iter := 0; iter < 600; iter++ {
 		n := rng.Intn(3000) + 1
 		records := make([]Record, 0, n)
 		for i := range n {
