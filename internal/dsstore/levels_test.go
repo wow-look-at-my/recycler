@@ -9,6 +9,15 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// A pivot with no node to its right is what panicked a recycle on macOS. The
+// encoder must refuse such a tree with an error, not read past the level below.
+func TestAPivotWithoutARightChildIsAnErrorNotAPanic(t *testing.T) {
+	leaf := []Record{Ustr("a", "ptbL", "x")}
+	levels := [][][]Record{{leaf}, {{Ustr("b", "ptbL", "y")}}}
+	_, err := dsEncodeNodes(levels)
+	require.ErrorIs(t, err, errBadDSStore)
+}
+
 // Random name and value lengths reach node boundaries that a fixed record
 // shape never reaches, at every level of the tree.
 func TestEveryLevelHasAChildOnEachSideOfEveryPivot(t *testing.T) {

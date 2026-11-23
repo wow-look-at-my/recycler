@@ -34,7 +34,10 @@ func Build(records []Record) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	nodes := dsEncodeNodes(levels)
+	nodes, err := dsEncodeNodes(levels)
+	if err != nil {
+		return nil, err
+	}
 
 	// The bookkeeping block comes at the start, but its size depends on how much.
 	bookSize := 1264 // what an empty store needs, and enough for a small store
@@ -102,12 +105,21 @@ func dsBuildLevels(records []Record) ([][][]Record, error) {
 }
 
 // dsEncodeNodes turns packed levels into the bytes of each B-tree.
-func dsEncodeNodes(levels [][][]Record) [][]byte {
+func dsEncodeNodes(levels [][][]Record) ([][]byte, error) {
 	var (
 		encoded  [][]byte
 		previous []int // block numbers of the level below, left to right
 	)
-	for _, level := range levels {
+	for depth, level := range levels {
+		if previous != nil {
+			children := 0
+			for _, node := range level {
+				children += len(node) + 1
+			}
+			if children != len(previous) {
+				return nil, fmt.Errorf("%w: level %d points at %d children, but the level below holds %d nodes", errBadDSStore, depth, children, len(previous))
+			}
+		}
 		var numbers []int
 		child := 0
 		for _, node := range level {
@@ -133,7 +145,7 @@ func dsEncodeNodes(levels [][][]Record) [][]byte {
 		}
 		previous = numbers
 	}
-	return encoded
+	return encoded, nil
 }
 
 func appendDSRecord(buf []byte, r Record) []byte {
