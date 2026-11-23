@@ -1,11 +1,11 @@
 <?xml version="1.1" encoding="UTF-8"?>
 <Theme xmlns="urn:tml:v1" name="recycler">
-	<Token name="accent" light="#3d59a1" dark="#7aa2f7"/>
-	<Token name="ok" light="#1a7f37" dark="#9ece6a"/>
-	<Token name="warn" light="#9a6700" dark="#e0af68"/>
-	<Token name="danger" light="#c4314b" dark="#f7768e"/>
-	<Token name="line" light="#9ca0b0" dark="#3b4261"/>
-	<Token name="dim" light="#6c6f85" dark="#565f89"/>
+	<Color name="accent" for="the title, the context menu and the restore prompt" light="#3d59a1" dark="#7aa2f7"/>
+	<Color name="ok" for="a report that something worked" light="#1a7f37" dark="#9ece6a"/>
+	<Color name="warn" for="a question that restores, and a report that needs a look" light="#9a6700" dark="#e0af68"/>
+	<Color name="danger" for="a question that deletes, and a report that something failed" light="#c4314b" dark="#f7768e"/>
+	<Color name="line" for="the rule and the border of the listing" light="#9ca0b0" dark="#3b4261"/>
+	<Color name="dim" for="text the eye can pass over, and the names of fields" light="#6c6f85" dark="#565f89"/>
 
 	<Style name="title" bold="true" fg="{theme.accent}"/>
 	<Style name="muted" faint="true" fg="{theme.dim}"/>

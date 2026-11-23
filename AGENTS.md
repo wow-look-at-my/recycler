@@ -1,0 +1,134 @@
+# recycler
+
+A Go library and CLI that expose the operating system's recycle bin through one uniform API on Linux (and the BSDs), macOS and Windows.
+
+## Layout
+
+| Path | What lives there |
+|---|---|
+| `recycler.go` | The whole public API, and nothing else: `Item`, the errors, `Recycle`/`List`/`Get`/`Restore`/`RestoreTo`, and the daemon entry points. Every function here forwards into `internal/`. |
+| `internal/bin/` | What the rest agrees on: `Item`, the errors, `Sort`, and the `Backend` interface every platform implements. Imports nothing of its own, so no other package has to import a sibling to name a listing. |
+| `internal/trash/` | The platform backends and `Backend()`, which picks one: FreeDesktop (`freedesktop.go`, `mounts.go`), macOS (`darwin.go`), Windows (`windows.go`, `shfileop_*.go`), and `unsupported.go` for every other GOOS. |
+| `internal/dsstore/` | Codec for the `.DS_Store` files Finder's put back records live in: the B-tree parser, and the writer with its buddy allocator. Deliberately **not** build-constrained, so it is testable on any platform. |
+| `internal/putback/` | Finder's `ptbL`/`ptbN` put back records: reading them out of a trash directory's `.DS_Store` and editing them back in under a lock. Built on every Unix so the test suite covers it on Linux. |
+| `internal/winbin/` | Codec for the Windows `$I` metadata files. Deliberately **not** build-constrained, so it is testable on any platform. |
+| `internal/fsutil/` | Filesystem helpers the backends share. |
+| `internal/dirwatch/` | A non-blocking inotify watch on directories, which reports the entries that changed. Every other system answers `ErrUnsupported`. |
+| `internal/diskfree/` | One file per spelling, because the BSDs disagree about all three. |
+| `internal/daemon/` | The disk-pressure daemon: `FreeTarget`, `Sweep`, the poll loop, and starting one per user. Also `Settings` (`settings.go`), `Empty` (`empty.go`), the folder caps (`folder.go`, `filestat_*.go`) and the agent check (`agent.go`). `drain` is the one size rule all of them share. The only thing here that destroys anything. |
+| `internal/cargotarget/` | The cap on a cargo build directory: finding a validated `target` directory (including the copies an agent worktree keeps), choosing the oldest regenerable output inside it, and recycling that until the directory fits. Sizes are what the filesystem reports a file takes (`st_blocks`), not the length it states, because a compressed pool makes those differ by a multiple and the cap is on the pool. Nothing here deletes, and nothing here runs by itself. |
+| `cmd/recycler/` | Cobra CLI, one command per file, each registering itself in `init()`. |
+| `cmd/recycler/tui_*.go`, `cmd/recycler/ui/` | The full-screen browser: the command (`tui_command.go`), the model that holds its state (`tui_model.go`), what keys and the pointer do to it (`tui_input.go`), and the TML document and theme it renders. |
+
+`trash.Backend()` is defined once per platform. Every API call calls it rather than a cached value, so tests can redirect the recycle bin with `HOME` and `XDG_DATA_HOME` between calls. Keep it that way.
+
+Nothing under `internal/` imports the root package. `bin` is what keeps that acyclic: the helpers, the backends and the daemon all name an `Item` without naming each other.
+
+## Invariants
+
+- **A person deletes in multiple ways, and each asks first.** The browser's delete (`recycler.Delete`) takes the items a person picked. `recycler empty` cannot empty the whole bin. It deletes what its selectors pick. Nothing recycled in the last `EmptyGrace` (a day) goes, whatever the selectors say. It lists the items and asks first. Do not add a purge command, a `--force` that removes an entry, or a second backend method that unlinks anything. `TestNoDestructiveCommands` locks the CLI down, `TestUnreasonableSelectorsAreRefused` holds the bounds, and `TestBackendDestroysOnlyUnderDiskPressure` pins the interface to exactly one destructive method.
+- **An AI agent session cannot empty the bin, change the daemon settings, or name a folder on the daemon command line.** `daemon.AgentSession` asks [is-this-an-agent](https://github.com/wow-look-at-my/is-this-an-agent) (process ancestry, then its roster of markers). It then counts every variable in `daemon.AgentVars()` (that roster plus `CLAUDECODE`, `GROK_BUILD` and others) when defined, whatever its value. The check sits, so the library refuses too. Tests replace `daemon.DetectAgent` to run as a person. `TestAnAgentSessionCannotEmptyOrConfigure` holds that down.
+- **Every rule that deletes by size goes through `drain`:** disk pressure, `empty --min-free` and `--max-size`, and the folder caps. It takes the oldest first, keeps an item of unknown size, and counts a failed give as stranded. Do not write a second loop.
+- **No folder is capped until a person names one.** `recycler config folder add DIR SIZE [--delete]` or `daemon --folder DIR:SIZE[:delete]`. The daemon walks each folder once a minute and gives back the least recently used files: to the bin, or permanently with delete. Only this user's files not used within `FolderGrace` go. The walk follows no symbolic link, enters no other filesystem and no bin. A cap is at least `MinFolderMax`. A folder is never a filesystem root or an ancestor of the home directory. `TestNoFolderIsCappedByDefault` holds the default down.
+- **`min-free` sits between the built-in floor and half the filesystem.** `Settings.Trigger` never goes under `FreeTarget`, where a recycle turns into a deletion, and never over total/`MaxFreeFraction`. The settings live in `settings.json` beside the daemon lock. A running daemon reads them again when the file changes. A file it cannot read gives the built-in settings and one log line.
+- **That method is `Evict`, and only `internal/daemon` calls it.** Recycling defers a deletion rather than performing one. That holds only while there is room to defer into. A bin nobody empties fills the filesystem. The recycled copy is what holds the space. `internal/daemon` gives back the oldest items when a filesystem drops under `FreeTarget` - a tenth of itself, capped at 1 GiB. The other pressure is build output past its cap, below. Every `Eviction` carries the `Reason` that chose it, and the daemon logs each one. `--verbose` or the `verbose` setting also logs each sweep.
+- **Under that same floor, a recycle becomes a deletion.** A bin sits on the filesystem it takes from. So recycling moves the bytes sideways and frees nothing. `internal/pressure` reads the filesystem the path is on. It removes the path outright when available space is already under `Floor(total)`, where the move cannot help. A move into a bin on the path's own filesystem is a rename. It needs no free space, so its size never turns it into a deletion: `TestAMoveWithinOneFilesystemIsNeverDeletedForItsSize` holds that down. Only a copy onto another filesystem needs room. The blocks the path occupies sizes it (`fsutil.DiskUsage`), not the length its files state, which a compressed filesystem puts far above it. This is still pressure deciding: there is no flag, and no way to ask for it. A `bin.Disposal` names each path that went. `recycler trash` prints those to stderr, where `--quiet` cannot reach. Depth: `docs/disk-pressure.md`.
+- **`recycler trim` caps a cargo build directory, and takes it through the bin.** rustc appends to `target/` and never removes anything from it. A directory grows with every branch, worktree, dependency bump and feature permutation, and cargo's only remedy, `cargo clean`, throws away the whole directory. `internal/cargotarget` recycles the oldest regenerable output inside one until it fits a cap, incrementals first, and stops as soon. As the directory fits so the build in progress keeps its cache.
+
+  It runs when invoked: nothing here installs a service or a timer for it. A run gathers what it takes from one target directory into a single `recycler-trim-<time>` directory and recycles that. The bin gets one item and one put back record, not one per file. A bin on the target's own filesystem frees nothing by holding the output. So the bin keeps build output to the same cap.
+
+  `cargotarget.Overflow` picks what an item recycled from inside a live cargo target directory holds past it, oldest first. `Settle` evicts that at the end of every trim, and the daemon does the same each time it lists the bin. A user's own recycled files never count against it. `TestATrimGivesBackBuildOutputPastTheBudget` holds that down. A recycle cannot free space on a filesystem already under `pressure.Floor`, where the backends delete instead of deferring, so such a target directory is refused.
+
+  The refusal reported rather than a build cache being destroyed. `TestAFilesystemUnderTheBinFloorIsDeclined` holds that down. Only a directory that carries cargo's own markers is a target directory: Maven, Make and a checkout's source all use that name.
+- **One daemon per user per system, whatever the environment says.** `daemon.StateDir` (lock, identity, log) comes from the account database, not from `HOME` or `XDG_CACHE_HOME`, and the sweep loop drops `XDG_DATA_HOME` and takes `HOME` from there too. On Linux the lock holder SIGTERMs any other `daemon` process of the same uid holding a different `recycler/daemon.lock` (`reap_linux.go`). Tests move the state with `StateDir`, not with an environment variable. `TestTheLockIgnoresTheCallersEnvironment` holds this down.
+- **Free space means what this caller can reach.** `internal/diskfree` subtracts the reserve (`Bfree - Bavail`) from the total. A filesystem can reserve blocks for another user. It reports them as free and never hands them over. One host mounts `/` with `resv_strict` and a foreign `resuid`. It reports 252 GiB total against 29 GiB available. A target read off the raw device asks for space that never arrives.
+- **The daemon reads every filesystem holding a bin.** That includes a bin with nothing in it. Deriving the probe set from the listing makes an empty bin cost no `statfs` call at all. The daemon then exits clean and silent, once a second, while the disk fills with files nobody recycled. `Sweep` takes `Backend.Dirs()` for exactly this. It reports a `Pressure` for any filesystem left under its trigger. `TestAFilesystemIsReadEvenWhenItsBinIsEmpty` locks it down.
+- **A tick reads free space, and lists the bin only when a listing can change the sweep.** A listing costs several system calls for each recycled item, so a large bin listed on every tick keeps the daemon busy without end. `watch` (`internal/daemon/watch.go`) lists on the tick a filesystem goes under its trigger, a short bin changes, or an eviction freed something. A changed bin with room waits `settleInterval`, and so does the next try on a filesystem that stays short. `TestAnUnchangedBinIsNotListedOnEveryTick` holds that down.
+- **On Linux the daemon never reads the bin to list it.** A backend that is a `bin.Watchable` keeps a `bin.Index`. The FreeDesktop one (`internal/trash/fdoindex.go`) watches each trash directory, its `files/` and its `info/`, and a change reads again only the entry it names. Elsewhere change times say when a bin changed, and an unchanged bin is listed again after `relistInterval`. A watch that fails is logged. The daemon reads the bin from then on. `TestAWatchedBinIsNeverRead` holds that down.
+- **A `.trashinfo` whose file was gone longer than `orphanGrace` is removed** when a listing reads it. It describes nothing a restore can bring back, and every listing reads it again. A younger one is a recycle or a restore in progress.
+- **A capped folder is walked again only after a watch saw it change, or while it stays over its cap.** Each walk watches every directory it enters. A system with no directory watch, or a folder past the inotify watch limit, is walked every `folderInterval`, and the daemon logs that once. `TestAnUnchangedFolderIsNotWalkedAgain` holds that down.
+- **A recycled item's size is measured once, when it is recycled.** What sits in the bin does not change, so `Recycle` records the size and every later reader takes that number. The daemon polls, so a `list` that walks each item's tree walks the whole bin every few seconds. An entry another implementation wrote records no size. It is measured on first sight and the number written back, so that walk happens once too. A tree that cannot be measured records `Size=-1`, which also counts as measured. An item whose size is still unknown is never evicted, because it cannot be accounted for. A FreeDesktop `files/` entry with no `.trashinfo` gets a record with no `Path` on first sight (`unrecorded.go`). The daemon can see it and give its space back.
+- **An `Item.ID` is a path inside a recycle bin directory, and is validated before use.** Every backend's `resolveID` checks that the ID names an existing entry inside one of *this user's* trash directories before restoring anything. A malformed or hostile ID must never reach a file outside the bin. `TestUnknownIDsAreRejected` locks that down.
+- **Recycling is a rename, not a copy.** Each backend picks a trash directory on the same filesystem as the file, which is what per-filesystem trash directories exist for. `fsutil.Move` still falls back to copy-and-delete, which matters for restoring to a different filesystem.
+- **Nothing is overwritten.** `fsutil.Move` and `fsutil.PrepareDest` fail with `ErrExists` rather than clobber a file that took the original location back.
+- **Listing is best-effort per location.** An unreadable trash directory (a volume mounted by another user, say) is skipped, not fatal - one bad location must not hide the rest of the bin.
+
+## The browser
+
+`recycler` with no arguments on a terminal opens the bin on a full screen, and `recycler tui` opens it anywhere. Routing lives in `execute` in `main.go` rather than on the root command. That leaves cobra's handling of an unknown command intact. Redirected, the bare invocation prints the help a script asked for.
+
+The view is [TML](https://github.com/wow-look-at-my/tml): `ui/app.tml` declares it, the model in `tui_model.go` holds every piece of state, and TML draws what the properties say. Things there are load-bearing:
+
+- **The table's rows are `\x1f`-delimited cells.** Every printable delimiter is legal in a file name, so a path holding one arrives as an extra column.
+- **`wrap="false"` keeps a row to a line**, which is what lets a click's `y` and the scroll offset name a row. A wrapped cell puts every row below it out of step with its index.
+- **The table gets a screenful of rows, not the bin.** The Scrollbox takes the full height from `contentHeight`. A table of every item costs the whole bin on every frame. A resize is many frames. `TestAFrameCostsTheScreenNotTheBin` holds that down.
+- **Nothing redraws on a timer.** The program paints after input or a resize. An idle browser costs nothing.
+- **The name leads and the directory trails**, because a cut falls on the end of the row. The line below spells the path out in full, and the name is the part that has to survive a narrow terminal.
+
+The selected item costs the row it is listed on, not a panel. The table draws a bar across that row, and what sits under the listing is its full original path.
+
+An action takes the marked items when any are marked, and the selected item otherwise. Restore, restore to a directory and delete each ask first. Delete opens on Cancel, and an AI agent session is refused before it is asked. `TestNothingIsDeletedWithoutAConfirmation` holds every key against a full bin.
+
+The pointer goes through TML, and never around it. A click names its part through `tml.Event.Part`, so the model never counts lines. A right click raises `tml.Menu`. The context menu is a `Canvas` child at the click. A press outside it closes it and goes no further. The wheel and a drag on the scrollbar both arrive as `tml.Scrolled`.
+
+Where TML lacks a capability, add it to TML rather than parse the terminal here.
+
+## Platform notes
+
+### Linux and the BSDs - FreeDesktop trash specification v1.0
+
+Home trash is `$XDG_DATA_HOME/Trash` (default `~/.local/share/Trash`) with `files/` and `info/` subdirectories. Files on another filesystem go to `$topdir/.Trash/$uid` when that directory exists with the sticky bit set, and otherwise to `$topdir/.Trash-$uid`.
+
+Each entry is a pair: `files/<name>` holds the data, `info/<name>.trashinfo` the metadata, in the spec's format (`[Trash Info]`, a percent-encoded `Path`, and a local-time `DeletionDate`). The `.trashinfo` file is created with `O_EXCL`, which is what atomically claims a free name. Paths recorded in a per-filesystem trash are relative to the top directory, so the entry survives a remount elsewhere.
+
+Mount points come from `/proc/self/mounts` where it exists, plus globs of the usual removable-media directories. Entries written by other trash implementations are read and restored normally - `TestReadsForeignTrashEntries` covers that.
+
+### macOS
+
+Files go to `~/.Trash`, or `<volume>/.Trashes/$uid` for other volumes.
+
+**Original locations come from Finder's own "Put Back" records. This package keeps no index of its own.** macOS has no API for restoring: `trashItem` and `NSWorkspace.recycle` only put things in. The only record of where a trashed item came from is a pair of records in that trash directory's `.DS_Store`. The item's name inside the trash keys both:
+
+| Record | Type | Holds |
+|---|---|---|
+| `ptbL` | `ustr` | the original parent directory, relative to the volume root (`Users/ada/Documents`) |
+| `ptbN` | `ustr` | the original name, which differs from the name in the trash when something was already called that |
+
+`internal/putback` reads and writes exactly those, so an item recycled here can be put back from Finder, and an item Finder trashed restores here. The whole `.DS_Store` is rewritten under an exclusive `flock`, which preserves every record the file already had. The icon positions and window settings next to the put back records belong to Finder, and are carried through untouched. A `.DS_Store` that cannot be parsed is replaced rather than allowed to block recycling: display settings are worth less than a recorded location. Nothing can lock Finder out of the same file, and Apple's own APIs lose put back records to that race too.
+
+An item can be missing those records, because a tool that writes none trashed it, or because something deleted the `.DS_Store`. Such an item is listed with an empty `OriginalPath` and needs an explicit destination (`RestoreTo`).
+
+Smaller consequences of having no index:
+
+- `DeletedAt` is the item's inode change time, which the rename into the trash updates. macOS records no deletion time anywhere.
+- Finder writes locations through the data volume's own mount point (`/System/Volumes/Data/Users/ada/notes.txt`). `dataVolumePath` presents those as the firmlinked `/Users/ada/notes.txt` they resolve to. It does that only when that path's directory exists. An unusual layout therefore keeps what was recorded.
+
+### Windows
+
+Recycling goes through the shell - `SHFileOperationW` with `FOF_ALLOWUNDO` - so it behaves exactly like deleting from Explorer. That includes the shell's own failure mode: if the volume has no usable recycle bin, the file is deleted permanently. This is documented on `Recycle`. Do not paper over it by inventing a pre-check that cannot be made reliable.
+
+Listing and restoring read `<drive>:\$Recycle.Bin\<user SID>\` directly. Each item is a `$R<id><ext>` data file with a `$I<id><ext>` metadata file. `internal/winbin` decodes both metadata versions (1 on Vista..8.1 with a fixed 260-character path, 2 on Windows 10+ with a length-prefixed one).
+
+Only **64-bit Windows** is supported. `SHFILEOPSTRUCTW` is byte-packed on 32-bit Windows (`shellapi.h` wraps it in `pshpack1.h` under `#ifndef _WIN64`), so the natural Go layout in `internal/trash/shfileop_windows.go` is right for amd64/arm64 and incorrect for 386/arm. `shfileop_unsupported.go` therefore fails a 32-bit build on purpose, rather than letting the shell read a delete request from the incorrect offsets.
+
+## Building and testing
+
+Run `go-toolchain` in the repository root - never bare `go` commands. It tidies, vets, formats, runs the tests with a coverage floor of 80%, and builds.
+
+Commit and push a fix as soon as it is ready. Never hold a commit until a local run finishes: the local run checks the pushed commit afterward. Vet fails on any unused function, so remove the callers of a helper and the helper together.
+
+**It only compiles the host's files.** A type error in `internal/trash/windows.go` or `internal/trash/darwin.go` passes a full local `go-toolchain` run with "Build successful". No job in CI catches that any more, so build every GOOS in this package's constraints yourself after touching a per-platform file.
+
+**Only the `build` job runs the go-toolchain action.** The action publishes every executable it builds to buildhost, and no input turns that off. A run's buildhost release takes one publish: a second job publishing it fails with 409 "release already published". The Mac jobs run the CLI the action wraps instead, through `.github/actions/go-toolchain-cli`. It tidies, vets, tests and builds, and publishes nothing.
+
+The APE is not inert. `GOOS=cosmo` matches the `linux` build tag in gosmopolitan's `matchTag`. So `freedesktop.go` compiles in, and the published APE recycles a file on linux and starts its daemon. What fails is that libc on darwin, where the daemon's `flock` answers `ENOSYS`. Recycling is still not portable-libc work: it is unrelated mechanisms, and only the Windows shell API reaches one of them.
+
+The test suite runs against a real recycle bin redirected into a temporary directory (`isolateTrash`). It therefore exercises the actual FreeDesktop implementation rather than a mock. Platform-neutral unit tests cover Windows and macOS behaviour that cannot run on Linux. That is why the `$I` codec has no build constraint, and why `internal/putback` is built on every Unix rather than only on darwin. Those packages are not reachable from a Linux build. Their statements are outside the coverage number even though their tests run.
+
+The floor is measured against the code the program links.
+
+An independent implementation of the format wrote the `.DS_Store` fixtures in `internal/dsstore/testdata/`. That implementation is the `ds_store` Python package behind `dmgbuild`, which is what keeps the codec honest. `finder_trash.DS_Store` is a single-node file. `finder_trash_many.DS_Store` is a tree with internal nodes. `edited_elsewhere.DS_Store` is a file this package wrote that the other implementation then edited. That case comes up every time Finder touches a trash directory this package wrote to.
+
+Regenerate them with that package if the fixtures ever need to change. Do not hand-edit them.
+
+CI (`.github/workflows/ci.yml`) runs the same toolchain on the host's files alone. A per-platform file that stops compiling reaches master without failing anything. No job may be named `all-builds`. The org's required-builds-manager app posts that status, and the go-toolchain action fails any workflow that shadows it.

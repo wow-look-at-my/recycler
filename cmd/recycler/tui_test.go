@@ -1,6 +1,7 @@
 package main
 
 import (
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -9,20 +10,33 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/wow-look-at-my/recycler"
 	"github.com/wow-look-at-my/tml"
+	"github.com/wow-look-at-my/tml/input"
 )
+
+// testWidth is wide enough that a macOS temp directory under the isolated bin is not cut short.
+const testWidth = 200
 
 // screen renders a frame with the styling taken off, so an assertion is about.
 func screen(t *testing.T, m *model) string {
 	t.Helper()
-	return ansi.Strip(m.frameOf(100, 30))
+	return ansi.Strip(m.frameOf(testWidth, 30))
 }
 
-// press feeds keys through the same Update a terminal does. Painting between them is what sizes the viewport.
+// press routes keys the way the program does: to the model first, and to the view when the model leaves one. Painting
+// between them is what sizes the viewport.
 func press(t *testing.T, m *model, keys ...string) {
 	t.Helper()
+	p, err := tml.NewProgram(m.view, m, tml.ProgramOptions{NoInput: true, Output: io.Discard})
+	require.NoError(t, err)
 	for _, key := range keys {
-		_, _ = m.Update(tml.KeyMsg(key))
+		msg := input.ParseKey(key)
+		if !m.Update(p, msg) {
+			for _, event := range m.view.UI().Update(msg) {
+				m.Update(p, event)
+			}
+		}
 		screen(t, m)
 	}
 }
@@ -69,14 +83,14 @@ func TestMovingTheCursorMovesTheBarAndThePath(t *testing.T) {
 	require.Len(t, m.shown, 2)
 
 	top, _ := m.current()
-	resting := m.frameOf(100, 30)
+	resting := m.frameOf(testWidth, 30)
 
 	press(t, m, "down")
 	next, _ := m.current()
 
 	require.NotEqual(t, top.ID, next.ID, "down moved to the other item")
 	assert.Equal(t, 1, m.selected)
-	assert.NotEqual(t, resting, m.frameOf(100, 30), "the bar moved with it")
+	assert.NotEqual(t, resting, m.frameOf(testWidth, 30), "the bar moved with it")
 	assert.Contains(t, screen(t, m), filepath.Join(work, next.Name), "and the path under the listing followed")
 }
 
@@ -125,17 +139,65 @@ func TestEscapeClearsTheFilter(t *testing.T) {
 }
 
 // Restoring is the only thing that takes an item out of the bin, and it asks before it writes a file back.
+// Backspace takes back a letter and widens the match again, so a typo costs a
+// key rather than the whole filter.
+func TestBackspaceTakesBackALetter(t *testing.T) {
+	m, _ := binWith(t, "notes.md", "report.pdf")
+
+	press(t, m, "/", "r", "e", "p", "z")
+	require.Empty(t, m.shown)
+
+	press(t, m, "backspace")
+	assert.Equal(t, "rep", m.filter)
+	assert.Len(t, m.shown, 1)
+
+	// Backspace on an empty filter is a key that does nothing, not an underflow.
+	press(t, m, "backspace", "backspace", "backspace", "backspace")
+	assert.Empty(t, m.filter)
+	assert.Len(t, m.shown, 2)
+}
+
+// Enter leaves the filter in place and gives the keys back to the listing.
+// This is how an item is picked out of what the filter narrowed to.
+func TestEnterKeepsTheFilterAndReturnsToTheListing(t *testing.T) {
+	m, _ := binWith(t, "notes.md", "report.pdf")
+
+	press(t, m, "/", "r", "e", "p", "enter")
+	assert.False(t, m.filtering)
+	assert.Equal(t, "rep", m.filter)
+	assert.Len(t, m.shown, 1)
+}
+
+// The cursor keys move the selection while the filter is still being typed, so
+// a match can be picked while the filter is still open.
+func TestTheCursorMovesWhileTheFilterIsBeingTyped(t *testing.T) {
+	m, _ := binWith(t, "report-a.pdf", "report-b.pdf")
+
+	press(t, m, "/", "r", "e", "p")
+	require.Len(t, m.shown, 2)
+	top, _ := m.current()
+
+	press(t, m, "down")
+	next, _ := m.current()
+	assert.NotEqual(t, top.ID, next.ID, "the selection did not move")
+	assert.True(t, m.filtering, "a cursor key ended the filter")
+
+	press(t, m, "up")
+	back, _ := m.current()
+	assert.Equal(t, top.ID, back.ID)
+}
+
 func TestRestoreAsksAndThenPutsTheFileBack(t *testing.T) {
 	m, work := binWith(t, "notes.md")
 	original := filepath.Join(work, "notes.md")
 	require.NoFileExists(t, original)
 
 	press(t, m, "enter")
-	assert.True(t, m.asking, "enter asks rather than restoring straight away")
+	assert.Equal(t, askRestore, m.ask, "enter asks rather than restoring straight away")
 	assert.Contains(t, screen(t, m), "Restore notes.md?")
 
 	press(t, m, "enter")
-	assert.False(t, m.asking)
+	assert.Equal(t, askNone, m.ask)
 	assert.FileExists(t, original, "the item went back where it came from")
 	assert.Empty(t, m.shown, "and left the bin")
 	assert.Equal(t, "restored "+original, m.status)
@@ -146,12 +208,13 @@ func TestCancellingTheAskLeavesTheItemInTheBin(t *testing.T) {
 	m, work := binWith(t, "notes.md")
 
 	press(t, m, "enter", "esc")
-	assert.False(t, m.asking)
+	assert.Equal(t, askNone, m.ask)
 	assert.NoFileExists(t, filepath.Join(work, "notes.md"))
 	assert.Len(t, m.shown, 1)
 }
 
-// Nothing is overwritten: a file that took the original location back is reported rather than clobbered.
+// Nothing is overwritten: a file that took the location back is reported
+// rather than clobbered.
 func TestRestoreRefusesToOverwriteWhatTookThePlaceBack(t *testing.T) {
 	m, work := binWith(t, "notes.md")
 	original := writeFile(t, filepath.Join(work, "notes.md"), "something else entirely")
@@ -200,19 +263,166 @@ func TestQTypesIntoTheFilterRatherThanQuitting(t *testing.T) {
 	assert.Contains(t, screen(t, m), "quarterly.txt", "and the filter still matched on it")
 }
 
-// The interface has no way to destroy anything, which is the package's own invariant.
-func TestTheInterfaceOffersNoWayToDeleteAnything(t *testing.T) {
+// No key deletes on its own: a delete asks first, and only the answer deletes.
+func TestNothingIsDeletedWithoutAConfirmation(t *testing.T) {
+	noAgent(t)
 	m, _ := binWith(t, "notes.md")
 
-	// "deleted" is a column and a reassurance, so the words checked here are the ones that would name an action.
-	out := strings.ToLower(screen(t, m))
-	for _, word := range []string{"purge", "empty the", "shred", "wipe", "permanently", "destroy"} {
-		assert.NotContains(t, out, word, "the interface offers %q", word)
-	}
-
-	// Every key that does anything at all, held against the bin: none of them may remove the item.
-	for _, key := range []string{"d", "x", "D", "delete", "backspace", "p", "e", "w", "ctrl+d"} {
+	for _, key := range []string{"d", "x", "D", "delete", "backspace", "p", "e", "w", "ctrl+d", "space", "a"} {
 		press(t, m, key)
 		assert.Len(t, m.shown, 1, "%q took the item out of the bin", key)
+		press(t, m, "esc", "esc")
 	}
+
+	press(t, m, "d")
+	require.Equal(t, askDelete, m.ask)
+	assert.Contains(t, screen(t, m), "Delete notes.md permanently?")
+	press(t, m, "n")
+	assert.Len(t, m.shown, 1, "no keeps the item")
+
+	press(t, m, "d", "y")
+	assert.Empty(t, m.shown, "yes deletes it")
+	assert.Equal(t, "deleted notes.md permanently", m.status)
+	items, err := recycler.List()
+	require.NoError(t, err)
+	assert.Empty(t, items)
+}
+
+// An AI agent session is told no before it is asked.
+func TestAnAgentSessionCannotDeleteFromTheInterface(t *testing.T) {
+	noAgent(t)
+	m, _ := binWith(t, "notes.md")
+	t.Setenv("GROK_BUILD", "1")
+
+	press(t, m, "d")
+	assert.Equal(t, askNone, m.ask)
+	assert.Contains(t, m.status, "an AI agent session cannot delete")
+	assert.Len(t, m.shown, 1)
+}
+
+// Tab to Cancel and enter cancels: enter does what the focused button says.
+func TestEnterOnCancelCancels(t *testing.T) {
+	m, work := binWith(t, "notes.md")
+
+	press(t, m, "enter", "tab")
+	id, _ := m.view.UI().Focused()
+	require.Equal(t, "cancel", id)
+	press(t, m, "enter")
+	assert.Equal(t, askNone, m.ask)
+	assert.NoFileExists(t, filepath.Join(work, "notes.md"))
+}
+
+// Marked items are what an action takes. Space marks and moves on, and a restore puts every marked item back.
+func TestMarkedItemsRestoreTogether(t *testing.T) {
+	m, work := binWith(t, "a.txt", "b.txt", "c.txt")
+
+	press(t, m, "space", "space")
+	assert.Len(t, m.marks, 2)
+	assert.Contains(t, screen(t, m), "2 marked")
+	assert.Contains(t, screen(t, m), "● ")
+
+	press(t, m, "enter")
+	assert.Contains(t, screen(t, m), "Restore 2 items?")
+	press(t, m, "y")
+	assert.Len(t, m.shown, 1)
+	assert.Equal(t, "restored 2 items", m.status)
+	restored := 0
+	for _, name := range []string{"a.txt", "b.txt", "c.txt"} {
+		if _, err := os.Stat(filepath.Join(work, name)); err == nil {
+			restored++
+		}
+	}
+	assert.Equal(t, 2, restored)
+	assert.Empty(t, m.marks)
+}
+
+// a marks every listed item, and again clears the marks.
+func TestMarkAllAndClear(t *testing.T) {
+	m, _ := binWith(t, "a.txt", "b.txt")
+
+	press(t, m, "a")
+	assert.Len(t, m.marks, 2)
+	press(t, m, "a")
+	assert.Empty(t, m.marks)
+	press(t, m, "a", "esc")
+	assert.Empty(t, m.marks, "esc clears the marks before it quits")
+	assert.False(t, m.quitting)
+}
+
+// s steps through the columns, S turns the order around, and the heading wears the arrow.
+func TestSortingChangesTheOrder(t *testing.T) {
+	m, _ := binWith(t, "b.txt", "a.txt", "c.txt")
+	names := func() []string {
+		var out []string
+		for _, item := range m.shown {
+			out = append(out, item.Name)
+		}
+		return out
+	}
+
+	assert.Contains(t, screen(t, m), "DELETED ▼", "newest first by default")
+
+	press(t, m, "s", "s", "s")
+	assert.Equal(t, sortName, m.sortBy)
+	press(t, m, "S")
+	require.False(t, m.descending)
+	assert.Equal(t, []string{"a.txt", "b.txt", "c.txt"}, names())
+	assert.Contains(t, screen(t, m), "NAME ▲")
+	assert.Contains(t, screen(t, m), "sorted by name, ascending")
+
+	press(t, m, "S")
+	assert.Equal(t, []string{"c.txt", "b.txt", "a.txt"}, names())
+}
+
+// The selection stays on its item when the order changes under it.
+func TestSortingKeepsTheSelection(t *testing.T) {
+	m, _ := binWith(t, "b.txt", "a.txt", "c.txt")
+	press(t, m, "down")
+	before, _ := m.current()
+
+	press(t, m, "s", "s", "s")
+	after, _ := m.current()
+	assert.Equal(t, before.ID, after.ID)
+}
+
+// t restores into a directory typed into the prompt.
+func TestRestoreToPutsTheItemWhereItIsTold(t *testing.T) {
+	m, _ := binWith(t, "notes.md")
+	dest := t.TempDir()
+
+	press(t, m, "t")
+	require.True(t, m.prompting)
+	m.prompt = ""
+	for _, r := range dest {
+		press(t, m, string(r))
+	}
+	press(t, m, "enter")
+	assert.False(t, m.prompting)
+	assert.FileExists(t, filepath.Join(dest, "notes.md"))
+	assert.Empty(t, m.shown)
+}
+
+// A directory that is not there keeps the prompt open and says so.
+func TestRestoreToRefusesWhatIsNotADirectory(t *testing.T) {
+	m, _ := binWith(t, "notes.md")
+
+	press(t, m, "t")
+	m.prompt = filepath.Join(t.TempDir(), "nowhere")
+	press(t, m, "enter")
+	assert.True(t, m.prompting)
+	assert.Contains(t, m.status, "is not a directory")
+	assert.Len(t, m.shown, 1)
+}
+
+// The filter stays on screen after enter, so a narrowed listing never reads as the whole bin.
+func TestAKeptFilterStaysOnScreen(t *testing.T) {
+	m, _ := binWith(t, "notes.md", "report.pdf")
+
+	press(t, m, "/", "r", "e", "p", "enter")
+	out := screen(t, m)
+	assert.Contains(t, out, "filter")
+	assert.Contains(t, out, "rep")
+	press(t, m, "esc")
+	assert.Empty(t, m.filter, "esc clears a kept filter")
+	assert.False(t, m.quitting)
 }

@@ -1,5 +1,7 @@
 //go:build !linux && !darwin && !windows && !freebsd && !netbsd && !openbsd && !dragonfly && !solaris
 
+// Backend reports that this GOOS has no recycle bin implementation.
+
 package trash
 
 import (
@@ -13,3 +15,6 @@ import (
 func Backend() (bin.Backend, error) {
 	return nil, fmt.Errorf("%w: %s", bin.ErrUnsupported, runtime.GOOS)
 }
+
+// mountPoints names no volume: a GOOS with no bin has no volume trash either.
+func mountPoints() []string { return nil }

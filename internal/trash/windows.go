@@ -1,13 +1,10 @@
 //go:build windows
 
+// Windows Recycle Bin implementation.
+
 package trash
 
 // Windows Recycle Bin implementation.
-//
-// Recycling goes through the shell (SHFileOperation with FOF_ALLOWUNDO), so it
-// behaves exactly like deleting from Explorer. Listing and restoring read the
-// bin's own on-disk layout directly: every recycled item is a "$R" data file
-// with a matching "$I" metadata file in <drive>:\$Recycle.Bin\<user SID>\.
 
 import (
 	"errors"
@@ -23,6 +20,7 @@ import (
 
 	"github.com/wow-look-at-my/recycler/internal/bin"
 	"github.com/wow-look-at-my/recycler/internal/fsutil"
+	"github.com/wow-look-at-my/recycler/internal/pressure"
 	"github.com/wow-look-at-my/recycler/internal/winbin"
 )
 
@@ -51,6 +49,9 @@ type winTrash struct {
 	sid string
 }
 
+// mountPoints names no volume. Windows keeps a bin on each drive, found by its drive letter.
+func mountPoints() []string { return nil }
+
 func Backend() (bin.Backend, error) {
 	user, err := windows.GetCurrentProcessToken().GetTokenUser()
 	if err != nil {
@@ -59,8 +60,9 @@ func Backend() (bin.Backend, error) {
 	return &winTrash{sid: user.User.Sid.String()}, nil
 }
 
-func (t *winTrash) Recycle(paths []string) error {
+func (t *winTrash) Recycle(paths []string) ([]bin.Disposal, error) {
 	var errs []error
+	disposals := make([]bin.Disposal, 0, len(paths))
 	abs := make([]string, 0, len(paths))
 	for _, path := range paths {
 		p, err := filepath.Abs(path)
@@ -72,15 +74,40 @@ func (t *winTrash) Recycle(paths []string) error {
 			errs = append(errs, fmt.Errorf("recycling %s: %w", path, err))
 			continue
 		}
+		// The bin is on the volume it takes from, so recycling frees nothing
+		// there. Under the daemon's floor the deletion the caller asked for is
+		// the only thing that gives space back.
+		if decision := pressure.Check(p, filepath.VolumeName(p)+`\`); decision.Permanent {
+			if err := os.RemoveAll(p); err != nil {
+				errs = append(errs, fmt.Errorf("deleting %s: %w", path, err))
+				continue
+			}
+			disposals = append(disposals, bin.Disposal{Path: p, Permanent: true, Reason: decision.Reason})
+			continue
+		}
 		abs = append(abs, p)
+		disposals = append(disposals, bin.Disposal{Path: p})
 	}
 	if len(abs) == 0 {
-		return errors.Join(errs...)
+		return disposals, errors.Join(errs...)
 	}
 	if err := shFileOperationDelete(abs); err != nil {
 		errs = append(errs, err)
+		disposals = stillGone(disposals)
 	}
-	return errors.Join(errs...)
+	return disposals, errors.Join(errs...)
+}
+
+// stillGone keeps the disposals whose path the shell emptied: one failed
+// shell call can leave any number of its paths where they were.
+func stillGone(disposals []bin.Disposal) []bin.Disposal {
+	kept := disposals[:0]
+	for _, d := range disposals {
+		if _, err := os.Lstat(d.Path); d.Permanent || errors.Is(err, fs.ErrNotExist) {
+			kept = append(kept, d)
+		}
+	}
+	return kept
 }
 
 // shFileOperationDelete asks the shell to delete every path to the recycle bin
@@ -270,6 +297,9 @@ func (t *winTrash) resolveID(id string) (data, metaPath string, err error) {
 	}
 	return clean, filepath.Join(dir, metaPrefix+base[len(dataPrefix):]), nil
 }
+
+// Dirs reports the recycle bin directories the daemon watches the volumes of.
+func (t *winTrash) Dirs() []string { return t.binDirs() }
 
 // binDirs returns this user's recycle bin directory on every volume that has
 // a directory.

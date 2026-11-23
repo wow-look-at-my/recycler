@@ -98,8 +98,7 @@ func TestRoundTripsEveryValueType(t *testing.T) {
 	require.NoError(t, err)
 	assert.ElementsMatch(t, records, parsed)
 
-	// Records come back in the order the Finder stores them: by name, case
-	// insensitively, then by structure id.
+	// The Finder's own order: by name, case insensitively, then structure id.
 	require.Len(t, parsed, len(records))
 	assert.Equal(t, Record{Name: ".", Code: "vSrn", Type: "long", Data: []byte{0, 0, 0, 1}}, parsed[0])
 	assert.Equal(t, "ptbL", parsed[len(parsed)-2].Code)
@@ -138,6 +137,67 @@ func TestBuildsATreeOfManyNodes(t *testing.T) {
 	parsed, err := Parse(data)
 	require.NoError(t, err)
 	assert.ElementsMatch(t, records, parsed)
+}
+
+// A record count where the LAST record overflows its node leaves a pivot with
+// nothing to its right. The parent then carries a single more record than it
+// has children, and the encoder reads past the end of the level below. Which
+// count does that depends on every name and value length. The range is swept
+// rather than guessed: recycling generated files found it, and the 400-record
+// case above does not.
+func TestEveryRecordCountBuildsAReadableTree(t *testing.T) {
+	for n := 1; n <= 420; n++ {
+		var records []Record
+		for i := range n {
+			name := fmt.Sprintf("item-%03d.txt", i)
+			records = append(records,
+				Ustr(name, "ptbL", fmt.Sprintf("Users/ada/Documents/some/reasonably/long/path/%03d", i)),
+				Ustr(name, "ptbN", name))
+		}
+
+		data, err := Build(records)
+		require.NoError(t, err, "%d records", n)
+
+		parsed, err := Parse(data)
+		require.NoError(t, err, "%d records", n)
+		require.ElementsMatch(t, records, parsed, "%d records", n)
+	}
+}
+
+// A record count that fills the last node exactly promotes a pivot with no
+// node after it. The level above then has fewer children than it has keys,
+// which the encoder reads past the end of. Every count in a range holding
+// several such boundaries has to build a tree the encoder can walk.
+func TestBuildsATreeWhateverTheLastNodeHolds(t *testing.T) {
+	for count := 1; count <= 600; count++ {
+		records := make([]Record, 0, count)
+		for i := range count {
+			name := fmt.Sprintf("item-%04d.txt", i)
+			records = append(records, Ustr(name, "ptbL", fmt.Sprintf("Users/ada/Documents/some/reasonably/long/path/%04d", i)))
+		}
+
+		levels, err := dsBuildLevels(records)
+		require.NoError(t, err, "%d records", count)
+		for level := 1; level < len(levels); level++ {
+			pivots := 0
+			for _, node := range levels[level] {
+				pivots += len(node)
+			}
+			assert.Equal(t, pivots+len(levels[level]), len(levels[level-1]),
+				"%d records: level %d needs a child on each side of every pivot", count, level)
+		}
+
+		// A full round-trip is what proves the encoder reads no further than
+		// the children are, and it costs enough to run on a sample.
+		if count%13 != 0 {
+			continue
+		}
+		data, err := Build(records)
+		require.NoError(t, err, "%d records", count)
+		parsed, err := Parse(data)
+		require.NoError(t, err, "%d records", count)
+		assert.ElementsMatch(t, records, parsed, "%d records", count)
+	}
 }
 
 func TestRejectsRecordsItCannotStore(t *testing.T) {
@@ -243,7 +303,7 @@ func TestValueLengths(t *testing.T) {
 }
 
 // treeStats reads the B-tree master block of a .DS_Store, so a test can tell
-// what shape of tree was actually written.
+// what shape of tree was written.
 func treeStats(t *testing.T, data []byte) (levels, records, nodes int) {
 	t.Helper()
 	book, err := dsSlice(data, binary.BigEndian.Uint32(data[8:12]), binary.BigEndian.Uint32(data[12:16]))

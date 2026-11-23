@@ -1,3 +1,5 @@
+// humanSize renders a byte count in units a person can read at a glance.
+
 package main
 
 import (

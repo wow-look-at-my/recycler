@@ -1,3 +1,5 @@
+// ErrDaemonRunning is returned.
+
 package recycler
 
 import (
@@ -27,8 +29,14 @@ const SizeUnknown = bin.SizeUnknown
 
 type Item = bin.Item
 
+// A Disposal records what a single path handed to [Recycle] got.
+type Disposal = bin.Disposal
+
 // An Eviction records an item.
 type Eviction = daemon.Eviction
+
+// Pressure is a filesystem the daemon left under its target because everything filling it is live.
+type Pressure = daemon.Pressure
 
 // DefaultPollInterval is how often the daemon reads.
 const DefaultPollInterval = daemon.DefaultPollInterval
@@ -39,19 +47,19 @@ func Available() bool {
 	return err == nil
 }
 
-// Recycle moves each path to the recycle bin.
-func Recycle(paths ...string) error {
+// Recycle moves each path to the recycle bin and reports what each got.
+func Recycle(paths ...string) ([]Disposal, error) {
 	if len(paths) == 0 {
-		return nil
+		return nil, nil
 	}
 	b, err := trash.Backend()
 	if err != nil {
-		return err
+		return nil, err
 	}
 	return b.Recycle(paths)
 }
 
-// List returns everything currently in the recycle bin, newest at the front.
+// List returns everything in the recycle bin, newest at the front.
 func List() ([]Item, error) {
 	b, err := trash.Backend()
 	if err != nil {
@@ -91,16 +99,76 @@ func RestoreTo(id, dest string) (string, error) {
 // FreeTarget returns the number of available bytes the daemon keeps.
 func FreeTarget(total uint64) uint64 { return daemon.FreeTarget(total) }
 
-// Sweep reclaims space on every filesystem holding.
-func Sweep() ([]Eviction, error) { return daemon.Sweep() }
+// Sweep reclaims space on every filesystem holding a bin, and reports every a single still under its target afterwards.
+func Sweep() ([]Eviction, []Pressure, error) { return daemon.Sweep() }
 
 // RunDaemon sweeps every interval until ctx is done.
-func RunDaemon(ctx context.Context, interval time.Duration, report func([]Eviction, error)) error {
-	return daemon.Run(ctx, interval, report)
+func RunDaemon(ctx context.Context, interval time.Duration, report func([]Eviction, []Pressure, error)) error {
+	return daemon.Run(ctx, interval, false, report)
 }
+
+// RunDaemonStandby is [RunDaemon] for a daemon a service manager keeps alive:
+// where another daemon of the same build or a newer one is sweeping.
+func RunDaemonStandby(ctx context.Context, interval time.Duration, report func([]Eviction, []Pressure, error)) error {
+	return daemon.Run(ctx, interval, true, report)
+}
+
+// InstallDaemon registers exe's daemon with the platform's service manager.
+func InstallDaemon(exe string) (string, error) { return daemon.Install(exe) }
 
 // DaemonLockPath returns the file whose lock names the running.
 func DaemonLockPath() (string, error) { return daemon.LockPath() }
 
 // EnsureDaemon starts the disk-pressure daemon if none is already.
 func EnsureDaemon(exe string) (bool, error) { return daemon.Ensure(exe) }
+
+// A DaemonIdentity names the build behind a daemon.
+type DaemonIdentity = daemon.Identity
+
+// SetDaemonVersion names the build this program's daemon reports when it takes the lock.
+func SetDaemonVersion(v string) { daemon.Version = v }
+
+// ErrAgentSession is returned when an AI agent session asks to empty the bin or to change the daemon settings.
+var ErrAgentSession = bin.ErrAgentSession
+
+// AgentSession answers the agent variable this process has, if it has one.
+func AgentSession() (string, bool) { return daemon.AgentSession() }
+
+// An Amount is a byte count or a percentage of a filesystem.
+type Amount = daemon.Amount
+
+// ParseAmount reads "20GB", "5GiB" or "15%".
+func ParseAmount(s string) (Amount, error) { return daemon.ParseAmount(s) }
+
+// DaemonSettings are what a person can change about the daemon.
+type DaemonSettings = daemon.Settings
+
+// LoadDaemonSettings reads the daemon settings.
+func LoadDaemonSettings() (DaemonSettings, error) { return daemon.LoadSettings() }
+
+// SaveDaemonSettings writes the daemon settings, which a running daemon reads on its next tick.
+func SaveDaemonSettings(s DaemonSettings) error { return daemon.SaveSettings(s) }
+
+// DaemonSettingsPath answers the file the daemon settings live in.
+func DaemonSettingsPath() (string, error) { return daemon.SettingsPath() }
+
+// A DaemonTarget is what the settings mean on one filesystem holding a bin.
+type DaemonTarget = daemon.Target
+
+// DaemonTargets answers what s means on every filesystem holding a bin.
+func DaemonTargets(s DaemonSettings) ([]DaemonTarget, error) { return daemon.Targets(s) }
+
+// EmptyCriteria select what [Empty] gives back.
+type EmptyCriteria = daemon.EmptyCriteria
+
+// An EmptyReport is what [Empty] gave back, or would give back.
+type EmptyReport = daemon.EmptyReport
+
+// Empty permanently deletes what c selects from the recycle bin, oldest first.
+func Empty(c EmptyCriteria, dryRun bool) (EmptyReport, error) { return daemon.Empty(c, dryRun) }
+
+// Delete permanently removes the items with the given IDs from the recycle bin, and reports what became of each.
+func Delete(ids ...string) ([]Eviction, error) { return daemon.Delete(ids) }
+
+// RunningDaemon returns the build of the daemon holding the lock, and whether one recorded a build at all.
+func RunningDaemon() (DaemonIdentity, bool) { return daemon.Running() }

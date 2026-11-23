@@ -14,6 +14,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/wow-look-at-my/recycler/internal/bin"
+	"github.com/wow-look-at-my/recycler/internal/daemon"
+	"github.com/wow-look-at-my/recycler/internal/trash"
 )
 
 // isolateTrash points the recycle bin at a temporary directory so tests never touch.
@@ -28,9 +30,26 @@ func isolateTrash(t *testing.T) string {
 	t.Setenv("HOME", home)
 	t.Setenv("XDG_DATA_HOME", filepath.Join(home, ".local", "share"))
 
+	// Every volume of the host keeps a trash of its own, which HOME does not move.
+	mounts := trash.Mounts
+	trash.Mounts = func() []string { return nil }
+	t.Cleanup(func() { trash.Mounts = mounts })
+
 	work := filepath.Join(root, "work")
 	require.NoError(t, os.MkdirAll(work, 0o700))
 	return work
+}
+
+// recycleAll recycles every path and asserts each was deferred rather than
+// deleted outright. The suite runs on a filesystem with room, so a permanent
+// deletion here means the pressure check read the wrong filesystem.
+func recycleAll(t *testing.T, paths ...string) {
+	t.Helper()
+	disposals, err := Recycle(paths...)
+	require.NoError(t, err)
+	for _, d := range disposals {
+		require.False(t, d.Permanent, "%s was deleted outright: %s", d.Path, d.Reason)
+	}
 }
 
 func writeFile(t *testing.T, path, content string) string {
@@ -51,7 +70,7 @@ func TestRecycleAndRestore(t *testing.T) {
 	work := isolateTrash(t)
 	path := writeFile(t, filepath.Join(work, "notes.txt"), "keep me")
 
-	require.NoError(t, Recycle(path))
+	recycleAll(t, path)
 	assert.NoFileExists(t, path, "the recycled file is still at its original location")
 
 	items := mustList(t)
@@ -79,7 +98,7 @@ func TestRecycleDirectory(t *testing.T) {
 	writeFile(t, filepath.Join(dir, "a.txt"), "aaa")
 	writeFile(t, filepath.Join(dir, "sub", "b.txt"), "bbbb")
 
-	require.NoError(t, Recycle(dir))
+	recycleAll(t, dir)
 
 	items := mustList(t)
 	require.Len(t, items, 1)
@@ -99,14 +118,13 @@ func TestRecycleKeepsNamesApart(t *testing.T) {
 	first := writeFile(t, filepath.Join(work, "one", "same.txt"), "first")
 	second := writeFile(t, filepath.Join(work, "two", "same.txt"), "second")
 
-	require.NoError(t, Recycle(first, second))
+	recycleAll(t, first, second)
 
 	items := mustList(t)
 	require.Len(t, items, 2)
 	require.NotEqual(t, items[0].ID, items[1].ID, "two files with the same name share an ID")
 
-	// Each has to restore to its own original location, with its own
-	// content.
+	// Each has to restore to its own original location, with its own content.
 	for _, item := range items {
 		_, err := Restore(item.ID)
 		require.NoError(t, err)
@@ -121,7 +139,7 @@ func TestRecycleKeepsNamesApart(t *testing.T) {
 func TestRestoreToExplicitDestination(t *testing.T) {
 	work := isolateTrash(t)
 	path := writeFile(t, filepath.Join(work, "move-me.txt"), "hello")
-	require.NoError(t, Recycle(path))
+	recycleAll(t, path)
 
 	items := mustList(t)
 	require.Len(t, items, 1)
@@ -139,7 +157,7 @@ func TestRestoreToExplicitDestination(t *testing.T) {
 func TestRestoreRefusesToOverwrite(t *testing.T) {
 	work := isolateTrash(t)
 	path := writeFile(t, filepath.Join(work, "busy.txt"), "recycled")
-	require.NoError(t, Recycle(path))
+	recycleAll(t, path)
 	writeFile(t, path, "new file in the old place")
 
 	items := mustList(t)
@@ -163,16 +181,17 @@ func TestBackendDestroysOnlyUnderDiskPressure(t *testing.T) {
 		got = append(got, iface.Method(i).Name)
 	}
 	sort.Strings(got)
-	assert.Equal(t, []string{"Evict", "List", "Recycle", "Restore"}, got)
+	// Evict is the only method here that destroys anything, and only internal/daemon calls it.
+	assert.Equal(t, []string{"Dirs", "Evict", "List", "Recycle", "Restore"}, got)
 }
 
 // Sweep against a real bin with room to spare: it reads the listing, finds no filesystem under its
 // target.
 func TestSweepGivesNothingBackWhenThereIsRoom(t *testing.T) {
 	work := isolateTrash(t)
-	require.NoError(t, Recycle(writeFile(t, filepath.Join(work, "safe.txt"), "safe")))
+	recycleAll(t, writeFile(t, filepath.Join(work, "safe.txt"), "safe"))
 
-	evicted, err := Sweep()
+	evicted, _, err := Sweep()
 	require.NoError(t, err)
 	assert.Empty(t, evicted)
 
@@ -184,7 +203,7 @@ func TestUnknownIDsAreRejected(t *testing.T) {
 	outsider := writeFile(t, filepath.Join(work, "innocent.txt"), "do not touch")
 
 	// Recycle something so the trash directories exist.
-	require.NoError(t, Recycle(writeFile(t, filepath.Join(work, "decoy.txt"), "decoy")))
+	recycleAll(t, writeFile(t, filepath.Join(work, "decoy.txt"), "decoy"))
 
 	for _, id := range []string{"", "not-an-id", outsider, filepath.Join(work, "nope", "files", "x")} {
 		_, getErr := Get(id)
@@ -205,7 +224,7 @@ func TestRecycleReportsMissingPaths(t *testing.T) {
 	work := isolateTrash(t)
 	good := writeFile(t, filepath.Join(work, "good.txt"), "good")
 
-	err := Recycle(filepath.Join(work, "absent.txt"), good)
+	_, err := Recycle(filepath.Join(work, "absent.txt"), good)
 	require.Error(t, err, "expected an error for the missing path")
 	assert.Contains(t, err.Error(), "absent.txt", "the error does not mention the failing path")
 
@@ -217,7 +236,7 @@ func TestRecycleReportsMissingPaths(t *testing.T) {
 
 func TestRecycleNothing(t *testing.T) {
 	isolateTrash(t)
-	assert.NoError(t, Recycle())
+	recycleAll(t)
 }
 
 func TestListOnAnEmptyBin(t *testing.T) {
@@ -227,10 +246,14 @@ func TestListOnAnEmptyBin(t *testing.T) {
 	assert.Empty(t, items)
 }
 
-// The daemon is reached through this package, so each entry point has to actually forward to it.
+// The daemon is reached through this package, so each entry point has to
+// forward to it.
 func TestTheDaemonIsReachableFromHere(t *testing.T) {
 	isolateTrash(t)
-	t.Setenv("XDG_CACHE_HOME", t.TempDir())
+	state := t.TempDir()
+	was := daemon.StateDir
+	daemon.StateDir = func() (string, error) { return state, nil }
+	t.Cleanup(func() { daemon.StateDir = was })
 
 	assert.Equal(t, uint64(100), FreeTarget(1000), "a tenth of a small filesystem")
 
@@ -239,15 +262,22 @@ func TestTheDaemonIsReachableFromHere(t *testing.T) {
 	assert.Equal(t, "daemon.lock", filepath.Base(lock))
 	assert.DirExists(t, filepath.Dir(lock))
 
-	// A test binary is never the daemon: running it with a "daemon" argument re-runs the suite, which
-	// recycles.
+	// A test binary is never the daemon: running it with a "daemon" argument re-runs the suite, which recycles.
 	started, err := EnsureDaemon(filepath.Join(t.TempDir(), "recycler.test"))
 	assert.False(t, started)
 	require.Error(t, err)
 
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
-	assert.ErrorIs(t, RunDaemon(ctx, time.Millisecond, func([]Eviction, error) { cancel() }), context.Canceled)
+	assert.ErrorIs(t, RunDaemon(ctx, time.Millisecond, func([]Eviction, []Pressure, error) { cancel() }), context.Canceled)
+
+	standbyCtx, cancelStandby := context.WithCancel(t.Context())
+	defer cancelStandby()
+	assert.ErrorIs(t, RunDaemonStandby(standbyCtx, time.Millisecond, func([]Eviction, []Pressure, error) { cancelStandby() }), context.Canceled)
+
+	// An executable that is not there is refused before any service manager is asked.
+	_, err = InstallDaemon(filepath.Join(t.TempDir(), "gone"))
+	assert.ErrorIs(t, err, os.ErrNotExist)
 }
 
 func TestAvailable(t *testing.T) {

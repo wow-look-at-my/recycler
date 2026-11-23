@@ -1,3 +1,5 @@
+// interactive reports whether each end of the conversation.
+
 package main
 
 import (
@@ -17,8 +19,9 @@ lists or restores what is already in there.
 Run with no arguments on a terminal, it opens the bin in a full-screen
 interface; "recycler tui" opens it anywhere.
 
-Nothing here deletes anything permanently: an item leaves the bin only by being
-restored. Emptying the bin is left to the desktop environment.
+An item leaves the bin by being restored, or by "recycler empty", which deletes
+only what its selectors pick, never anything recycled in the last day, and asks
+first. An AI agent session cannot run it.
 
 The same commands work on every platform: the FreeDesktop trash can on Linux,
 the Trash on macOS and the Recycle Bin on Windows.`,

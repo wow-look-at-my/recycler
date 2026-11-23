@@ -1,3 +1,5 @@
+// ErrUnsupported is returned on platforms with no recycle bin.
+
 package bin
 
 import (
@@ -22,6 +24,9 @@ var (
 
 	// ErrDaemonRunning is returned when another daemon already holds.
 	ErrDaemonRunning = errors.New("recycler: a daemon is already running")
+
+	// ErrAgentSession is returned when an AI agent asks to empty the bin or change the daemon settings.
+	ErrAgentSession = errors.New("recycler: refused for an AI agent session")
 )
 
 const SizeUnknown int64 = -1
@@ -61,10 +66,43 @@ func Sort(items []Item) {
 	})
 }
 
+// A Disposal records what a single path handed to Recycle got.
+type Disposal struct {
+	Path string
+
+	// Permanent marks a path removed outright, with Reason saying why.
+	Permanent bool
+	Reason    string
+}
+
 // A Backend is the per-platform implementation of the package API.
 type Backend interface {
-	Recycle(paths []string) error
+	// Recycle reports every path it was given, the ones it failed on included.
+	Recycle(paths []string) ([]Disposal, error)
 	List() ([]Item, error)
 	Restore(id, dest string) (string, error)
 	Evict(id string) error
+
+	// Dirs answers this user's bin directories, empty ones included.
+	Dirs() []string
+}
+
+// An Index is a listing that directory watches keep current. Reading it costs
+// no file system access.
+type Index interface {
+	// Refresh applies the changes seen since the last call. It answers the bin directories whose contents changed.
+	Refresh() ([]string, error)
+
+	// List answers the items, newest first, as of the last Refresh.
+	List() []Item
+
+	// Dirs answers the bin directories, as of the last Refresh.
+	Dirs() []string
+
+	Close() error
+}
+
+// A Watchable backend can keep an Index.
+type Watchable interface {
+	Watch() (Index, error)
 }

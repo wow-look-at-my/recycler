@@ -6,25 +6,48 @@
 	<Property name="size" type="string" default=""/>
 	<Property name="status" type="string" default=""/>
 	<Property name="statusStyle" type="string" default="muted"/>
-	<Property name="frame" type="int" default="0"/>
 
 	<Property name="filter" type="string" default=""/>
 	<Property name="cursor" type="int" default="0"/>
 	<Property name="filtering" type="bool" default="false"/>
+	<Property name="filterShown" type="bool" default="false"/>
+
+	<!-- The headings carry the sort arrow, so the column the listing is in
+	     order of says so where the eye already is. -->
+	<Property name="columns" type="string[]" default="NAME,DELETED,SIZE,FROM"/>
+	<Property name="sortLabel" type="string" default=""/>
+	<Property name="marked" type="string" default=""/>
+	<Property name="hints" type="string" default=""/>
+
+	<Property name="menuOpen" type="bool" default="false"/>
+	<Property name="menuX" type="int" default="0"/>
+	<Property name="menuY" type="int" default="0"/>
+	<Property name="menuItems" type="string[]" default=""/>
+	<Property name="menuSelected" type="int" default="0"/>
+
+	<Property name="prompting" type="bool" default="false"/>
+	<Property name="prompt" type="string" default=""/>
+	<Property name="promptCursor" type="int" default="0"/>
+	<Property name="promptText" type="string" default=""/>
 
 	<!-- Rows are the table's own delimited cells. The host filters and formats
 	     them, because it is the host that knows what a size or a date is. -->
 	<Property name="rows" type="string[]" default=""/>
 	<Property name="selected" type="int" default="0"/>
 	<Property name="offset" type="int" default="0"/>
+	<Property name="lines" type="int" default="0"/>
 	<Property name="empty" type="bool" default="false"/>
 	<Property name="emptyText" type="string" default="the recycle bin is empty"/>
 
 	<Property name="origin" type="string" default=""/>
 
-	<Property name="asking" type="bool" default="false"/>
+	<Property name="askPlain" type="bool" default="false"/>
+	<Property name="askTitle" type="string" default="Restore"/>
 	<Property name="ask" type="string" default=""/>
 	<Property name="askTo" type="string" default=""/>
+	<Property name="askLabel" type="string" default="Restore"/>
+	<Property name="askVariant" type="string" default="primary"/>
+	<Property name="askDanger" type="bool" default="false"/>
 
 	<Template>
 		<Canvas>
@@ -33,12 +56,16 @@
 					<Text style="title">recycle bin</Text>
 					<Badge label="{count}"/>
 					<Text style="muted">{size}</Text>
+					<Text style="warn" if="{marked}">{marked}</Text>
 					<Spacer width="*"/>
+					<Text style="muted">{sortLabel}</Text>
 				</Stack>
 
 				<Rule color="{theme.line}"/>
 
-				<Stack orientation="horizontal" gap="1" valign="middle" if="{filtering}">
+				<!-- The filter stays on screen while it narrows the listing, not only
+				     while it is typed, or a narrowed listing reads as the whole bin. -->
+				<Stack orientation="horizontal" gap="1" valign="middle" if="{filterShown}">
 					<Text style="muted">filter</Text>
 					<Textbox id="filter" value="{filter}" cursor="{cursor}" width="*"
 						placeholder="name or original path"/>
@@ -46,12 +73,15 @@
 
 				<Border title="Items" color="{theme.line}" width="*" height="*">
 					<Text style="muted" if="{empty}">{emptyText}</Text>
-					<Scrollbox id="items" offset="{offset}" if="{not empty}">
+					<!-- rows is a screenful from offset on, and lines is the height of
+					     the whole listing. A table of the whole bin costs the whole bin
+					     on every frame. -->
+					<Scrollbox id="items" offset="{offset}" contentHeight="{lines}" height="*" if="{not empty}">
 						<!-- The unit separator splits the cells because they hold file
 						     paths, and every printable delimiter is legal in a name.
 						     wrap="false" keeps a row to a line, which is what lets a
 						     click's y and the scroll offset name a row. -->
-						<Table id="rows" columns="NAME,DELETED,SIZE,FROM" rows="{rows}"
+						<Table id="rows" columns="{columns}" rows="{rows}"
 							separator="&#31;" selected="{selected}" border="false"
 							wrap="false" width="*"/>
 					</Scrollbox>
@@ -65,20 +95,45 @@
 				     wrote, and that is longer than any corner of the header. -->
 				<Text style="{statusStyle}" width="*" if="{status}">{status}</Text>
 
-				<Stack orientation="horizontal" gap="2">
-					<Text style="muted">enter restores &#183; / filters &#183; r reloads &#183; q quits</Text>
-					<Spacer width="*"/>
-					<Text style="muted">nothing here is ever deleted</Text>
-				</Stack>
+				<Text style="muted" width="*">{hints}</Text>
 			</Stack>
 
-			<Popup title="Restore" color="{theme.warn}" if="{asking}">
+			<!-- The context menu sits where the right click landed. The host keeps
+			     it inside the screen. -->
+			<Border id="menu" Canvas.x="{menuX}" Canvas.y="{menuY}" color="{theme.accent}" if="{menuOpen}">
+				<List id="menuList" items="{menuItems}" selected="{menuSelected}" cursor="&#8250;"/>
+			</Border>
+
+			<Popup title="{askTitle}" color="{theme.warn}" if="{askPlain}">
 				<Stack gap="1">
 					<Text>{ask}</Text>
 					<Text style="muted">{askTo}</Text>
 					<Stack orientation="horizontal" gap="2">
-						<Button id="confirm" action="restore" label="Restore" variant="primary"/>
+						<Button id="confirm" action="confirm" label="{askLabel}" variant="{askVariant}"/>
 						<Button id="cancel" action="cancel" label="Cancel"/>
+					</Stack>
+				</Stack>
+			</Popup>
+
+			<Popup title="{askTitle}" color="{theme.danger}" if="{askDanger}">
+				<Stack gap="1">
+					<Text>{ask}</Text>
+					<Text style="danger">{askTo}</Text>
+					<Stack orientation="horizontal" gap="2">
+						<Button id="confirmDanger" action="confirm" label="{askLabel}" variant="danger"/>
+						<Button id="cancelDanger" action="cancel" label="Cancel"/>
+					</Stack>
+				</Stack>
+			</Popup>
+
+			<Popup title="Restore to" color="{theme.accent}" if="{prompting}">
+				<Stack gap="1">
+					<Text>{promptText}</Text>
+					<Textbox id="dest" value="{prompt}" cursor="{promptCursor}" width="60"
+						placeholder="a directory to put it in"/>
+					<Stack orientation="horizontal" gap="2">
+						<Button id="promptOk" action="restoreTo" label="Restore here" variant="primary"/>
+						<Button id="promptCancel" action="cancel" label="Cancel"/>
 					</Stack>
 				</Stack>
 			</Popup>

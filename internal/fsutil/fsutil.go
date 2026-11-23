@@ -1,3 +1,5 @@
+// move relocates src to dst, falling back to a copy when src and dst.
+
 package fsutil
 
 import (
@@ -8,6 +10,10 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
+	"sync/atomic"
+
+	"github.com/wow-look-at-my/go-containers/set"
 
 	"github.com/wow-look-at-my/recycler/internal/bin"
 )
@@ -92,16 +98,51 @@ func copyFile(src, dst string, perm fs.FileMode) error {
 	return out.Close()
 }
 
-// TreeSize returns the total size.
+// statWorkers bounds the concurrent stats: an lstat waits on the inode, not a core.
+const statWorkers = 64
+
+// TreeSize returns the total length the files under path state.
 func TreeSize(path string) int64 {
+	return treeSum(path, fs.FileInfo.Size)
+}
+
+// DiskUsage returns the bytes the files under path occupy on their
+// filesystem, which is what a copy of them needs.
+func DiskUsage(path string) int64 {
+	return treeSum(path, Allocated)
+}
+
+// treeSum adds measure over every entry under path, or reports
+// [bin.SizeUnknown] when part of the tree cannot be read.
+func treeSum(path string, measure func(fs.FileInfo) int64) int64 {
 	info, err := os.Lstat(path)
 	if err != nil {
 		return bin.SizeUnknown
 	}
 	if !info.IsDir() {
-		return info.Size()
+		return measure(info)
 	}
-	var total int64
+
+	entries := make(chan fs.DirEntry, statWorkers)
+	var total atomic.Int64
+	var failed atomic.Bool
+	var workers sync.WaitGroup
+	for range statWorkers {
+		workers.Add(1)
+		go func() {
+			defer workers.Done()
+			for d := range entries {
+				fi, err := d.Info()
+				if err != nil {
+					failed.Store(true)
+					continue
+				}
+				total.Add(measure(fi))
+			}
+		}()
+	}
+
+	// The walk itself is serial: a tree holds far fewer directories than files.
 	err = filepath.WalkDir(path, func(_ string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -109,21 +150,20 @@ func TreeSize(path string) int64 {
 		if d.IsDir() {
 			return nil
 		}
-		fi, err := d.Info()
-		if err != nil {
-			return err
-		}
-		total += fi.Size()
+		entries <- d
 		return nil
 	})
-	if err != nil {
+	close(entries)
+	workers.Wait()
+
+	if err != nil || failed.Load() {
 		return bin.SizeUnknown
 	}
-	return total
+	return total.Load()
 }
 
-// UniqueName returns a name derived from want that does not yet exist.
-func UniqueName(want string, dirs ...string) string {
+// UniqueName returns a name derived from want that exists in none of dirs and is not in taken.
+func UniqueName(want string, taken set.Set[string], dirs ...string) string {
 	if want == "" || want == "." || want == ".." || strings.ContainsRune(want, filepath.Separator) {
 		want = "recycled"
 	}
@@ -134,7 +174,7 @@ func UniqueName(want string, dirs ...string) string {
 		if n > 0 {
 			candidate = fmt.Sprintf("%s_%d%s", base, n, ext)
 		}
-		if !existsIn(candidate, dirs) {
+		if !taken.Contains(candidate) && !existsIn(candidate, dirs) {
 			return candidate
 		}
 	}

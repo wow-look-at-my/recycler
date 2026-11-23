@@ -1,5 +1,7 @@
 //go:build windows
 
+// errCrossDevice is the error a rename fails with when source.
+
 package fsutil
 
 import "syscall"

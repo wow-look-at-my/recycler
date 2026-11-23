@@ -7,6 +7,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/wow-look-at-my/recycler/internal/daemon"
 )
 
 // capture runs a command line through the same routing main uses, and returns everything it printed.
@@ -47,6 +48,20 @@ func TestTUICommandIsRegistered(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "tui", cmd.Name())
 	require.NotNil(t, cmd.RunE, "the command runs something")
+}
+
+// "daemon up" must reach the spawner and return, never fall through to a foreground sweep loop that
+// nothing would stop. Under a test binary the spawner refuses, which is what proves it was reached.
+func TestDaemonUpAsksTheSpawnerAndReturns(t *testing.T) {
+	isolateTrash(t)
+	state := t.TempDir()
+	was := daemon.StateDir
+	daemon.StateDir = func() (string, error) { return state, nil }
+	t.Cleanup(func() { daemon.StateDir = was })
+
+	_, err := capture(t, false, "daemon", "up")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "test binary")
 }
 
 // Routing on a bare invocation must not swallow an argument.
