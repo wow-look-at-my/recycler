@@ -289,7 +289,7 @@ func TestAVerboseOnceSweepSaysWhatItLoaded(t *testing.T) {
 	isolateState(t)
 	out, err := run(t, "", "daemon", "--once", "--verbose")
 	require.NoError(t, err)
-	assert.Contains(t, out, "settings: keep a tenth of each filesystem")
+	assert.Contains(t, out, "settings: keep a fortieth of each filesystem")
 
 	out, err = run(t, "", "daemon", "--once")
 	require.NoError(t, err)

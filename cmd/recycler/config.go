@@ -17,8 +17,8 @@ var configCmd = &cobra.Command{
 	Long: `Show the daemon settings, and what they mean on each filesystem holding a bin.
 
   min-free   free space the daemon keeps on each filesystem holding a bin,
-             as 20GB, 5GiB or 15%. The built-in floor is a tenth of the
-             filesystem, at most 1 GiB, and no setting goes under it: below
+             as 20GB, 5GiB or 15%. The built-in floor is a fortieth of
+             the filesystem, at most 200 GiB, and no setting goes under it: below
              it a recycle deletes instead. No setting goes over half of the
              filesystem either, or the daemon would chase it by giving back
              every recycled item.
@@ -38,7 +38,7 @@ change them.`,
 		out := cmd.OutOrStdout()
 		minFree := s.MinFree
 		if minFree == "" {
-			minFree = "built-in (a tenth of each filesystem, at most 1 GiB)"
+			minFree = "built-in (a fortieth of each filesystem, at most 200 GiB)"
 		}
 		fmt.Fprintf(out, "min-free: %s\n", minFree)
 		fmt.Fprintf(out, "verbose: %t\n", s.Verbose)

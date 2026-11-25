@@ -16,6 +16,7 @@ import (
 	"github.com/wow-look-at-my/recycler/internal/bin"
 	"github.com/wow-look-at-my/recycler/internal/cargotarget"
 	"github.com/wow-look-at-my/recycler/internal/diskfree"
+	"github.com/wow-look-at-my/recycler/internal/pressure"
 	"github.com/wow-look-at-my/recycler/internal/trash"
 )
 
@@ -23,23 +24,16 @@ const (
 	// DefaultPollInterval is how often the daemon reads free space. A tick costs a statfs per filesystem.
 	DefaultPollInterval = time.Second
 
-	// freeTargetFraction and freeTargetCeiling.
-	freeTargetFraction = 10
-	freeTargetCeiling  = 1 << 30
-
 	// recoverMultiple is how far past the trigger a sweep frees, for runway.
-	recoverMultiple = 8
+	recoverMultiple = 2
 
-	// Looser than freeTargetFraction: the same fraction leaves no runway.
+	// The bound on the runway. A sweep never frees past a fifth of the filesystem.
 	recoverCeilingFraction = 5
 )
 
 // FreeTarget is the available bytes the daemon keeps on a filesystem of the given size.
 func FreeTarget(total uint64) uint64 {
-	if target := total / freeTargetFraction; target < freeTargetCeiling {
-		return target
-	}
-	return freeTargetCeiling
+	return pressure.Floor(total)
 }
 
 // RecoverTarget is what a sweep frees up to after FreeTarget is crossed, bounded

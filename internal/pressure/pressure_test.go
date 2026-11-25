@@ -11,19 +11,20 @@ import (
 // The floor here and the daemon's target are the same number by intent. A
 // single decides when recycling stops deferring anything, the other when a
 // sweep starts.
-func TestTheFloorMatchesTheDaemonsTarget(t *testing.T) {
-	assert.Equal(t, uint64(1<<30), Floor(10<<30))
-	assert.Equal(t, uint64(1<<30), Floor(1<<40))
+func TestTheFloorScalesWithTheFilesystem(t *testing.T) {
+	assert.Equal(t, uint64(50_000_000_000), Floor(2_000_000_000_000), "2 TB keeps 50 GB")
+	assert.Equal(t, uint64(1000), Floor(40_000))
+	assert.Equal(t, uint64(100<<30), Floor(4000<<30))
 
-	// Small media keep the fraction, so they do not become a delete device.
-	assert.Equal(t, uint64(50<<20), Floor(500<<20))
-	assert.Equal(t, uint64(100), Floor(1000))
+	// Large filesystems stop at the ceiling.
+	assert.Equal(t, uint64(floorCeiling), Floor(floorCeiling*floorFraction))
+	assert.Equal(t, uint64(floorCeiling), Floor(100<<40))
 }
 
 const terabyte = uint64(1) << 40
 
 func TestRoomToDeferMeansOrdinaryRecycling(t *testing.T) {
-	d := decide(4<<30, terabyte)
+	d := decide(64<<30, terabyte)
 	assert.False(t, d.Permanent)
 	assert.Empty(t, d.Reason)
 }
@@ -39,7 +40,7 @@ func TestBelowTheFloorADeletionIsPermanent(t *testing.T) {
 // A copy onto another filesystem bigger than what is left there cannot be
 // deferred at all.
 func TestACopyLargerThanTheSpaceLeftIsDeletedOutright(t *testing.T) {
-	d := fits(decide(4<<30, terabyte), 4<<30, 8<<30)
+	d := fits(decide(64<<30, terabyte), 4<<30, 8<<30)
 	assert.True(t, d.Permanent)
 	assert.Contains(t, d.Reason, "does not fit")
 }
@@ -47,14 +48,14 @@ func TestACopyLargerThanTheSpaceLeftIsDeletedOutright(t *testing.T) {
 // Both states are separate. A copy that fits, onto a filesystem with room, is
 // recycled however large it is.
 func TestACopyThatFitsIsRecycled(t *testing.T) {
-	d := fits(decide(8<<30, terabyte), 8<<30, 4<<30)
+	d := fits(decide(128<<30, terabyte), 128<<30, 64<<30)
 	assert.False(t, d.Permanent)
 }
 
 // Guessing "permanent" from a size nobody could measure would destroy a file
 // over a missing answer.
 func TestAnUnmeasurableItemIsNotDeletedOnSizeAlone(t *testing.T) {
-	d := fits(decide(4<<30, terabyte), 4<<30, bin.SizeUnknown)
+	d := fits(decide(64<<30, terabyte), 4<<30, bin.SizeUnknown)
 	assert.False(t, d.Permanent)
 }
 

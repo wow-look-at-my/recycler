@@ -253,7 +253,7 @@ func (c *settingsCache) load() Settings {
 }
 
 func (s Settings) describe() string {
-	free := "a tenth of each filesystem, at most 1 GiB"
+	free := "a fortieth of each filesystem, at most 200 GiB"
 	if s.MinFree != "" {
 		free = s.MinFree + fmt.Sprintf(" of each filesystem, at least the built-in floor and at most 1/%d of it", MaxFreeFraction)
 	}

@@ -26,8 +26,8 @@ var daemonCmd = &cobra.Command{
 
 Recycling defers a deletion instead of performing one, which works only while
 there is room to defer it into. This reads free space on the interval below
-and, when a filesystem holding a recycle bin has less than a tenth of itself
-free (or less than 1 GiB, whichever is smaller), destroys recycled items
+and, when a filesystem holding a recycle bin has less than a fortieth of itself
+free (or less than 200 GiB, whichever is smaller), destroys recycled items
 oldest first until it does.
 
 Free space is what this caller can reach. A filesystem that reserves blocks for

@@ -188,7 +188,7 @@ func TestParseAmount(t *testing.T) {
 func TestMinFreeIsHeldBetweenTheFloorAndHalf(t *testing.T) {
 	tib := uint64(1) << 40
 	assert.Equal(t, FreeTarget(tib), Settings{}.Trigger(tib))
-	assert.Equal(t, uint64(20<<30), Settings{MinFree: "20GiB"}.Trigger(tib))
+	assert.Equal(t, uint64(40<<30), Settings{MinFree: "40GiB"}.Trigger(tib))
 	assert.Equal(t, FreeTarget(tib), Settings{MinFree: "1MiB"}.Trigger(tib), "under the floor")
 	assert.Equal(t, uint64(1000), Settings{MinFree: "1TB"}.Trigger(2000), "over half")
 	assert.Equal(t, tib/5, Settings{MinFree: "20%"}.Trigger(tib))
@@ -206,14 +206,14 @@ func TestASweepFollowsMinFree(t *testing.T) {
 	tib := uint64(1) << 40
 	items := []bin.Item{item("a", 1<<30, 5)}
 	b := &fakeBackend{}
-	evicted, _, err := sweepItems(b, items, dirs, freeSpace(5<<30, tib), Settings{})
+	evicted, _, err := sweepItems(b, items, dirs, freeSpace(30<<30, tib), Settings{})
 	require.NoError(t, err)
 	assert.Empty(t, evicted)
 
-	evicted, _, err = sweepItems(b, items, dirs, freeSpace(5<<30, tib), Settings{MinFree: "10GiB"})
+	evicted, _, err = sweepItems(b, items, dirs, freeSpace(30<<30, tib), Settings{MinFree: "40GiB"})
 	require.NoError(t, err)
 	require.Len(t, evicted, 1)
-	assert.Contains(t, evicted[0].Reason, "under its 10.0 GiB trigger")
+	assert.Contains(t, evicted[0].Reason, "under its 40.0 GiB trigger")
 }
 
 func TestSettingsRoundTrip(t *testing.T) {
