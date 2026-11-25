@@ -94,7 +94,7 @@ func TestASweepLeavesAFilesystemWithRoomAlone(t *testing.T) {
 	b := &fakeBackend{}
 	items := []bin.Item{item("old.txt", 500, 48), item("new.txt", 500, 1)}
 
-	evicted, _, err := sweepItems(b, items, dirs, freeSpace(1000, 2000), Settings{})
+	evicted, _, err := sweepItems(b, items, dirs, freeSpace(1000, 8000), Settings{})
 	require.NoError(t, err)
 	assert.Empty(t, evicted)
 	assert.Empty(t, b.evicted, "nothing may go while there is room")
@@ -109,7 +109,7 @@ func TestASweepTakesTheOldestFirstAndStopsAtTheTarget(t *testing.T) {
 		item("middle.txt", 400, 24),
 	}
 
-	evicted, _, err := sweepItems(b, items, dirs, freeSpace(50, 2000), Settings{})
+	evicted, _, err := sweepItems(b, items, dirs, freeSpace(50, 8000), Settings{})
 	require.NoError(t, err)
 	assert.Equal(t, []string{filepath.Join("/trash", "files", "oldest.txt")}, b.evicted)
 	require.Len(t, evicted, 1)
@@ -126,7 +126,7 @@ func TestASweepKeepsGoingUntilTheTargetIsMet(t *testing.T) {
 	}
 
 	// Wants a target it has none of, so the oldest go and the newest survives.
-	_, _, err := sweepItems(b, items, dirs, freeSpace(0, 2000), Settings{})
+	_, _, err := sweepItems(b, items, dirs, freeSpace(0, 8000), Settings{})
 	require.NoError(t, err)
 	assert.Equal(t, []string{
 		filepath.Join("/trash", "files", "a.txt"),
@@ -142,7 +142,7 @@ func TestAnItemOfUnknownSizeIsNeverEvicted(t *testing.T) {
 		item("known.txt", 300, 1),
 	}
 
-	_, _, err := sweepItems(b, items, dirs, freeSpace(0, 2000), Settings{})
+	_, _, err := sweepItems(b, items, dirs, freeSpace(0, 8000), Settings{})
 	require.NoError(t, err)
 	assert.Equal(t, []string{filepath.Join("/trash", "files", "known.txt")}, b.evicted,
 		"the unsized item must survive even though it is older")
@@ -157,7 +157,7 @@ func TestAFailedEvictionDoesNotCountAsSpaceReclaimed(t *testing.T) {
 		item("next.txt", 200, 24),
 	}
 
-	evicted, _, err := sweepItems(b, items, dirs, freeSpace(0, 2000), Settings{})
+	evicted, _, err := sweepItems(b, items, dirs, freeSpace(0, 8000), Settings{})
 	require.NoError(t, err)
 	assert.Equal(t, []string{filepath.Join("/trash", "files", "next.txt")}, b.evicted)
 	require.Len(t, evicted, 2)
@@ -174,7 +174,7 @@ func TestEachFilesystemIsSweptOnItsOwnPressure(t *testing.T) {
 	}
 	free := func(probe string) (uint64, uint64, error) {
 		if probe == "/trash/files" {
-			return 0, 2000, nil // full
+			return 0, 8000, nil // full
 		}
 		return 2000, 2000, nil // empty
 	}

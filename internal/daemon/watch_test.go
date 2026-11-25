@@ -67,7 +67,7 @@ type watched struct {
 func watchABin(t *testing.T) *watched {
 	t.Helper()
 	dir := t.TempDir()
-	w := &watched{b: &listedBackend{dir: dir}, clock: time.Now(), avail: 1000, total: 2000}
+	w := &watched{b: &listedBackend{dir: dir}, clock: time.Now(), avail: 1000, total: 8000}
 	for _, sub := range []string{"files", "info"} {
 		require.NoError(t, os.Mkdir(filepath.Join(dir, sub), 0o700))
 	}
@@ -231,7 +231,7 @@ func TestAShortFilesystemIsListedAgainOnlyWhileListingHelps(t *testing.T) {
 	assert.Equal(t, 2, w.b.lists, "a bin with nothing to give was listed again")
 	require.Len(t, pressures, 1, "a short filesystem went unreported on a tick that did not list")
 	assert.Equal(t, uint64(50), pressures[0].Avail)
-	assert.Equal(t, FreeTarget(2000), pressures[0].Target)
+	assert.Equal(t, FreeTarget(8000), pressures[0].Target)
 }
 
 // An eviction that failed is tried again for as long as the filesystem is

@@ -24,7 +24,7 @@ func TestTheFloorScalesWithTheFilesystem(t *testing.T) {
 const terabyte = uint64(1) << 40
 
 func TestRoomToDeferMeansOrdinaryRecycling(t *testing.T) {
-	d := decide(4<<30, terabyte)
+	d := decide(64<<30, terabyte)
 	assert.False(t, d.Permanent)
 	assert.Empty(t, d.Reason)
 }
@@ -40,7 +40,7 @@ func TestBelowTheFloorADeletionIsPermanent(t *testing.T) {
 // A copy onto another filesystem bigger than what is left there cannot be
 // deferred at all.
 func TestACopyLargerThanTheSpaceLeftIsDeletedOutright(t *testing.T) {
-	d := fits(decide(4<<30, terabyte), 4<<30, 8<<30)
+	d := fits(decide(64<<30, terabyte), 4<<30, 8<<30)
 	assert.True(t, d.Permanent)
 	assert.Contains(t, d.Reason, "does not fit")
 }
@@ -48,14 +48,14 @@ func TestACopyLargerThanTheSpaceLeftIsDeletedOutright(t *testing.T) {
 // Both states are separate. A copy that fits, onto a filesystem with room, is
 // recycled however large it is.
 func TestACopyThatFitsIsRecycled(t *testing.T) {
-	d := fits(decide(8<<30, terabyte), 8<<30, 4<<30)
+	d := fits(decide(128<<30, terabyte), 128<<30, 64<<30)
 	assert.False(t, d.Permanent)
 }
 
 // Guessing "permanent" from a size nobody could measure would destroy a file
 // over a missing answer.
 func TestAnUnmeasurableItemIsNotDeletedOnSizeAlone(t *testing.T) {
-	d := fits(decide(4<<30, terabyte), 4<<30, bin.SizeUnknown)
+	d := fits(decide(64<<30, terabyte), 4<<30, bin.SizeUnknown)
 	assert.False(t, d.Permanent)
 }
 
