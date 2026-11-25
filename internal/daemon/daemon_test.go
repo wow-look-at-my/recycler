@@ -52,26 +52,21 @@ func freeSpace(avail, total uint64) func(string) (uint64, uint64, error) {
 // dirs is the bin the tests' items sit in.
 var dirs = []string{"/trash"}
 
-func TestFreeTargetIsATenthCappedAtAGigabyte(t *testing.T) {
-	// A small filesystem keeps the fraction.
-	assert.Equal(t, uint64(100), FreeTarget(1000))
-	// A large filesystem stops at the ceiling.
-	assert.Equal(t, uint64(freeTargetCeiling), FreeTarget(1<<40))
-	// Exactly at the crossover the fraction and the ceiling agree.
-	assert.Equal(t, uint64(freeTargetCeiling), FreeTarget(10*freeTargetCeiling))
+func TestFreeTargetScalesToTwoHundredGibibytes(t *testing.T) {
+	assert.Equal(t, uint64(50_000_000_000), FreeTarget(2_000_000_000_000), "2 TB keeps 50 GB")
+	assert.Equal(t, uint64(25), FreeTarget(1000))
+	assert.Equal(t, uint64(200<<30), FreeTarget(8000<<30))
+	assert.Equal(t, uint64(200<<30), FreeTarget(100<<40))
 }
 
 // A writer takes back what a sweep frees, so a sweep has to overshoot.
 func TestRecoverTargetFreesPastTheTrigger(t *testing.T) {
-	// Where FreeTarget is capped, recovering reaches well beyond it.
-	big := uint64(1) << 40
-	assert.Equal(t, uint64(freeTargetCeiling), FreeTarget(big))
-	assert.Greater(t, RecoverTarget(big), FreeTarget(big))
-	assert.Equal(t, uint64(freeTargetCeiling)*recoverMultiple, RecoverTarget(big))
+	big := uint64(100) << 40
+	assert.Equal(t, uint64(200<<30), FreeTarget(big))
+	assert.Equal(t, uint64(200<<30)*recoverMultiple, RecoverTarget(big))
 
-	// Small media still get runway.
-	assert.Equal(t, uint64(100), FreeTarget(1000))
-	assert.Equal(t, uint64(200), RecoverTarget(1000))
+	assert.Equal(t, uint64(25), FreeTarget(1000))
+	assert.Equal(t, uint64(50), RecoverTarget(1000))
 	assert.Greater(t, RecoverTarget(1000), FreeTarget(1000))
 
 	// It is still bounded, so a small filesystem is never emptied.

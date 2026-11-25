@@ -255,7 +255,7 @@ func TestTheDaemonIsReachableFromHere(t *testing.T) {
 	daemon.StateDir = func() (string, error) { return state, nil }
 	t.Cleanup(func() { daemon.StateDir = was })
 
-	assert.Equal(t, uint64(100), FreeTarget(1000), "a tenth of a small filesystem")
+	assert.Equal(t, uint64(25), FreeTarget(1000), "a fortieth of a small filesystem")
 
 	lock, err := DaemonLockPath()
 	require.NoError(t, err)

@@ -85,16 +85,16 @@ func watchABin(t *testing.T) *watched {
 func TestARunningDaemonReadsANewMinFree(t *testing.T) {
 	w := watchABin(t)
 	w.total = 1 << 40
-	w.avail = 5 << 30
+	w.avail = 30 << 30
 	_, pressures := w.after(t, time.Second)
-	assert.Empty(t, pressures, "5 GiB free is over the built-in 1 GiB trigger")
+	assert.Empty(t, pressures, "30 GiB free is over the built-in trigger of a fortieth")
 
 	path, err := w.settings.path()
 	require.NoError(t, err)
-	require.NoError(t, os.WriteFile(path, []byte(`{"min_free": "10GiB"}`), 0o600))
+	require.NoError(t, os.WriteFile(path, []byte(`{"min_free": "40GiB"}`), 0o600))
 	_, pressures = w.after(t, time.Second)
-	require.Len(t, pressures, 1, "5 GiB free is under a 10 GiB goal")
-	assert.Equal(t, uint64(10<<30), pressures[0].Target)
+	require.Len(t, pressures, 1, "30 GiB free is under a 40 GiB goal")
+	assert.Equal(t, uint64(40<<30), pressures[0].Target)
 
 	// A file that cannot be read gives the built-in goal back.
 	require.NoError(t, os.WriteFile(path, []byte(`{"min_free": "lots"}`), 0o600))

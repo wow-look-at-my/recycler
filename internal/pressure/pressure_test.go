@@ -11,13 +11,14 @@ import (
 // The floor here and the daemon's target are the same number by intent. A
 // single decides when recycling stops deferring anything, the other when a
 // sweep starts.
-func TestTheFloorMatchesTheDaemonsTarget(t *testing.T) {
-	assert.Equal(t, uint64(1<<30), Floor(10<<30))
-	assert.Equal(t, uint64(1<<30), Floor(1<<40))
+func TestTheFloorScalesWithTheFilesystem(t *testing.T) {
+	assert.Equal(t, uint64(50_000_000_000), Floor(2_000_000_000_000), "2 TB keeps 50 GB")
+	assert.Equal(t, uint64(1000), Floor(40_000))
+	assert.Equal(t, uint64(100<<30), Floor(4000<<30))
 
-	// Small media keep the fraction, so they do not become a delete device.
-	assert.Equal(t, uint64(50<<20), Floor(500<<20))
-	assert.Equal(t, uint64(100), Floor(1000))
+	// Large filesystems stop at the ceiling.
+	assert.Equal(t, uint64(floorCeiling), Floor(floorCeiling*floorFraction))
+	assert.Equal(t, uint64(floorCeiling), Floor(100<<40))
 }
 
 const terabyte = uint64(1) << 40
