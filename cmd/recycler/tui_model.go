@@ -4,10 +4,8 @@ package main
 
 import (
 	"cmp"
-	"fmt"
 	"io/fs"
 	"maps"
-	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
