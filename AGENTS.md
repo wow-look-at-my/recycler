@@ -59,11 +59,14 @@ Nothing under `internal/` imports the root package. `bin` is what keeps that acy
 
 The view is [TML](https://github.com/wow-look-at-my/tml): `ui/app.tml` declares it, the model in `tui_model.go` holds every piece of state, and TML draws what the properties say. Things there are load-bearing:
 
-- **The table's rows are `\x1f`-delimited cells.** Every printable delimiter is legal in a file name, so a path holding one arrives as an extra column.
-- **`wrap="false"` keeps a row to a line**, which is what lets a click's `y` and the scroll offset name a row. A wrapped cell puts every row below it out of step with its index.
-- **The table gets a screenful of rows, not the bin.** The Scrollbox takes the full height from `contentHeight`. A table of every item costs the whole bin on every frame. A resize is many frames. `TestAFrameCostsTheScreenNotTheBin` holds that down.
+- **The table gets every row, as a `widget.Rows` of cells.** It draws only what the Scrollbox shows and sizes its columns from all of them, so the host never slices rows or names widths. `tableRows` builds the cells again only after `changed()`: a new listing or a mark. A frame reuses them. A resize is many frames. `TestAFrameCostsTheScreenNotTheBin` holds that down.
+- **`fit` and `weights` choose how the columns share the width.** NAME, SIZE and DELETED keep their whole width, FROM gives way, and spare room goes to NAME and FROM.
+- **`wrap="false"` keeps a row to a line**. The scroll offset is a row and a page is `viewRows`.
 - **Nothing redraws on a timer.** The program paints after input or a resize. An idle browser costs nothing.
 - **The name leads and the directory trails**, because a cut falls on the end of the row. The line below spells the path out in full, and the name is the part that has to survive a narrow terminal.
+
+- **The listing opens as a tree** (`tui_tree.go`): directory rows, a file row, and one row for every version of a path. A row stands for every item under it, so restore, delete and a mark take all of them. `v` lists one row per item. `TestDeletingADirectoryRowDeletesEverythingFromIt` holds that down.
+- **`f` narrows the listing to one disk.** The disk of an item is the mount point of the bin it sits in, which is where a delete frees space.
 
 The selected item costs the row it is listed on, not a panel. The table draws a bar across that row, and what sits under the listing is its full original path.
 

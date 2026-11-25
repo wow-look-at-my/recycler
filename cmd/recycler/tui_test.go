@@ -4,7 +4,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/charmbracelet/x/ansi"
@@ -52,6 +51,8 @@ func binWith(t *testing.T, names ...string) (*model, string) {
 	}
 	m, err := newModel()
 	require.NoError(t, err)
+	// These tests are about one row for each item. The tree has tests of its own.
+	m.setTree(false)
 	screen(t, m)
 	return m, work
 }
@@ -249,8 +250,9 @@ func TestAPathHoldingTheDelimiterStaysOneCell(t *testing.T) {
 	m, _ := binWith(t, "a|piped|name.txt")
 
 	assert.Contains(t, screen(t, m), "a|piped|name.txt")
-	require.Len(t, m.rows(), 1)
-	assert.Len(t, strings.Split(m.rows()[0], cellSep), 4, "the row is the columns the table declares, no more")
+	rows := m.tableRows()
+	require.Equal(t, 1, rows.Len())
+	assert.Len(t, rows.Row(0), 4, "the row is the columns the table declares, no more")
 }
 
 // q quits while browsing and types while filtering, or the filter could never contain the letter.

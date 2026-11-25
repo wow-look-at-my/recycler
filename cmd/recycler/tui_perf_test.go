@@ -31,7 +31,7 @@ func largeBin(t *testing.T, n int) *model {
 			Size:         int64(i) * 1024,
 		})
 	}
-	m.apply()
+	m.setTree(false)
 	m.settle()
 	return m
 }
@@ -52,9 +52,13 @@ func TestAFrameCostsTheScreenNotTheBin(t *testing.T) {
 	large := allocated(largeBin(t, 20000), 120, 40)
 	assert.Less(t, large, 2*small, "a frame of 20000 items allocated %d bytes, and one of 200 items %d", large, small)
 
+	// The table is handed the whole listing once, and every frame after reuses it.
 	m := largeBin(t, 20000)
-	assert.LessOrEqual(t, len(m.rows()), 40, "the table is handed more rows than the terminal is tall")
-
+	m.frameOf(120, 40)
+	first := m.tableRows()
+	m.frameOf(121, 40)
+	assert.Same(t, first, m.tableRows(), "a frame built the rows again")
+	assert.Equal(t, 20000, first.Len())
 }
 
 // frameBudget is one frame at a set number of frames a second.
