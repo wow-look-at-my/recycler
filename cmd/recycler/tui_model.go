@@ -14,12 +14,10 @@ import (
 	"github.com/wow-look-at-my/go-containers/set"
 	"github.com/wow-look-at-my/recycler"
 	"github.com/wow-look-at-my/tml"
-	"github.com/wow-look-at-my/tml/cell"
 	"github.com/wow-look-at-my/tml/inspect"
 	"github.com/wow-look-at-my/tml/sema"
+	"github.com/wow-look-at-my/tml/widget"
 )
-
-const cellSep = "\x1f"
 
 // A sortKey is a column the listing can be in order of. The values are the table's column indices.
 type sortKey int
@@ -62,8 +60,10 @@ type model struct {
 	tree    bool
 	flipped map[string]bool
 
-	// widths is the widest cell of each column over every row, so a scroll does not resize the columns.
-	widths []string
+	// table is every row as the table's cells. gen counts the changes to what the rows show.
+	table    *widget.Rows
+	gen      int
+	tableGen int
 
 	// diskOf is the disk each item takes space on.
 	diskOf   map[string]string
@@ -192,28 +192,23 @@ func (m *model) apply() {
 	}
 	m.selected = clamp(m.selected, 0, len(m.shown)-1)
 	m.follow()
-	m.widths = m.measureColumns()
+	m.changed()
 	m.diskText = m.diskLabel()
 }
 
-// measureColumns is the widest cell of each column over every row, not the
-// rows on screen.
-func (m *model) measureColumns() []string {
-	widths := make([]int, len(columnTitles))
-	for i, title := range columnTitles {
-		// The sorted heading carries an arrow.
-		widths[i] = cell.Width(title) + 2
-	}
-	for _, n := range m.shown {
-		for i, text := range m.cells(n) {
-			widths[i] = max(widths[i], cell.Width(text))
+// changed says that what the rows show is different now: the listing or a mark.
+func (m *model) changed() { m.gen++ }
+
+// tableRows is every listed row as the table's cells. It is built again only after a change, not on every frame.
+func (m *model) tableRows() *widget.Rows {
+	if m.table == nil || m.tableGen != m.gen {
+		cells := make([][]string, len(m.shown))
+		for i, n := range m.shown {
+			cells[i] = m.cells(n)
 		}
+		m.table, m.tableGen = widget.NewRows(cells), m.gen
 	}
-	out := make([]string, len(widths))
-	for i, w := range widths {
-		out[i] = strconv.Itoa(w)
-	}
-	return out
+	return m.table
 }
 
 // setTree lists the bin as a tree, or as one row for each item.
@@ -342,6 +337,7 @@ func (m *model) toggleMark(i int) {
 	if i < 0 || i >= len(m.shown) {
 		return
 	}
+	m.changed()
 	n := m.shown[i]
 	all := m.markState(n) == markAll
 	for _, item := range n.items {
@@ -355,6 +351,7 @@ func (m *model) toggleMark(i int) {
 
 // markRange marks every item of the rows from one index of the listing to another.
 func (m *model) markRange(from, to int) {
+	m.changed()
 	if from > to {
 		from, to = to, from
 	}
@@ -378,6 +375,7 @@ func (m *model) extend(delta int) {
 
 // markAll marks every listed item, or clears the marks when every listed item is already marked.
 func (m *model) markAll() {
+	m.changed()
 	all := len(m.matched) > 0
 	for _, item := range m.matched {
 		all = all && m.marks[item.ID]
@@ -422,7 +420,6 @@ func (m *model) Props() tml.Props {
 		"count":       sema.StringValue(countLabel(len(m.matched), len(m.items))),
 		"size":        sema.StringValue(totalLabel(m.matched)),
 		"disk":        sema.StringValue(m.diskText),
-		"widths":      sema.ListValue(m.widths),
 		"status":      sema.StringValue(m.status),
 		"statusStyle": sema.StringValue(m.statusStyle),
 		"marked":      sema.StringValue(m.markedLabel()),
@@ -435,10 +432,9 @@ func (m *model) Props() tml.Props {
 		"filterShown": sema.BoolValue(m.filtering || m.filter != ""),
 
 		"columns":   sema.ListValue(m.columns()),
-		"rows":      sema.ListValue(m.rows()),
-		"selected":  sema.StringValue(strconv.Itoa(m.selected - m.first())),
+		"rows":      m.tableRows().Value(),
+		"selected":  sema.StringValue(strconv.Itoa(m.selected)),
 		"offset":    sema.StringValue(strconv.Itoa(m.offset)),
-		"lines":     sema.StringValue(strconv.Itoa(len(m.shown) + tableHeaderLines)),
 		"empty":     sema.BoolValue(len(m.shown) == 0),
 		"emptyText": sema.StringValue(m.emptyText()),
 

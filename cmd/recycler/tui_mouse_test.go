@@ -42,23 +42,29 @@ func rightClick(t *testing.T, m *model, x, y int) {
 		input.Mouse{Action: input.Release, Button: input.ButtonRight, X: x, Y: y})
 }
 
+// viewport is the scrolling region the table sits in: where its header is drawn, however far the table scrolled.
+func viewport(t *testing.T, m *model) (x, y int) {
+	t.Helper()
+	items, ok := m.view.UI().Target("items")
+	require.True(t, ok, "the listing is on screen")
+	return items.Box.X, items.Box.Y
+}
+
 // rowPoint is a point on the listing's row on screen, under the heading and its rule.
 func rowPoint(t *testing.T, m *model, row int) (int, int) {
 	t.Helper()
-	rows, ok := m.view.UI().Target("rows")
-	require.True(t, ok, "the table is on screen")
-	return rows.Box.X + 1, rows.Box.Y + tableHeaderLines + row
+	x, y := viewport(t, m)
+	return x + 1, y + tableHeaderLines + row
 }
 
 // headingPoint is a point on the heading of a column, found by its title in the drawn frame.
 func headingPoint(t *testing.T, m *model, title string) (int, int) {
 	t.Helper()
-	rows, ok := m.view.UI().Target("rows")
-	require.True(t, ok)
-	line := strings.Split(screen(t, m), "\n")[rows.Box.Y]
+	_, y := viewport(t, m)
+	line := strings.Split(screen(t, m), "\n")[y]
 	at := strings.Index(line, title)
 	require.GreaterOrEqual(t, at, 0, "%q is a heading", title)
-	return len([]rune(line[:at])), rows.Box.Y
+	return len([]rune(line[:at])), y
 }
 
 // menuPoint is a point on line i of the open context menu.

@@ -121,17 +121,6 @@ func (m *model) columns() []string {
 	return out
 }
 
-// rows are the rows on screen as the table's delimited cells. The terminal's height bounds the viewport, so it is
-// enough rows before the first layout at a new size has measured the viewport.
-func (m *model) rows() []string {
-	shown := m.shown[m.first():min(len(m.shown), m.first()+m.height)]
-	rows := make([]string, 0, len(shown))
-	for _, n := range shown {
-		rows = append(rows, strings.Join(m.cells(n), cellSep))
-	}
-	return rows
-}
-
 // cells is the text of each column of a row.
 func (m *model) cells(n node) []string {
 	return []string{

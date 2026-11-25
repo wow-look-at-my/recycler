@@ -164,10 +164,9 @@ func TestClickingTheArrowOpensAGroup(t *testing.T) {
 	m, _ := treeBin(t, "notes.md", "notes.md")
 
 	i := rowNamed(t, m, "notes.md")
-	x, y := rowPoint(t, m, i-m.first())
-	rows, ok := m.view.UI().Target("rows")
-	require.True(t, ok)
-	x = rows.Box.X + 2 + 2*m.shown[i].depth
+	_, y := rowPoint(t, m, i-m.first())
+	left, _ := viewport(t, m)
+	x := left + 2 + 2*m.shown[i].depth
 	click(t, m, x, y, 0)
 	assert.True(t, m.shown[i].open, "the arrow opened the row")
 }
@@ -274,9 +273,9 @@ func TestScrollingKeepsTheColumnsInPlace(t *testing.T) {
 
 	// heading is where each heading starts. The scrollbar shares the line, and its thumb moves on purpose.
 	heading := func() []int {
-		rows, ok := m.view.UI().Target("rows")
-		require.True(t, ok)
-		line := strings.Split(ansi.Strip(m.frameOf(160, 30)), "\n")[rows.Box.Y]
+		m.frameOf(160, 30)
+		_, y := viewport(t, m)
+		line := strings.Split(ansi.Strip(m.frameOf(160, 30)), "\n")[y]
 		var at []int
 		for _, title := range columnTitles {
 			at = append(at, strings.Index(line, title))

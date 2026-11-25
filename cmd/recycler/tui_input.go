@@ -111,7 +111,8 @@ func (m *model) click(e tml.Event) {
 	if !ok {
 		return
 	}
-	i := m.first() + row
+	// The table names the row by its place in the whole listing, however far it scrolled.
+	i := row
 	if i >= len(m.shown) {
 		return
 	}
@@ -151,10 +152,10 @@ func (m *model) openMenuAt(e tml.Event) {
 		return
 	}
 	row, ok := partIndex(e.Part, "row:")
-	if !ok || m.first()+row >= len(m.shown) {
+	if !ok || row >= len(m.shown) {
 		return
 	}
-	m.selected = m.first() + row
+	m.selected = row
 	m.openMenu(x, y, m.itemEntries())
 }
 
@@ -165,7 +166,8 @@ func (m *model) openMenuOnSelection() {
 	}
 	x, y := 2, 4
 	if rows, ok := m.view.UI().Target("rows"); ok {
-		x, y = rows.Rect.X+2, rows.Rect.Y+tableHeaderLines+m.selected-m.first()
+		// The table's box starts where its first row would be, above the screen when it scrolled.
+		x, y = rows.Rect.X+2, rows.Rect.Y+tableHeaderLines+m.selected
 	}
 	m.openMenu(x, y, m.itemEntries())
 }
@@ -291,6 +293,7 @@ func (m *model) escape() bool {
 		m.apply()
 	case len(m.marks) > 0:
 		clear(m.marks)
+		m.changed()
 	default:
 		m.quitting = true
 	}
