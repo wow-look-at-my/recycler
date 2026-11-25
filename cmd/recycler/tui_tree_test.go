@@ -195,7 +195,7 @@ func TestShiftAndAnArrowMarkARange(t *testing.T) {
 	assert.Equal(t, "2 marked", m.markedLabel(), "going back unmarks the row it left")
 	assert.False(t, m.marks[m.shown[2].ID])
 
-	press(t, m, "down", "down", "shift+down")
+	press(t, m, "down", "shift+down")
 	assert.Equal(t, "4 marked", m.markedLabel(), "a new range adds to the marks already there")
 }
 
@@ -272,10 +272,16 @@ func TestScrollingKeepsTheColumnsInPlace(t *testing.T) {
 	}
 	m.setTree(false)
 
-	heading := func() string {
+	// heading is where each heading starts. The scrollbar shares the line, and its thumb moves on purpose.
+	heading := func() []int {
 		rows, ok := m.view.UI().Target("rows")
 		require.True(t, ok)
-		return strings.Split(ansi.Strip(m.frameOf(160, 30)), "\n")[rows.Box.Y]
+		line := strings.Split(ansi.Strip(m.frameOf(160, 30)), "\n")[rows.Box.Y]
+		var at []int
+		for _, title := range columnTitles {
+			at = append(at, strings.Index(line, title))
+		}
+		return at
 	}
 	m.frameOf(160, 30)
 	top := heading()
