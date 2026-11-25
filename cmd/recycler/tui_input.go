@@ -115,6 +115,12 @@ func (m *model) click(e tml.Event) {
 	if i >= len(m.shown) {
 		return
 	}
+	m.extending = false
+	if m.arrowAt(m.shown[i], e.X) {
+		m.selected = i
+		m.setOpen(!m.shown[i].open)
+		return
+	}
 	double := i == m.lastRow && time.Since(m.lastClick) < doubleClick
 	m.lastRow, m.lastClick = i, time.Now()
 	m.selected = i
@@ -172,16 +178,36 @@ func (m *model) itemEntries() []menuEntry {
 		what = " " + describe(targets)
 	}
 	mark := "Mark"
-	if item, ok := m.current(); ok && m.marks[item.ID] {
+	n, _ := m.current()
+	if m.markState(n) == markAll {
 		mark = "Unmark"
 	}
-	return []menuEntry{
+	entries := []menuEntry{
 		{"Restore" + what, m.askRestore},
 		{"Restore" + what + " to…", m.openPrompt},
 		{mark, func() { m.toggleMark(m.selected) }},
 		{"Mark all / unmark all", m.markAll},
 		{"Delete" + what + " permanently…", m.askDelete},
 	}
+	if m.tree && n.group() {
+		label := "Open"
+		if n.open {
+			label = "Close"
+		}
+		entries = append(entries, menuEntry{label, func() { m.setOpen(!n.open) }})
+	}
+	if m.disk == "" {
+		if disk := m.diskOf[n.items[0].ID]; len(m.disks) > 1 && disk != "" {
+			entries = append(entries, menuEntry{"Show only " + disk, func() { m.setDisk(disk) }})
+		}
+	} else {
+		entries = append(entries, menuEntry{"Show every disk", func() { m.setDisk("") }})
+	}
+	view := "Show as a tree"
+	if m.tree {
+		view = "Show one row per item"
+	}
+	return append(entries, menuEntry{view, func() { m.setTree(!m.tree) }})
 }
 
 // sortEntries is the context menu of a heading.
@@ -231,7 +257,11 @@ func (m *model) hotkey(msg tml.Key) bool {
 		m.quitting = true
 		return true
 	case "esc":
+		m.extending = false
 		return m.escape()
+	case "shift+up", "shift+down", "shift+pgup", "shift+pgdown", "shift+home", "shift+end":
+	default:
+		m.extending = false
 	}
 	switch {
 	case len(m.menu) > 0:
@@ -312,7 +342,7 @@ func (m *model) typing(msg tml.Key) bool {
 			m.apply()
 		}
 		return true
-	case "up", "down":
+	case "up", "down", "shift+up", "shift+down":
 		return m.browsing(msg)
 	}
 	// Text is empty for a key that types nothing, and for a key held with ctrl or alt.
@@ -340,6 +370,26 @@ func (m *model) browsing(msg tml.Key) bool {
 		m.move(-len(m.shown))
 	case "end", "G":
 		m.move(len(m.shown))
+	case "shift+up":
+		m.extend(-1)
+	case "shift+down":
+		m.extend(1)
+	case "shift+pgup":
+		m.extend(-m.page())
+	case "shift+pgdown":
+		m.extend(m.page())
+	case "shift+home":
+		m.extend(-len(m.shown))
+	case "shift+end":
+		m.extend(len(m.shown))
+	case "left", "h":
+		m.collapse()
+	case "right", "l":
+		m.expand()
+	case "v":
+		m.setTree(!m.tree)
+	case "f":
+		m.cycleDisk()
 	case "enter":
 		m.askRestore()
 	case "space":

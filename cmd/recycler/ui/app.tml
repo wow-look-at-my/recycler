@@ -4,6 +4,7 @@
 
 	<Property name="count" type="string" default="0 items"/>
 	<Property name="size" type="string" default=""/>
+	<Property name="disk" type="string" default=""/>
 	<Property name="status" type="string" default=""/>
 	<Property name="statusStyle" type="string" default="muted"/>
 
@@ -33,6 +34,9 @@
 	<!-- Rows are the table's own delimited cells. The host filters and formats
 	     them, because it is the host that knows what a size or a date is. -->
 	<Property name="rows" type="string[]" default=""/>
+	<!-- The widest cell of each column over the whole listing. The rows are only
+	     a screenful, so without these a scroll resizes the columns. -->
+	<Property name="widths" type="string[]" default=""/>
 	<Property name="selected" type="int" default="0"/>
 	<Property name="offset" type="int" default="0"/>
 	<Property name="lines" type="int" default="0"/>
@@ -56,6 +60,7 @@
 					<Text style="title">recycle bin</Text>
 					<Badge label="{count}"/>
 					<Text style="muted">{size}</Text>
+					<Text style="accent" if="{disk}">{disk}</Text>
 					<Text style="warn" if="{marked}">{marked}</Text>
 					<Spacer width="*"/>
 					<Text style="muted">{sortLabel}</Text>
@@ -81,7 +86,7 @@
 						     paths, and every printable delimiter is legal in a name.
 						     wrap="false" keeps a row to a line, which is what lets a
 						     click's y and the scroll offset name a row. -->
-						<Table id="rows" columns="{columns}" rows="{rows}"
+						<Table id="rows" columns="{columns}" rows="{rows}" widths="{widths}"
 							separator="&#31;" selected="{selected}" border="false"
 							wrap="false" width="*"/>
 					</Scrollbox>

@@ -6,6 +6,7 @@ import (
 	"cmp"
 	"fmt"
 	"io/fs"
+	"maps"
 	"path/filepath"
 	"slices"
 	"strconv"
@@ -15,6 +16,7 @@ import (
 	"github.com/wow-look-at-my/go-containers/set"
 	"github.com/wow-look-at-my/recycler"
 	"github.com/wow-look-at-my/tml"
+	"github.com/wow-look-at-my/tml/cell"
 	"github.com/wow-look-at-my/tml/inspect"
 	"github.com/wow-look-at-my/tml/sema"
 )
@@ -51,9 +53,29 @@ type menuEntry struct {
 type model struct {
 	view *tml.View
 
-	items    []recycler.Item
-	shown    []recycler.Item
+	items []recycler.Item
+	// matched is the items the filter and the disk let through, in the listing's order.
+	matched []recycler.Item
+	// shown is the rows of the listing: one for each item, or the tree of directories and versions.
+	shown    []node
 	selected int
+
+	// tree lists the bin by directory, and flipped holds the groups opened or closed against their default.
+	tree    bool
+	flipped map[string]bool
+
+	// widths is the widest cell of each column over every row, so a scroll does not resize the columns.
+	widths []string
+
+	// diskOf is the disk each item takes space on.
+	diskOf   map[string]string
+	disks    []string
+	disk     string
+	diskText string
+
+	// extending is true while shift and an arrow grow the marks from anchor. extendBase is the marks it started from.
+	extending  bool
+	extendBase map[string]bool
 	// offset is the first row on screen, and viewRows how many rows the listing shows under its header.
 	offset   int
 	viewRows int
@@ -113,6 +135,7 @@ func newModel() (*model, error) {
 	m := &model{
 		view: view, statusStyle: "muted", width: 96, height: 30,
 		marks: map[string]bool{}, sortBy: sortDeleted, descending: true, lastRow: -1,
+		tree: true, flipped: map[string]bool{},
 	}
 	m.reload()
 	m.settle()
@@ -127,6 +150,7 @@ func (m *model) reload() {
 		return
 	}
 	m.items = items
+	m.readDisks()
 	present := set.New[string]()
 	for _, item := range items {
 		present.Add(item.ID)
@@ -143,22 +167,61 @@ func (m *model) reload() {
 // was on when that item is still listed.
 func (m *model) apply() {
 	keep, _ := m.current()
-	m.shown = m.shown[:0]
+	m.matched = m.matched[:0]
 	needle := strings.ToLower(m.filter)
 	for _, item := range m.items {
+		if m.disk != "" && m.diskOf[item.ID] != m.disk {
+			continue
+		}
 		if needle == "" || strings.Contains(strings.ToLower(item.Name), needle) ||
 			strings.Contains(strings.ToLower(item.OriginalPath), needle) {
-			m.shown = append(m.shown, item)
+			m.matched = append(m.matched, item)
 		}
 	}
-	slices.SortStableFunc(m.shown, m.compare)
-	if keep.ID != "" {
-		if at := slices.IndexFunc(m.shown, func(it recycler.Item) bool { return it.ID == keep.ID }); at >= 0 {
+	slices.SortStableFunc(m.matched, m.compare)
+	if m.tree {
+		m.shown = m.buildTree(m.matched)
+	} else {
+		m.shown = make([]node, len(m.matched))
+		for i, item := range m.matched {
+			m.shown[i] = itemNode(item, 0)
+		}
+	}
+	if keep.key != "" {
+		if at := slices.IndexFunc(m.shown, func(n node) bool { return n.key == keep.key }); at >= 0 {
 			m.selected = at
 		}
 	}
 	m.selected = clamp(m.selected, 0, len(m.shown)-1)
 	m.follow()
+	m.widths = m.measureColumns()
+	m.diskText = m.diskLabel()
+}
+
+// measureColumns is the widest cell of each column over every row, not the
+// rows on screen.
+func (m *model) measureColumns() []string {
+	widths := make([]int, len(columnTitles))
+	for i, title := range columnTitles {
+		// The sorted heading carries an arrow.
+		widths[i] = cell.Width(title) + 2
+	}
+	for _, n := range m.shown {
+		for i, text := range m.cells(n) {
+			widths[i] = max(widths[i], cell.Width(text))
+		}
+	}
+	out := make([]string, len(widths))
+	for i, w := range widths {
+		out[i] = strconv.Itoa(w)
+	}
+	return out
+}
+
+// setTree lists the bin as a tree, or as one row for each item.
+func (m *model) setTree(tree bool) {
+	m.tree = tree
+	m.apply()
 }
 
 // compare orders a pair of items by the sort column, and by ID where the column ties, so the order is stable.
@@ -245,19 +308,19 @@ func (m *model) say(text, style string) {
 	m.status, m.statusStyle = text, style
 }
 
-// current is the item the cursor sits on, when the listing has any.
-func (m *model) current() (recycler.Item, bool) {
+// current is the row the cursor sits on, when the listing has any.
+func (m *model) current() (node, bool) {
 	if m.selected < 0 || m.selected >= len(m.shown) {
-		return recycler.Item{}, false
+		return node{}, false
 	}
 	return m.shown[m.selected], true
 }
 
-// targets is what an action applies to: the marked items in listing order, or the selected item when nothing is
-// marked.
+// targets is what an action applies to: the marked items in listing order, or every item of the selected row when
+// nothing is marked. A directory row is everything recycled from under it, and a versions row is every version.
 func (m *model) targets() []recycler.Item {
 	var marked []recycler.Item
-	for _, item := range m.shown {
+	for _, item := range m.matched {
 		if m.marks[item.ID] {
 			marked = append(marked, item)
 		}
@@ -265,10 +328,26 @@ func (m *model) targets() []recycler.Item {
 	if len(marked) > 0 {
 		return marked
 	}
-	if item, ok := m.current(); ok {
-		return []recycler.Item{item}
+	if n, ok := m.current(); ok {
+		return n.items
 	}
 	return nil
+}
+
+// describeTargets names what an action applies to, the way a person picked it.
+func (m *model) describeTargets() string {
+	targets := m.targets()
+	n, ok := m.current()
+	if !ok || len(targets) < 2 || !slices.Equal(targets, n.items) {
+		return describe(targets)
+	}
+	switch n.kind {
+	case nodeDir:
+		return fmt.Sprintf("all %d items from %s", len(targets), fromCell(n))
+	case nodeVersions:
+		return fmt.Sprintf("all %d versions of %s", len(targets), n.Name)
+	}
+	return describe(targets)
 }
 
 func (m *model) move(delta int) {
@@ -276,40 +355,56 @@ func (m *model) move(delta int) {
 	m.follow()
 }
 
-// toggleMark marks or unmarks the item at index i of the listing.
+// toggleMark marks every item of row i, or unmarks them when every one is already marked.
 func (m *model) toggleMark(i int) {
 	if i < 0 || i >= len(m.shown) {
 		return
 	}
-	id := m.shown[i].ID
-	if m.marks[id] {
-		delete(m.marks, id)
-	} else {
-		m.marks[id] = true
+	n := m.shown[i]
+	all := m.markState(n) == markAll
+	for _, item := range n.items {
+		if all {
+			delete(m.marks, item.ID)
+		} else {
+			m.marks[item.ID] = true
+		}
 	}
 }
 
-// markRange marks every item from one index of the listing to another.
+// markRange marks every item of the rows from one index of the listing to another.
 func (m *model) markRange(from, to int) {
 	if from > to {
 		from, to = to, from
 	}
 	for i := max(0, from); i <= min(to, len(m.shown)-1); i++ {
-		m.marks[m.shown[i].ID] = true
+		for _, item := range m.shown[i].items {
+			m.marks[item.ID] = true
+		}
 	}
+}
+
+// extend moves the cursor and marks the rows from where the shift started to where the cursor is now. Going back
+// over a row takes its mark off again, unless the row was marked before the shift started.
+func (m *model) extend(delta int) {
+	if !m.extending {
+		m.extending, m.extendBase, m.anchor = true, maps.Clone(m.marks), m.selected
+	}
+	m.move(delta)
+	m.marks = maps.Clone(m.extendBase)
+	m.markRange(m.anchor, m.selected)
 }
 
 // markAll marks every listed item, or clears the marks when every listed item is already marked.
 func (m *model) markAll() {
-	all := len(m.shown) > 0
-	for _, item := range m.shown {
+	all := len(m.matched) > 0
+	for _, item := range m.matched {
 		all = all && m.marks[item.ID]
 	}
 	if all {
 		clear(m.marks)
 		return
 	}
-	for _, item := range m.shown {
+	for _, item := range m.matched {
 		m.marks[item.ID] = true
 	}
 }
@@ -342,8 +437,10 @@ func (m *model) Props() tml.Props {
 	}
 
 	return tml.Props{
-		"count":       sema.StringValue(countLabel(len(m.shown), len(m.items))),
-		"size":        sema.StringValue(totalLabel(m.shown)),
+		"count":       sema.StringValue(countLabel(len(m.matched), len(m.items))),
+		"size":        sema.StringValue(totalLabel(m.matched)),
+		"disk":        sema.StringValue(m.diskText),
+		"widths":      sema.ListValue(m.widths),
 		"status":      sema.StringValue(m.status),
 		"statusStyle": sema.StringValue(m.statusStyle),
 		"marked":      sema.StringValue(m.markedLabel()),
@@ -382,16 +479,17 @@ func (m *model) Props() tml.Props {
 		"prompting":    sema.BoolValue(m.prompting),
 		"prompt":       sema.StringValue(m.prompt),
 		"promptCursor": sema.StringValue(strconv.Itoa(len(m.prompt))),
-		"promptText":   sema.StringValue("Restore " + describe(m.targets()) + " into:"),
+		"promptText":   sema.StringValue("Restore " + m.describeTargets() + " into:"),
 	}
 }
 
 // question is what the open confirmation says: its title, the question, the line under it, and its button.
 func (m *model) question() (title, question, detail, label string) {
 	targets := m.targets()
+	what := m.describeTargets()
 	switch m.ask {
 	case askDelete:
-		return "Delete permanently", "Delete " + describe(targets) + " permanently?",
+		return "Delete permanently", "Delete " + what + " permanently?",
 			"This cannot be undone: the bin is the only copy.", "Delete"
 	default:
 		detail = "to their original locations"
@@ -401,7 +499,7 @@ func (m *model) question() (title, question, detail, label string) {
 		if unknown := countUnknown(targets); unknown > 0 && len(targets) > 1 {
 			detail += fmt.Sprintf(" (%d with no recorded location stay)", unknown)
 		}
-		return "Restore", "Restore " + describe(targets) + "?", detail, "Restore"
+		return "Restore", "Restore " + what + "?", detail, "Restore"
 	}
 }
 
@@ -425,7 +523,7 @@ func countUnknown(items []recycler.Item) int {
 
 func (m *model) markedLabel() string {
 	n := 0
-	for _, item := range m.shown {
+	for _, item := range m.matched {
 		if m.marks[item.ID] {
 			n++
 		}
@@ -456,8 +554,15 @@ func (m *model) hints() string {
 	case m.filtering:
 		return "type to filter · ↑↓ move · enter keeps the filter · esc clears it"
 	}
-	return "enter restore · space mark · a mark all · t restore to · d delete · s sort · S reverse · " +
-		"/ filter · m menu · r reload · q quit · right-click for a menu, click a heading to sort"
+	keys := "enter restore · space mark · shift+↑↓ mark a range · a mark all · t restore to · d delete · "
+	if m.tree {
+		keys += "←→ close/open · "
+	}
+	keys += "v tree/flat · "
+	if len(m.disks) > 1 || m.disk != "" {
+		keys += "f disk · "
+	}
+	return keys + "s sort · S reverse · / filter · m menu · r reload · q quit · right-click for a menu, click a heading to sort"
 }
 
 // columns are the table's headings, the sorted one wearing an arrow.
@@ -481,20 +586,20 @@ func (m *model) first() int {
 func (m *model) rows() []string {
 	shown := m.shown[m.first():min(len(m.shown), m.first()+m.height)]
 	rows := make([]string, 0, len(shown))
-	for _, item := range shown {
-		// The table trims a cell's blanks, so an unmarked row needs a glyph of its own to stay aligned.
-		mark := "○ "
-		if m.marks[item.ID] {
-			mark = "● "
-		}
-		rows = append(rows, strings.Join([]string{
-			mark + item.Name,
-			item.DeletedAt.Local().Format("2006-01-02 15:04"),
-			humanSize(item.Size),
-			originDir(item),
-		}, cellSep))
+	for _, n := range shown {
+		rows = append(rows, strings.Join(m.cells(n), cellSep))
 	}
 	return rows
+}
+
+// cells is the text of each column of a row.
+func (m *model) cells(n node) []string {
+	return []string{
+		m.nameCell(n),
+		n.DeletedAt.Local().Format("2006-01-02 15:04"),
+		humanSize(n.Size),
+		fromCell(n),
+	}
 }
 
 // originDir is the directory an item was recycled from, or a nothing recorded
@@ -507,8 +612,11 @@ func originDir(item recycler.Item) string {
 }
 
 func (m *model) emptyText() string {
-	if m.filter != "" {
+	switch {
+	case m.filter != "":
 		return "nothing matches " + strconv.Quote(m.filter)
+	case m.disk != "":
+		return "nothing in the bin sits on " + m.disk
 	}
 	return "the recycle bin is empty"
 }
