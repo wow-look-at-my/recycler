@@ -25,20 +25,15 @@ type Decision struct {
 	Size   int64  // the blocks a copy of the path needs, or [bin.SizeUnknown] when no copy is made
 }
 
-// Mirrors internal/daemon, which imports the backends calling this. A test pins
-// both spellings together.
 const (
-	freeTargetFraction = 10
-	freeTargetCeiling  = 1 << 30
+	floorFraction = 40
+	floorCeiling  = 200 << 30
 )
 
 // Floor is the available bytes under which recycling stops deferring, and
 // where the daemon sweeps.
 func Floor(total uint64) uint64 {
-	if target := total / freeTargetFraction; target < freeTargetCeiling {
-		return target
-	}
-	return freeTargetCeiling
+	return min(total/floorFraction, floorCeiling)
 }
 
 // Check decides what to do with path when the bin directory dest takes it.

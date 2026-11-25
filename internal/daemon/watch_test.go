@@ -67,7 +67,7 @@ type watched struct {
 func watchABin(t *testing.T) *watched {
 	t.Helper()
 	dir := t.TempDir()
-	w := &watched{b: &listedBackend{dir: dir}, clock: time.Now(), avail: 1000, total: 2000}
+	w := &watched{b: &listedBackend{dir: dir}, clock: time.Now(), avail: 1000, total: 8000}
 	for _, sub := range []string{"files", "info"} {
 		require.NoError(t, os.Mkdir(filepath.Join(dir, sub), 0o700))
 	}
@@ -85,16 +85,16 @@ func watchABin(t *testing.T) *watched {
 func TestARunningDaemonReadsANewMinFree(t *testing.T) {
 	w := watchABin(t)
 	w.total = 1 << 40
-	w.avail = 5 << 30
+	w.avail = 30 << 30
 	_, pressures := w.after(t, time.Second)
-	assert.Empty(t, pressures, "5 GiB free is over the built-in 1 GiB trigger")
+	assert.Empty(t, pressures, "30 GiB free is over the built-in trigger of a fortieth")
 
 	path, err := w.settings.path()
 	require.NoError(t, err)
-	require.NoError(t, os.WriteFile(path, []byte(`{"min_free": "10GiB"}`), 0o600))
+	require.NoError(t, os.WriteFile(path, []byte(`{"min_free": "40GiB"}`), 0o600))
 	_, pressures = w.after(t, time.Second)
-	require.Len(t, pressures, 1, "5 GiB free is under a 10 GiB goal")
-	assert.Equal(t, uint64(10<<30), pressures[0].Target)
+	require.Len(t, pressures, 1, "30 GiB free is under a 40 GiB goal")
+	assert.Equal(t, uint64(40<<30), pressures[0].Target)
 
 	// A file that cannot be read gives the built-in goal back.
 	require.NoError(t, os.WriteFile(path, []byte(`{"min_free": "lots"}`), 0o600))
@@ -231,7 +231,7 @@ func TestAShortFilesystemIsListedAgainOnlyWhileListingHelps(t *testing.T) {
 	assert.Equal(t, 2, w.b.lists, "a bin with nothing to give was listed again")
 	require.Len(t, pressures, 1, "a short filesystem went unreported on a tick that did not list")
 	assert.Equal(t, uint64(50), pressures[0].Avail)
-	assert.Equal(t, FreeTarget(2000), pressures[0].Target)
+	assert.Equal(t, FreeTarget(8000), pressures[0].Target)
 }
 
 // An eviction that failed is tried again for as long as the filesystem is
