@@ -9,7 +9,7 @@
 
 	<Style name="title" bold="true" fg="{theme.accent}"/>
 	<Style name="accent" fg="{theme.accent}"/>
-	<Style name="muted"faint="true" fg="{theme.dim}"/>
+	<Style name="muted" faint="true" fg="{theme.dim}"/>
 	<Style name="page" padding="0 1"/>
 	<Style name="ok" fg="{theme.ok}"/>
 	<Style name="warn" fg="{theme.warn}"/>

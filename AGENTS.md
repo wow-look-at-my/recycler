@@ -65,6 +65,10 @@ The view is [TML](https://github.com/wow-look-at-my/tml): `ui/app.tml` declares 
 - **Nothing redraws on a timer.** The program paints after input or a resize. An idle browser costs nothing.
 - **The name leads and the directory trails**, because a cut falls on the end of the row. The line below spells the path out in full, and the name is the part that has to survive a narrow terminal.
 
+- **The table gets `widths`, the widest cell of each column over every row.** It sizes columns from the rows it holds, which are only a screenful. Without the widths, a scroll resizes every column. `apply` measures them, not the frame.
+- **The listing opens as a tree** (`tui_tree.go`): directory rows, a file row, and one row for every version of a path. A row stands for every item under it, so restore, delete and a mark take all of them. `v` lists one row per item. `TestDeletingADirectoryRowDeletesEverythingFromIt` holds that down.
+- **`f` narrows the listing to one disk.** The disk of an item is the mount point of the bin it sits in, which is where a delete frees space.
+
 The selected item costs the row it is listed on, not a panel. The table draws a bar across that row, and what sits under the listing is its full original path.
 
 An action takes the marked items when any are marked, and the selected item otherwise. Restore, restore to a directory and delete each ask first. Delete opens on Cancel, and an AI agent session is refused before it is asked. `TestNothingIsDeletedWithoutAConfirmation` holds every key against a full bin.

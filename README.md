@@ -51,12 +51,15 @@ Run on a terminal with no arguments, `recycler` opens the bin in a browser. Redi
 | `enter` | double-click | restore, after asking |
 | `t` | | restore into a directory you type |
 | `d` | | delete permanently, after asking |
-| `space`, `a` | ctrl+click, shift+click | mark one, mark all, mark a range |
+| `space`, `a`, shift+arrows | ctrl+click, shift+click | mark one, mark all, mark a range |
+| `←`/`→` | click the arrow | close or open a directory or a file's versions |
+| `v` | | switch between the tree and one row per item |
+| `f` | | show one disk at a time, then every disk |
 | `s`, `S` | click a heading | change the sort column, reverse it |
 | `/` | | filter by name or path, `esc` clears |
 | `m` | right-click | a menu of what can be done to the item |
 
-An action takes every marked item, or the selected one when nothing is marked. An AI agent session cannot delete from the browser.
+The bin opens as a tree of the directories things came from. Every version of one path shares a row. An action takes every marked item, or everything the selected row holds when nothing is marked. A directory row restores or deletes all of it at once. An AI agent session cannot delete from the browser.
 
 `restore` takes the ID from `recycler list`, or a name or original path when it matches exactly one item. `list --json` prints the same data for scripts.
 
