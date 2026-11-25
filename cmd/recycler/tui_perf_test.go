@@ -31,7 +31,7 @@ func largeBin(t *testing.T, n int) *model {
 			Size:         int64(i) * 1024,
 		})
 	}
-	m.apply()
+	m.setTree(false)
 	m.settle()
 	return m
 }

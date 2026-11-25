@@ -52,6 +52,8 @@ func binWith(t *testing.T, names ...string) (*model, string) {
 	}
 	m, err := newModel()
 	require.NoError(t, err)
+	// These tests are about one row for each item. The tree has tests of its own.
+	m.setTree(false)
 	screen(t, m)
 	return m, work
 }
