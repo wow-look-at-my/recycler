@@ -35,6 +35,8 @@ It cannot empty the whole bin. An AI agent session (with `CLAUDECODE`, `GROK_BUI
 
 The daemon also deletes, because a bin nobody empties fills the disk and the recycled copy is what holds the space. Recycling something starts a daemon that reads free space every few seconds. It gives back the oldest items when a filesystem drops under a fortieth free (50 GB of a 2 TB disk), or 200 GiB, whichever is smaller. `min-free` raises that, up to half the filesystem, and it logs every item it deletes and the rule that chose it. It uses the size recorded when each item was recycled, so it never walks the bin to measure it. There is one daemon per user.
 
+Recycling onto a filesystem that is already that short works the same way. The bin gives back its oldest items there to make room for the new one, and `recycler trash` names each on standard error. The new item is deleted outright only when the bin holds too little there to make that room.
+
 This holds per system.
 
 Its lock and home bin come from the account database, so a script that exports its own `HOME` or `XDG_*` directories reaches the same daemon. Set `RECYCLER_NO_DAEMON=1` to run it yourself instead, or not at all.

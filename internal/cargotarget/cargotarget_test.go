@@ -98,9 +98,6 @@ type recordingBin struct {
 	items   []bin.Item
 	evicted []string
 	err     error
-
-	// perm answers with a permanent disposal, which is what a bin with nowhere to defer a deletion does.
-	perm bool
 }
 
 func newBin(t *testing.T) *recordingBin {
@@ -119,10 +116,8 @@ func (b *recordingBin) Recycle(paths []string) ([]bin.Disposal, error) {
 			return nil, err
 		}
 		b.taken = append(b.taken, path)
-		disposals = append(disposals, bin.Disposal{Path: path, Permanent: b.perm})
-		if !b.perm {
-			b.items = append(b.items, bin.Item{ID: dest, OriginalPath: path, Size: fsutil.TreeSize(dest), DeletedAt: time.Now()})
-		}
+		disposals = append(disposals, bin.Disposal{Path: path})
+		b.items = append(b.items, bin.Item{ID: dest, OriginalPath: path, Size: fsutil.TreeSize(dest), DeletedAt: time.Now()})
 	}
 	return disposals, nil
 }
@@ -130,6 +125,7 @@ func (b *recordingBin) Recycle(paths []string) ([]bin.Disposal, error) {
 func (b *recordingBin) List() ([]bin.Item, error)              { return b.items, nil }
 func (b *recordingBin) Restore(string, string) (string, error) { return "", nil }
 func (b *recordingBin) Dirs() []string                         { return []string{b.dir} }
+func (b *recordingBin) DirFor(string) (string, error)          { return b.dir, nil }
 
 func (b *recordingBin) Evict(id string) error {
 	if err := os.RemoveAll(id); err != nil {
@@ -507,22 +503,6 @@ func TestAnUnmeasurableFilesystemStopsThePlan(t *testing.T) {
 	require.Len(t, outcome.Errors, 1)
 	assert.Contains(t, outcome.Errors[0].Error(), target)
 	assert.FileExists(t, filepath.Join(target, deps("lib-a-000000.rlib")))
-}
-
-// A bin that reports a permanent disposal has deleted the entry. That is said out
-// loud rather than counted as a successful recycle.
-func TestAPermanentDisposalIsReportedNotCounted(t *testing.T) {
-	root := t.TempDir()
-	newTarget(t, root, map[string]fixture{deps("lib-a-000000.rlib"): {size: 300, age: old}})
-	b := newBin(t)
-	b.perm = true
-
-	outcome, err := Trim(root, Options{Cap: 1, Bin: b, Free: roomy})
-	require.NoError(t, err)
-	assert.Zero(t, outcome.Recycled)
-	assert.Zero(t, outcome.Reclaimed)
-	require.Len(t, outcome.Refusals, 1)
-	assert.Contains(t, outcome.Refusals[0].Reason, "permanently")
 }
 
 func TestABinFailureIsCarriedWithoutStoppingTheRun(t *testing.T) {

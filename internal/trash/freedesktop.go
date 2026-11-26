@@ -25,7 +25,6 @@ import (
 
 	"github.com/wow-look-at-my/recycler/internal/bin"
 	"github.com/wow-look-at-my/recycler/internal/fsutil"
-	"github.com/wow-look-at-my/recycler/internal/pressure"
 )
 
 const (
@@ -90,16 +89,6 @@ func (t *fdoTrash) recycleOne(path string) (bin.Disposal, error) {
 	dir, top, err := t.trashDirFor(abs)
 	if err != nil {
 		return bin.Disposal{}, err
-	}
-
-	// A bin is on the filesystem it takes from, so recycling frees nothing here.
-	// Under the daemon's floor that stops being a deferral, and the deletion the
-	// caller asked for is the only thing that gives space back.
-	if decision := pressure.Check(abs, dir); decision.Permanent {
-		if err := os.RemoveAll(abs); err != nil {
-			return bin.Disposal{}, err
-		}
-		return bin.Disposal{Path: abs, Permanent: true, Reason: decision.Reason}, nil
 	}
 
 	// Measured before anything moves, so the record holds what went in.
@@ -344,6 +333,12 @@ func (t *fdoTrash) trashDirFor(path string) (dir, top string, err error) {
 		return "", "", err
 	}
 	return dir, top, nil
+}
+
+// DirFor answers the trash directory a recycle of path goes to.
+func (t *fdoTrash) DirFor(path string) (string, error) {
+	dir, _, err := t.trashDirFor(path)
+	return dir, err
 }
 
 // Dirs reports the trash directories the daemon watches the filesystems of.
