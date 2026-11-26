@@ -291,19 +291,63 @@ func sweepFolderTo(f Folder, limit uint64, now time.Time, onDir func(string)) ([
 	tracef("%s: its files take %s, over the %s cap; giving back the least recently used", f.Dir, formatBytes(total), f.Max)
 	reason := fmt.Sprintf("least recently used in %s, which held %s, over its %s cap", f.Dir, formatBytes(total), f.Max)
 	give := func(it bin.Item) error { return os.Remove(it.ID) }
+	var cost *recycleCost
 	if !f.Delete {
 		reason = "recycled as the " + reason
-		give = func(it bin.Item) error {
-			_, err := recycleInto(b, []string{it.ID}, freeAt, fsutil.SameFilesystem)
-			return err
-		}
+		cost = &recycleCost{b: b, free: freeAt, same: fsutil.SameFilesystem, dir: f.Dir}
+		give = cost.give
 	}
 	evicted, freed, _ := drain(files, total-limit, everything, give, reason)
 	for i := range evicted {
 		evicted[i].LastUsed = true
 	}
 	tracef("%s: its files take %s after the sweep", f.Dir, formatBytes(total-freed))
-	return evicted, total - freed, nil
+	return cost.report(evicted), total - freed, nil
+}
+
+// A recycleCost recycles a capped folder's files, and keeps what each recycle
+// cost. The bin items evicted for room, and the files deleted for want of it.
+type recycleCost struct {
+	b    bin.Backend
+	free func(string) (uint64, uint64, error)
+	same func(a, b string) (bool, error)
+	dir  string
+
+	displaced []Eviction
+	outright  map[string]string
+}
+
+func (c *recycleCost) give(it bin.Item) error {
+	disposals, err := recycleInto(c.b, []string{it.ID}, c.free, c.same)
+	for _, d := range disposals {
+		for _, gone := range d.Evicted {
+			c.displaced = append(c.displaced, Eviction{
+				Item:   gone,
+				Reason: fmt.Sprintf("made room for a recycle from %s: %s", c.dir, d.Reason),
+			})
+		}
+		if d.Permanent {
+			if c.outright == nil {
+				c.outright = map[string]string{}
+			}
+			c.outright[it.ID] = d.Reason
+		}
+	}
+	return err
+}
+
+// report corrects the reason of each file that was deleted and not recycled,
+// and adds the bin items the recycles evicted.
+func (c *recycleCost) report(evicted []Eviction) []Eviction {
+	if c == nil {
+		return evicted
+	}
+	for i := range evicted {
+		if why, deleted := c.outright[evicted[i].Item.ID]; deleted {
+			evicted[i].Reason = "deleted, not " + evicted[i].Reason + ": " + why
+		}
+	}
+	return append(evicted, c.displaced...)
 }
 
 // walkFolder answers this user's files under dir not used within FolderGrace, as

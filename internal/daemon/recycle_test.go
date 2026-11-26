@@ -106,16 +106,18 @@ func (s *shelf) disk(path string) string {
 	return best
 }
 
-func (s *shelf) recycle(paths ...string) ([]bin.Disposal, error) {
-	free := func(dir string) (uint64, uint64, error) {
-		n, ok := s.free[s.disk(dir)]
-		if !ok {
-			return 0, 0, errors.New("no such filesystem")
-		}
-		return n[0], n[1], nil
+func (s *shelf) probe(dir string) (uint64, uint64, error) {
+	n, ok := s.free[s.disk(dir)]
+	if !ok {
+		return 0, 0, errors.New("no such filesystem")
 	}
-	same := func(a, b string) (bool, error) { return s.disk(a) == s.disk(b), nil }
-	return recycleInto(s.bin, paths, free, same)
+	return n[0], n[1], nil
+}
+
+func (s *shelf) same(a, b string) (bool, error) { return s.disk(a) == s.disk(b), nil }
+
+func (s *shelf) recycle(paths ...string) ([]bin.Disposal, error) {
+	return recycleInto(s.bin, paths, s.probe, s.same)
 }
 
 func (s *shelf) file(t *testing.T, name string) string {
@@ -297,6 +299,34 @@ func TestPressureNeverDeletesWhatTheBackendRefuses(t *testing.T) {
 	require.Error(t, err, "the backend reports both")
 	assert.Equal(t, []string{root, missing}, s.bin.asked)
 	assert.DirExists(t, s.work)
+}
+
+// A capped folder recycles its files inside the daemon. What a recycle there
+// cost the bin is reported with what the cap gave back. A file that was
+// deleted is not reported as recycled.
+func TestAFolderCapReportsWhatItsRecyclesCost(t *testing.T) {
+	s := newShelf(t)
+	s.free[filepath.Dir(s.work)] = [2]uint64{400, smallDisk}
+	s.bin.hold(t, "old", 700, 72)
+	first, second := s.file(t, "first.tmp"), s.file(t, "second.tmp")
+	cost := &recycleCost{b: s.bin, free: s.probe, same: s.same, dir: s.work}
+
+	require.NoError(t, cost.give(bin.Item{ID: first}))
+	// Each give reads the filesystem again, and the bin now holds nothing sized.
+	require.NoError(t, cost.give(bin.Item{ID: second}))
+
+	evicted := cost.report([]Eviction{
+		{Item: bin.Item{ID: first}, Reason: "recycled as the least recently used"},
+		{Item: bin.Item{ID: second}, Reason: "recycled as the least recently used"},
+	})
+	require.Len(t, evicted, 3)
+	assert.Equal(t, "recycled as the least recently used", evicted[0].Reason)
+	assert.Contains(t, evicted[1].Reason, "deleted, not recycled")
+	assert.Equal(t, "old", evicted[2].Item.Name, "the bin item evicted for room went unreported")
+	assert.Contains(t, evicted[2].Reason, "made room for a recycle from "+s.work)
+
+	var none *recycleCost
+	assert.Len(t, none.report(evicted[:1]), 1, "a cap that deletes has no recycle to report")
 }
 
 // The real bin under a stated shortfall: the item goes, the new one is
