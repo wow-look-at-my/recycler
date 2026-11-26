@@ -4,6 +4,7 @@ package main
 
 import (
 	"fmt"
+	"io"
 
 	"github.com/spf13/cobra"
 	"github.com/wow-look-at-my/recycler"
@@ -30,30 +31,33 @@ suppress them.`,
 		quiet, _ := cmd.Flags().GetBool("quiet")
 		// One call for every path, so the backend can batch its bookkeeping.
 		disposals, err := recycler.Recycle(args...)
-		recycled := 0
-		for _, d := range disposals {
-			for _, it := range d.Evicted {
-				// Never quiet either: these left the bin for good.
-				fmt.Fprintf(cmd.ErrOrStderr(), "evicted %s to make room for %s: %s\n",
-					describeEviction(recycler.Eviction{Item: it}), d.Path, d.Reason)
-			}
-			if d.Permanent {
-				// Never quiet. A caller who believes this went to the bin
-				// will go looking for it, and there is nothing to find.
-				fmt.Fprintf(cmd.ErrOrStderr(), "deleted %s permanently, not recycled: %s\n",
-					d.Path, d.Reason)
-				continue
-			}
-			recycled++
-			if !quiet {
-				fmt.Fprintf(cmd.OutOrStdout(), "recycled %s\n", d.Path)
-			}
-		}
-		if recycled > 0 {
+		if reportDisposals(cmd.OutOrStdout(), cmd.ErrOrStderr(), disposals, quiet) > 0 {
 			startDaemon(cmd.ErrOrStderr())
 		}
 		return err
 	},
+}
+
+// reportDisposals says what each path got, and answers how many reached the bin.
+func reportDisposals(out, errOut io.Writer, disposals []recycler.Disposal, quiet bool) int {
+	recycled := 0
+	for _, d := range disposals {
+		for _, it := range d.Evicted {
+			// Never quiet: these left the bin for good.
+			fmt.Fprintf(errOut, "evicted %s to make room for %s: %s\n",
+				describeEviction(recycler.Eviction{Item: it}), d.Path, d.Reason)
+		}
+		if d.Permanent {
+			// Never quiet. A caller who believes this went to the bin will go looking for it, and there is nothing to find.
+			fmt.Fprintf(errOut, "deleted %s permanently, not recycled: %s\n", d.Path, d.Reason)
+			continue
+		}
+		recycled++
+		if !quiet {
+			fmt.Fprintf(out, "recycled %s\n", d.Path)
+		}
+	}
+	return recycled
 }
 
 func init() {
