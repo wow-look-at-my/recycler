@@ -24,6 +24,7 @@ func (f *fakeBackend) Recycle([]string) ([]bin.Disposal, error) { return nil, ni
 func (f *fakeBackend) List() ([]bin.Item, error)                { return nil, nil }
 func (f *fakeBackend) Restore(string, string) (string, error)   { return "", nil }
 func (f *fakeBackend) Dirs() []string                           { return []string{"/trash"} }
+func (f *fakeBackend) DirFor(string) (string, error)            { return "/trash", nil }
 
 func (f *fakeBackend) Evict(id string) error {
 	if err, bad := f.fail[id]; bad {

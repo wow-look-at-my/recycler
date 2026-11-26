@@ -20,10 +20,11 @@ without stopping the remaining ones.
 
 A recycle bin lives on the filesystem it takes from, so recycling moves the
 bytes rather than freeing them. When a filesystem is already under the space the
-daemon keeps free, or when a path is larger than what is left, moving it there
-cannot help and would spend more of what is left on the record of the move. Such
-a path is deleted outright instead, and saying so is not optional: the line
-naming it goes to standard error and --quiet does not suppress it.`,
+daemon keeps free, or when a path is larger than what is left, the bin first
+gives back its oldest items there to make room. A path is deleted outright only
+when everything the bin holds there cannot make that room. Saying either is not
+optional: the lines naming what went go to standard error and --quiet does not
+suppress them.`,
 	Args: cobra.MinimumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		quiet, _ := cmd.Flags().GetBool("quiet")
@@ -31,6 +32,11 @@ naming it goes to standard error and --quiet does not suppress it.`,
 		disposals, err := recycler.Recycle(args...)
 		recycled := 0
 		for _, d := range disposals {
+			for _, it := range d.Evicted {
+				// Never quiet either: these left the bin for good.
+				fmt.Fprintf(cmd.ErrOrStderr(), "evicted %s to make room for %s: %s\n",
+					describeEviction(recycler.Eviction{Item: it}), d.Path, d.Reason)
+			}
 			if d.Permanent {
 				// Never quiet. A caller who believes this went to the bin
 				// will go looking for it, and there is nothing to find.

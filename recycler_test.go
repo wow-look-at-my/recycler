@@ -182,7 +182,7 @@ func TestBackendDestroysOnlyUnderDiskPressure(t *testing.T) {
 	}
 	sort.Strings(got)
 	// Evict is the only method here that destroys anything, and only internal/daemon calls it.
-	assert.Equal(t, []string{"Dirs", "Evict", "List", "Recycle", "Restore"}, got)
+	assert.Equal(t, []string{"DirFor", "Dirs", "Evict", "List", "Recycle", "Restore"}, got)
 }
 
 // Sweep against a real bin with room to spare: it reads the listing, finds no filesystem under its

@@ -294,7 +294,7 @@ func sweepFolderTo(f Folder, limit uint64, now time.Time, onDir func(string)) ([
 	if !f.Delete {
 		reason = "recycled as the " + reason
 		give = func(it bin.Item) error {
-			_, err := b.Recycle([]string{it.ID})
+			_, err := recycleInto(b, []string{it.ID}, freeAt, fsutil.SameFilesystem)
 			return err
 		}
 	}

@@ -73,17 +73,9 @@ func apply(b bin.Backend, plan *Plan, free func(string) (uint64, uint64, error),
 	}
 
 	// A bin on the target directory's own filesystem takes the bundle by rename.
-	disposals, err := b.Recycle([]string{bundle})
-	if err != nil {
+	if _, err := b.Recycle([]string{bundle}); err != nil {
 		out.Errors = append(out.Errors, err)
 		return 0, 0
-	}
-	for _, d := range disposals {
-		if d.Permanent {
-			// Checked again after the fact: the bin has the last word on whether it could defer.
-			out.Refusals = append(out.Refusals, Refusal{Path: d.Path, Reason: "recycled permanently: " + d.Reason})
-			return 0, 0
-		}
 	}
 	return staged, bytes
 }

@@ -52,11 +52,7 @@ func Recycle(paths ...string) ([]Disposal, error) {
 	if len(paths) == 0 {
 		return nil, nil
 	}
-	b, err := trash.Backend()
-	if err != nil {
-		return nil, err
-	}
-	return b.Recycle(paths)
+	return daemon.Recycle(paths)
 }
 
 // List returns everything in the recycle bin, newest at the front.

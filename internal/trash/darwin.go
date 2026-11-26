@@ -22,7 +22,6 @@ import (
 	"github.com/wow-look-at-my/recycler/internal/bin"
 	"github.com/wow-look-at-my/recycler/internal/dsstore"
 	"github.com/wow-look-at-my/recycler/internal/fsutil"
-	"github.com/wow-look-at-my/recycler/internal/pressure"
 	"github.com/wow-look-at-my/recycler/internal/putback"
 )
 
@@ -67,13 +66,9 @@ func (t *macTrash) Recycle(paths []string) ([]bin.Disposal, error) {
 	var batches []*batch
 	byDir := map[string]*batch{}
 	for i, path := range paths {
-		abs, dir, deleted, err := t.prepare(path)
+		abs, dir, err := t.prepare(path)
 		if err != nil {
 			fail(i, err)
-			continue
-		}
-		if deleted != nil {
-			results[i] = deleted
 			continue
 		}
 		b := byDir[dir]
@@ -100,34 +95,19 @@ func (t *macTrash) Recycle(paths []string) ([]bin.Disposal, error) {
 	return disposals, errors.Join(failures...)
 }
 
-// prepare validates a path and answers the trash directory it goes to, or the
-// disposal of a path pressure deleted outright.
-func (t *macTrash) prepare(path string) (abs, dir string, deleted *bin.Disposal, err error) {
+// prepare validates a path and answers the trash directory it goes to.
+func (t *macTrash) prepare(path string) (abs, dir string, err error) {
 	if abs, err = filepath.Abs(path); err != nil {
-		return "", "", nil, err
+		return "", "", err
 	}
 	if _, err := os.Lstat(abs); err != nil {
-		return "", "", nil, err
+		return "", "", err
 	}
 	if abs == filepath.Clean("/") {
-		return "", "", nil, errors.New("refusing to recycle the filesystem root")
+		return "", "", errors.New("refusing to recycle the filesystem root")
 	}
-
 	dir, err = t.trashDirFor(abs)
-	if err != nil {
-		return "", "", nil, err
-	}
-
-	// A trash is on the volume it takes from, so recycling frees nothing there.
-	// Under the daemon's floor the deletion the caller asked for is the only
-	// thing that gives space back.
-	if decision := pressure.Check(abs, dir); decision.Permanent {
-		if err := os.RemoveAll(abs); err != nil {
-			return "", "", nil, err
-		}
-		return abs, "", &bin.Disposal{Path: abs, Permanent: true, Reason: decision.Reason}, nil
-	}
-	return abs, dir, nil, err
+	return abs, dir, err
 }
 
 // moveBatch records every origin in the batch in one rewrite, then hands each
@@ -328,6 +308,9 @@ func (t *macTrash) trashDirFor(path string) (string, error) {
 	}
 	return dir, nil
 }
+
+// DirFor answers the trash directory a recycle of path goes to.
+func (t *macTrash) DirFor(path string) (string, error) { return t.trashDirFor(path) }
 
 // Dirs reports the trash directories the daemon watches the filesystems of.
 func (t *macTrash) Dirs() []string { return t.trashDirs() }

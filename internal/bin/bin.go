@@ -73,12 +73,18 @@ type Disposal struct {
 	// Permanent marks a path removed outright, with Reason saying why.
 	Permanent bool
 	Reason    string
+
+	// Evicted is what the bin gave back to make room for the path. Reason says why it had to.
+	Evicted []Item
 }
 
 // A Backend is the per-platform implementation of the package API.
 type Backend interface {
-	// Recycle reports every path it was given, the ones it failed on included.
+	// Recycle moves each path into the bin and reports every path that went. It never deletes a path.
 	Recycle(paths []string) ([]Disposal, error)
+
+	// DirFor answers the bin directory that takes path, an absolute path.
+	DirFor(path string) (string, error)
 	List() ([]Item, error)
 	Restore(id, dest string) (string, error)
 	Evict(id string) error

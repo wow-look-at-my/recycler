@@ -20,7 +20,6 @@ import (
 
 	"github.com/wow-look-at-my/recycler/internal/bin"
 	"github.com/wow-look-at-my/recycler/internal/fsutil"
-	"github.com/wow-look-at-my/recycler/internal/pressure"
 	"github.com/wow-look-at-my/recycler/internal/winbin"
 )
 
@@ -74,17 +73,6 @@ func (t *winTrash) Recycle(paths []string) ([]bin.Disposal, error) {
 			errs = append(errs, fmt.Errorf("recycling %s: %w", path, err))
 			continue
 		}
-		// The bin is on the volume it takes from, so recycling frees nothing
-		// there. Under the daemon's floor the deletion the caller asked for is
-		// the only thing that gives space back.
-		if decision := pressure.Check(p, filepath.VolumeName(p)+`\`); decision.Permanent {
-			if err := os.RemoveAll(p); err != nil {
-				errs = append(errs, fmt.Errorf("deleting %s: %w", path, err))
-				continue
-			}
-			disposals = append(disposals, bin.Disposal{Path: p, Permanent: true, Reason: decision.Reason})
-			continue
-		}
 		abs = append(abs, p)
 		disposals = append(disposals, bin.Disposal{Path: p})
 	}
@@ -103,7 +91,7 @@ func (t *winTrash) Recycle(paths []string) ([]bin.Disposal, error) {
 func stillGone(disposals []bin.Disposal) []bin.Disposal {
 	kept := disposals[:0]
 	for _, d := range disposals {
-		if _, err := os.Lstat(d.Path); d.Permanent || errors.Is(err, fs.ErrNotExist) {
+		if _, err := os.Lstat(d.Path); errors.Is(err, fs.ErrNotExist) {
 			kept = append(kept, d)
 		}
 	}
@@ -296,6 +284,12 @@ func (t *winTrash) resolveID(id string) (data, metaPath string, err error) {
 		return "", "", fmt.Errorf("%w: %s", bin.ErrNotFound, id)
 	}
 	return clean, filepath.Join(dir, metaPrefix+base[len(dataPrefix):]), nil
+}
+
+// DirFor answers this user's recycle bin directory on the volume holding path.
+// The shell creates it on the first recycle there.
+func (t *winTrash) DirFor(path string) (string, error) {
+	return filepath.Join(filepath.VolumeName(path)+`\`, recycleBinDirName, t.sid), nil
 }
 
 // Dirs reports the recycle bin directories the daemon watches the volumes of.
